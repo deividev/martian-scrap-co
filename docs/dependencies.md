@@ -7,6 +7,9 @@ Adopted third-party packages with exact versions, licenses and the compatibility
 | three | 0.186.1 | MIT | runtime | MSC-005 | Approved rendering library. WebGLRenderer only; WebGPU is not a launch dependency. |
 | @types/three | 0.186.0 | MIT | dev | MSC-005 | Type definitions matching the three 0.186 line. |
 | vite | 8.3.5 | MIT | dev | MSC-005 | Build/dev server. Requires Node `^20.19.0 \|\| >=22.12.0`; local Node is 22.12.0. Relative `base: './'` for packaged local loading; dev server bound to `127.0.0.1:5173`. |
+| electron | 44.10.0 | MIT | dev (runtime shell) | MSC-006 | Approved desktop runtime. Ships Chromium 152 and Node 24.22.1. 45.1.0 was only eight days old, so the supported 44 line was chosen. |
+| @types/node | 24.19.2 | MIT | dev | MSC-006 | Matches Electron's embedded Node 24 for main/preload typechecking. |
+| vitest | 5.0.5 | MIT | dev | MSC-006 | Unit tests; requires Node `^22.12.0 \|\| ^24 \|\| >=26` and Vite 6–8. |
 | typescript | 6.0.3 | Apache-2.0 | dev | MSC-005 | Strict mode. **7.0.2 is the npm `latest`, but typescript-eslint 8.72.1 supports only `>=4.8.4 <6.1.0`**, so 6.0.3 keeps MSC-008 linting viable. Revisit when typescript-eslint supports 7.x. |
 
 ## Review notes

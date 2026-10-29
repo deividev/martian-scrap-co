@@ -5,19 +5,28 @@
   "private": true,
   "description": "First-person co-op Mars scrapyard recycling game.",
   "type": "module",
+  "main": "dist-electron/electron/main.js",
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
     "dev": "vite",
-    "build": "npm run typecheck && vite build",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "preview": "vite preview"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json",
+    "build:renderer": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build": "npm run typecheck && npm run build:renderer && npm run build:electron",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "electron:start": "npm run build && electron .",
+    "electron:dev": "npm run build:electron && node tools/run-electron-dev.mjs"
   },
   "devDependencies": {
+    "@types/node": "24.19.2",
     "@types/three": "0.186.0",
+    "electron": "44.10.0",
     "typescript": "6.0.3",
-    "vite": "8.3.5"
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
   },
   "dependencies": {
     "three": "0.186.1"

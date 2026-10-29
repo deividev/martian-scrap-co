@@ -159,7 +159,9 @@ Requirements: PRD-021–022.
 
 Context: [Co-op guide](../references/online-coop.txt) §§1, 3; architecture §§4, 11.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added Electron 44.10.0 with ESM main (`electron/main.ts`), sandboxed CommonJS preload (`electron/preload.cts`) and pure IPC policy (`electron/ipcPolicy.ts`), plus the renderer `PlatformAdapter` in `src/platform/` (browser adapter reports all capabilities absent). Context isolation, no Node integration, sandbox, frozen single-method bridge, allowlisted/arity/size/sender-checked IPC, denied navigation/new windows/webviews, permission allowlist (pointer lock, fullscreen) and production CSP. Checks: 26 Vitest rejection/readback tests pass; the built app probed via CDP showed no `require`/`process`/`ipcRenderer`, blocked inline script and `window.open`, and no console errors. Readback, Context used and Deviations in [MSC-006 record](decisions/MSC-006-electron-boundaries.md).
 
 ### MSC-007 — Prove production asset loading and packaging
 
