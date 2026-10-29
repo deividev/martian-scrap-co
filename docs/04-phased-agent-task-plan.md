@@ -261,7 +261,9 @@ Check: Activate/deactivate a cluster repeatedly and verify identity/conservation
 
 Requirements: PRD-001, PRD-005, PRD-021.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added `ScrapField` (`src/simulation/scrap/scrapField.ts`): clusters hold decorative visual counts (never simulated) plus identified pieces that are `dormant` (pose only), `active` (physics body, transient handle map) or `removed` (terminal, never re-created). Deactivation stores the live pose and rotation; snapshots persist no handles and save active pieces as dormant; a fully cleared cluster drops its decorative mass so cleared areas stay cleared. `metrics()` exposes dormant/active/removed, decorative instances, physics bodies and awake bodies. Physics boxes accept an initial rotation. Check: 50 activate/step/deactivate cycles keep the same ids, conserve 15 pieces, leave only the ground body and never revive a removed piece; save/restore round trip preserves poses; awake count observed going 9 → 0 after settling; `npm run check` 7/7.
 
 ### MSC-013 — Implement first-person action controller
 

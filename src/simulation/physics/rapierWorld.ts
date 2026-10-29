@@ -43,6 +43,11 @@ export async function createRapierWorld(options: RapierWorldOptions = {}): Promi
       if (hx <= 0 || hy <= 0 || hz <= 0) throw new RangeError('halfExtents must be positive');
       const bodyDesc = spec.kind === 'fixed' ? RAPIER.RigidBodyDesc.fixed() : RAPIER.RigidBodyDesc.dynamic();
       bodyDesc.setTranslation(spec.position.x, spec.position.y, spec.position.z);
+      if (spec.rotation) {
+        const { x, y, z, w } = spec.rotation;
+        if (![x, y, z, w].every(Number.isFinite)) throw new RangeError('rotation must be finite');
+        bodyDesc.setRotation({ x, y, z, w });
+      }
       const body = world.createRigidBody(bodyDesc);
       const colliderDesc = RAPIER.ColliderDesc.cuboid(hx, hy, hz)
         .setFriction(spec.friction ?? 0.7)

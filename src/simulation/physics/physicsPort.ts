@@ -20,6 +20,8 @@ export interface BoxBodySpec {
   readonly position: Vec3;
   /** Half extents in meters. */
   readonly halfExtents: Vec3;
+  /** Unit quaternion; identity when omitted. */
+  readonly rotation?: Quat;
   /** Total mass in kilograms (dynamic bodies only). */
   readonly massKg?: number;
   readonly friction?: number;
