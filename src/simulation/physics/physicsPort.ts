@@ -74,6 +74,8 @@ export interface PhysicsWorldPort {
   step(): void;
   bodyPosition(handle: PhysicsBodyHandle): Vec3;
   bodyRotation(handle: PhysicsBodyHandle): Quat;
+  /** Sets a dynamic body's linear velocity in m/s and wakes it. */
+  setLinearVelocity(handle: PhysicsBodyHandle, velocity: Vec3): void;
   /** Casts a ray; `excludeCharacter` ignores that character's own capsule. */
   castRay(origin: Vec3, direction: Vec3, maxDistance: number, excludeCharacter?: CharacterHandle): RayHit | null;
   /** Creates a kinematic capsule driven by collision-corrected moves. */

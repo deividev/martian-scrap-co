@@ -100,6 +100,11 @@ export async function createRapierWorld(options: RapierWorldOptions = {}): Promi
       return { x, y, z, w };
     },
 
+    setLinearVelocity(handle: PhysicsBodyHandle, velocity: Vec3): void {
+      assertFiniteVec('velocity', velocity);
+      bodyOf(handle).setLinvel(velocity, true);
+    },
+
     castRay(origin: Vec3, direction: Vec3, maxDistance: number, excludeCharacter?: CharacterHandle): RayHit | null {
       assertFiniteVec('origin', origin);
       assertFiniteVec('direction', direction);

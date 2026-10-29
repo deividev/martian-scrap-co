@@ -72,6 +72,11 @@ export class PlayerController {
     });
   }
 
+  /** The capsule handle, used to keep the player's own body out of aim and support rays. */
+  get characterHandle(): CharacterHandle {
+    return this.#character;
+  }
+
   /** Applies camera look and queues edge actions; call once per rendered frame. */
   applyLook(frame: ActionFrame): void {
     if (Number.isFinite(frame.look.yaw)) this.#yaw = (this.#yaw + frame.look.yaw) % (Math.PI * 2);

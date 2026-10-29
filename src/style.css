@@ -52,3 +52,31 @@ body {
     sans-serif;
   pointer-events: none;
 }
+
+#target-feedback {
+  position: fixed;
+  left: 50%;
+  top: calc(50% + 28px);
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: rgba(27, 31, 46, 0.82);
+  color: #f4ece1;
+  font:
+    15px/1.4 system-ui,
+    sans-serif;
+  pointer-events: none;
+}
+
+#target-feedback:empty {
+  display: none;
+}
+
+#target-feedback[data-state='compatible'] {
+  box-shadow: inset 0 0 0 2px #2fb5a8;
+}
+
+#target-feedback[data-state='incompatible'] {
+  box-shadow: inset 0 0 0 2px #f08a3c;
+}

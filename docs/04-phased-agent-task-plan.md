@@ -293,7 +293,9 @@ Check: Test all proposed material flags, wall occlusion and competing targets.
 
 Requirements: PRD-005–006, PRD-009.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added `pickTarget` (`src/simulation/collection/targeting.ts`: 3.5 m reach, 14° cone, closest-to-aim then nearest, line-of-sight ray that must hit the candidate itself and ignores the player capsule) and `MagneticCollector` (`magneticCollector.ts`): compatibility comes from the content pack, so the ordinary magnet attracts ferrous only; incompatible pieces stay untouched with a reason built from content ("Aluminum isn't magnetic. Collect with: Hands, Grabber."); compatible pieces are pulled at 6 m/s and collected exactly once on arrival (0.7 m), not on button press; pulls drop safely when out of range. The test yard gained a mixed 18-piece pile with readable material colors, target highlight and an on-screen feedback line with the material symbol as a non-color cue (E / click or X to collect). Checks: all six material flags (ferrous attracted, five rejected and left active), wall occlusion, reach/cone limits, competing targets switching with aim, single collection and no confirmation at press; in the running Electron app the player looked down at the pile, targeted "Fe Ferrous Scrap: collect" and E raised the collected count 0 → 1; `npm run check` 7/7. Not stealing another player's held object needs claims (MSC-022).
 
 ### MSC-015 — Implement portable batch container
 

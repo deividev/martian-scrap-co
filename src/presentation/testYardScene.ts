@@ -14,21 +14,39 @@ import {
   WebGLRenderer,
 } from 'three';
 import checkerUrl from '../assets/textures/smoke-checker.png';
+import { FIRST_PASS_CONTENT } from '../content/firstPass';
+import { parseContentPack } from '../content/schema';
+import { EntityIdAllocator } from '../domain/ids';
 import { mergeFrames, type InputDevice } from '../input/actions';
 import { GamepadSource } from '../input/gamepadSource';
 import { DEFAULT_INPUT_SETTINGS } from '../input/inputSettings';
 import { KeyboardMouseSource } from '../input/keyboardMouseSource';
+import { MagneticCollector, type TargetFeedback } from '../simulation/collection/magneticCollector';
+import { pickTarget } from '../simulation/collection/targeting';
 import { PHYSICS_CONVENTIONS } from '../simulation/physics/conventions';
 import type { PhysicsBodyHandle } from '../simulation/physics/physicsPort';
 import { runPhysicsProbe } from '../simulation/physics/probe';
 import { createRapierWorld } from '../simulation/physics/rapierWorld';
 import { PlayerController } from '../simulation/player/playerController';
-import { TEST_YARD_BLOCKS, TEST_YARD_RECOVERY_ZONES, TEST_YARD_SPAWN, yardBodySpec } from '../simulation/yard/testYard';
+import { ScrapField } from '../simulation/scrap/scrapField';
+import {
+  TEST_YARD_BLOCKS,
+  TEST_YARD_RECOVERY_ZONES,
+  TEST_YARD_SPAWN,
+  createTestYardScrap,
+  yardBodySpec,
+} from '../simulation/yard/testYard';
 import { createRobotProxy } from './robotProxy';
+import { ScrapPileView } from './scrapPileView';
+
+export interface TestYardHud {
+  readonly hint: HTMLElement | null;
+  readonly feedback: HTMLElement | null;
+}
 
 const PROMPTS: Record<InputDevice, string> = {
-  'keyboard-mouse': 'WASD move · Mouse look · Space jump · Esc release mouse',
-  gamepad: 'Left stick move · Right stick look · A jump · Menu pause',
+  'keyboard-mouse': 'WASD move · Mouse look · E / click collect · Space jump · Esc release mouse',
+  gamepad: 'Left stick move · Right stick look · X collect · A jump · Menu pause',
   none: 'Click to play · WASD or left stick to move',
 };
 
@@ -36,7 +54,10 @@ const PROMPTS: Record<InputDevice, string> = {
  * First-person movement test yard (MSC-013): ramps, steps, a corner and a recovery pit, plus a few
  * physics crates and a robot proxy for scale. Debug data is exposed on the canvas dataset.
  */
-export async function createTestYardScene(canvas: HTMLCanvasElement, hint: HTMLElement | null): Promise<() => void> {
+export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYardHud): Promise<() => void> {
+  const { hint, feedback: feedbackLabel } = hud;
+  const content = parseContentPack(FIRST_PASS_CONTENT);
+  if (!content.ok) throw new Error(`Invalid content: ${content.errors.join('; ')}`);
   const renderer = new WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -87,7 +108,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hint: HTMLE
   });
 
   const proxy = createRobotProxy('#f2b134');
-  proxy.position.set(-1.5, 0.8, 4);
+  proxy.position.set(-3.5, 0.8, 1.5);
   proxy.rotation.y = Math.PI / 5;
   scene.add(proxy);
 
@@ -97,6 +118,18 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hint: HTMLE
     PHYSICS_CONVENTIONS.marsGravity,
     TEST_YARD_RECOVERY_ZONES,
   );
+  const scrap = new ScrapField(world, [createTestYardScrap(new EntityIdAllocator())]);
+  scrap.activateCluster('test-yard-pile');
+  const scrapView = new ScrapPileView(scene, scrap, world);
+  const collector = new MagneticCollector(content.pack, scrap, world);
+  let collected = 0;
+  let feedback: TargetFeedback = { state: 'none' };
+  const forwardOf = (yaw: number, pitch: number) => ({
+    x: -Math.sin(yaw) * Math.cos(pitch),
+    y: Math.sin(pitch),
+    z: -Math.cos(yaw) * Math.cos(pitch),
+  });
+
   const keyboard = new KeyboardMouseSource(DEFAULT_INPUT_SETTINGS);
   const gamepad = new GamepadSource(DEFAULT_INPUT_SETTINGS);
   const isLocked = (): boolean => document.pointerLockElement === canvas;
@@ -131,10 +164,19 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hint: HTMLE
     if (frame.pause && isLocked()) document.exitPointerLock();
     player.applyLook(frame);
 
+    const aimView = player.view();
+    const direction = forwardOf(aimView.yaw, aimView.pitch);
+    feedback = collector.evaluate(
+      pickTarget({ origin: aimView.eye, direction }, scrap.activeTargets(), world, player.characterHandle),
+    );
+    if (frame.interact) collector.tryStartPull(feedback);
+
     // Fixed-step simulation with bounded catch-up.
     accumulator = Math.min(accumulator + dt, step * 5);
     while (accumulator >= step) {
       player.fixedUpdate(frame.move, step);
+      const eye = player.view().eye;
+      if (collector.fixedUpdate({ x: eye.x, y: eye.y - 0.4, z: eye.z })) collected += 1;
       world.step();
       accumulator -= step;
     }
@@ -149,6 +191,18 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hint: HTMLE
       crate.mesh.position.set(p.x, p.y, p.z);
       crate.mesh.quaternion.set(r.x, r.y, r.z, r.w);
     }
+    scrapView.sync();
+    scrapView.highlight(feedback);
+    if (feedbackLabel) {
+      feedbackLabel.textContent =
+        feedback.state === 'compatible'
+          ? `${feedback.material.symbol} ${feedback.material.displayName}: collect`
+          : feedback.state === 'incompatible'
+            ? `${feedback.material.symbol} ${feedback.reason}`
+            : '';
+      feedbackLabel.dataset['state'] = feedback.state;
+    }
+    canvas.dataset['collected'] = String(collected);
     canvas.dataset['player'] = JSON.stringify({
       x: Number(view.position.x.toFixed(2)),
       y: Number(view.position.y.toFixed(2)),

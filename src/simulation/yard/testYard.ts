@@ -1,5 +1,7 @@
+import { contentId, type EntityIdAllocator } from '../../domain/ids';
 import type { BoxBodySpec, Quat, Vec3 } from '../physics/physicsPort';
 import type { RecoveryZone } from '../player/playerController';
+import type { ScrapClusterSpec } from '../scrap/scrapField';
 
 /** A static block of the movement test yard; shared by physics and presentation. */
 export interface YardBlock {
@@ -67,4 +69,27 @@ export function yardBodySpec(block: YardBlock): BoxBodySpec {
     halfExtents: block.halfExtents,
     ...(block.rotation ? { rotation: block.rotation } : {}),
   };
+}
+
+/** Mixed small-scrap pile in front of the spawn for collector tests (MSC-014). */
+export function createTestYardScrap(allocator: EntityIdAllocator): ScrapClusterSpec {
+  const materials = [
+    'ferrous',
+    'aluminum',
+    'ferrous',
+    'copper',
+    'ferrous',
+    'polymer',
+    'heliofoil',
+    'ferrous',
+    'regolith-ceramic',
+  ];
+  const pieces = Array.from({ length: 18 }, (_, index) => ({
+    id: allocator.allocate(),
+    materialId: contentId(materials[index % materials.length] ?? 'ferrous'),
+    position: { x: -1 + (index % 6) * 0.4, y: 0.15 + Math.floor(index / 6) * 0.3, z: 3 + (index % 2) * 0.3 },
+    halfExtents: { x: 0.12, y: 0.08 + (index % 3) * 0.03, z: 0.14 },
+    massKg: 1.5,
+  }));
+  return { id: 'test-yard-pile', pieces, decorativeInstances: 0 };
 }

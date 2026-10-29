@@ -97,6 +97,11 @@ export class ScrapField {
     return this.#bodies.get(id);
   }
 
+  /** Active pieces with their body handle and live position (targeting input). */
+  activeTargets(): { id: EntityId; body: PhysicsBodyHandle; position: Vec3 }[] {
+    return [...this.#bodies].map(([id, body]) => ({ id, body, position: this.#physics.bodyPosition(body) }));
+  }
+
   /** Gives physics bodies to the cluster's dormant pieces. Removed pieces stay removed. */
   activateCluster(clusterId: string): number {
     let created = 0;
