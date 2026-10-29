@@ -1,0 +1,133 @@
+# Integración de marketing: qué medir y cómo
+
+Guía para llevar al panel de HeadArrow el trabajo que hoy hacemos a mano con Winky!: leer los números de Steam de
+cada juego, explicar los picos y saber qué funciona. Sale de lo aprendido con Winky! (app 5364230, demo 5400530)
+hasta el 23 de octubre de 2026.
+
+## Para qué sirve
+
+Antes del lanzamiento solo cuenta una cosa: **wishlists en Steam**. La integración tiene que contestar cada día a
+tres preguntas por juego:
+
+1. ¿Cuántas wishlists entran al día, y sube o baja el ritmo?
+2. Si un día se sale de lo normal, ¿qué lo causó?
+3. ¿Qué de lo que hacemos (posts, noticias, demo, cápsula) mueve la aguja y qué no?
+
+Likes, seguidores o impresiones en redes no entran en ninguna de las tres.
+
+## Fuentes de datos
+
+Todas son de solo lectura. Steamworks no tiene API para esto: se leen las páginas del partner con las cookies de
+sesión que ya guarda el panel (`login_data/partner.steampowered.com_cookies.json` y
+`login_data/partner.steamgames.com_cookies.json`). Hoy lo hace `winky/scripts/wishlists.mjs`, que sirve de
+referencia.
+
+| Dato | URL | Formato |
+| --- | --- | --- |
+| Wishlists totales, añadidas, quitadas, compradas | `partner.steampowered.com/app/wishlist/{app}/` | HTML ("Current Outstanding Wishes", "Wishlist Additions"...) |
+| Wishlists por día | `partner.steampowered.com/report_csv.php?file=w&params=query=QueryWishlistActionsForCSV^appID={app}^dateStart={d}^dateEnd={d}^interpreter=WishlistReportInterpreter` | CSV, una fila por día |
+| Visitas y wishlists por enlace UTM | `partner.steamgames.com/apps/utmtrafficstats/{app}` | HTML, acumulado |
+| De dónde llegan las visitas a la tienda | `partner.steamgames.com/apps/navtrafficstats/{app}?attribution_filter=all&preset_date_range=custom&start_date={d}&end_date={d}` | HTML: página o función, impresiones, CTR, visitas |
+| Demo: licencias, cuántos la abren, jugadores diarios, mediana de juego | `partner.steampowered.com/app/details/{demo}/?dateStart={d}&dateEnd={d}` | HTML |
+| Noticias propias en Steam | API pública `ISteamNews/GetNewsForApp` | JSON |
+| Vídeos sobre el juego | YouTube Data API v3, `search.list` con `order=date` y `publishedAfter` (o la página de resultados ordenada por fecha) | JSON |
+| Problemas de los jugadores | Servicio de tickets de HeadArrow (ya está en el panel) | JSON |
+
+**Sesión caducada:** cuando las cookies caducan, Steam devuelve la página de inicio de sesión en lugar del dato.
+Hay que detectarlo (la página dice "Sign In" y no "Signed in as") y avisar, nunca guardar ceros.
+
+## Qué guardar
+
+- **Una foto diaria por juego.** Steam solo enseña rangos de fechas y algunos datos son acumulados (UTM). Si
+  guardamos cada día lo que vemos, tenemos historia propia y podemos restar un día del anterior.
+- **Un registro de acciones con fecha:** post, noticia en Steam, demo publicada, cápsula nueva, bundle, email.
+  Sin él no se puede saber qué causó un cambio. En Winky! hoy es una tabla a mano en `marketing.md`: la
+  integración debería hacerla sola (las noticias de Steam y los posts del panel ya se conocen) y dejar añadir el
+  resto a mano.
+- **Por juego:** app id, app id de la demo y **nombre completo** (para buscar vídeos; ver trampas).
+
+## Qué calcular y enseñar
+
+1. **Wishlists añadidas por día y el neto** (añadidas menos quitadas), con la media de 7 días. Es el gráfico
+   principal. Un total que sube oculta que el ritmo baja.
+2. **Acciones encima del gráfico**, para ver de un vistazo qué hubo antes de cada subida.
+3. **Detección de picos:** un día con más del doble de la mediana de 7 días (y al menos ~20 añadidas) se marca
+   para investigar. La integración debería preparar ya la investigación:
+   - Tráfico de la tienda de ese día comparado con los días normales: qué fila ha crecido.
+   - Vídeos de YouTube con el nombre completo publicados en las 48 h anteriores, con vistas y enlaces de la
+     descripción.
+   - Noticias propias publicadas esos días.
+4. **Wishlists por fuente**, sobre todo la conversión de cada una (visitas que acaban en wishlist).
+5. **CTR de la cápsula en los resultados de búsqueda de Steam**, por día y en media de 5 o más días. La búsqueda
+   es la mayor fuente de impresiones, así que un cambio de cápsula se juzga aquí.
+6. **Embudo de la demo:** licencias, cuántos la abren, jugadores diarios, mediana de tiempo de juego.
+7. **Tickets abiertos** de la demo y del juego.
+
+## Cómo leer el tráfico de un pico
+
+Es la parte que más enseña. Con Winky! se vio así el récord del 22 de octubre (82 wishlists, frente a unas 10 a 30
+en un día normal):
+
+| Señal en "Store traffic" | Qué quiere decir |
+| --- | --- |
+| **Autocompletado de búsqueda** con muchas visitas y CTR alto (aquel día 133 visitas, 60 %) | Hay gente que teclea el nombre a propósito: algo de fuera de Steam los ha mandado |
+| Sube **youtube.com** (41) | Hay un vídeo |
+| Sube **yandex** (43) | El público es ruso |
+| Sube **"(other pages)"** o el **News Hub** | Ha salido una noticia en Steam, propia o de otro juego |
+| Sube **"Demo Parent App Link"** | Viene gente desde la página de la demo |
+
+Con eso se buscó en YouTube "Winky! Find the Golden Ticket" ordenado por fecha. Apareció perpetuumworld (YouTuber
+ruso, 4,4 M de suscriptores): 25 minutos de la demo publicados aquella mañana, 32k vistas en un día y el enlace de
+la tienda en la descripción. Nadie le había escrito: encontró la demo en Steam.
+
+## Qué no medir (o no fiarse)
+
+- **Likes, seguidores e impresiones en X.** En Winky! X ha traído 8 visitas y 0 wishlists en total.
+- **Un día suelto con menos de ~10 clics.** Es ruido; no sirve para juzgar una cápsula ni un post.
+- **"Direct Navigation".** Son enlaces sin referencia (apps, Discord, el cliente de Steam, móvil): no se puede
+  saber de dónde vienen.
+- **Tráfico de bots**, que Steam ya separa.
+- **El día de hoy.** Está a medias y el tráfico llega con horas de retraso: enseñarlo, pero marcado como parcial.
+
+## Trampas
+
+- **Las UTM solo cuentan los enlaces que hacemos nosotros.** Un YouTuber pone el enlace normal de la tienda y sus
+  visitas salen como "youtube.com" o como búsquedas. Por eso los picos se explican con "Store traffic" y no con UTM.
+- **Buscar por nombre corto no sirve.** "Winky" devuelve Tinky Winky y Slendytubbies. Siempre el nombre completo.
+- **La demo tiene app propia** con su propio tráfico, pero las wishlists son siempre de la app principal.
+- **Los tickets de la demo llegan con el app id del juego completo** (en Winky!, 5364230); se distinguen por la
+  versión (`1.0.0-demo+...`).
+- **Dos páginas de Steamworks pueden diferir en un par de wishlists** según la hora en que se lean.
+- **Las páginas del partner son HTML** y pueden cambiar sin aviso. Si un dato no aparece, mejor marcarlo como
+  "no leído" que inventarlo.
+
+## Lo que hemos aprendido con Winky!
+
+| Qué | Efecto |
+| --- | --- |
+| Vídeo de un YouTuber grande sobre la demo (22 oct) | 82 wishlists en un día, el récord |
+| Anuncio de Winky! en otro juego de HeadArrow (11 oct) | ~60 wishlists al día siguiente |
+| Publicar la demo (20 oct) | El ritmo sube de ~10 a ~30 al día; 1.000 licencias en 3 días |
+| Noticias en la página de Steam | El News Hub da buen CTR (~50 %) |
+| Promo cruzada en 24 juegos propios | Poco efecto |
+| Posts y DMs en X | Casi nada |
+
+La demo engancha: la abre el 32 % de quien la pide y la mitad juega más de 1 h 20 min.
+
+## Lo que la integración no debe hacer
+
+- **Nada que salga hacia fuera de forma automática** (posts, emails, DMs, respuestas a tickets). Lee, calcula y
+  propone; publicar lo decide una persona.
+- **No escribir a YouTubers.** Decisión del 23 de octubre de 2026: los que hablan del juego llegan solos por la
+  demo en Steam, y Steam ya hace ese trabajo. La integración solo los detecta para entender los picos.
+- **No promo cruzada entre juegos para Winky!.** Todo su marketing sale de sus propios medios (decisión del
+  19 de octubre de 2026).
+- **No guardar secretos** (cookies, tokens) fuera de `login_data` ni enseñarlos en la interfaz.
+
+## Por dónde empezar
+
+1. Foto diaria de wishlists por juego (página de wishlists + CSV) y el gráfico de añadidas por día.
+2. Registro de acciones, primero con las noticias de Steam y los posts que ya conoce el panel.
+3. "Store traffic" diario y detección de picos.
+4. Embudo de la demo.
+5. Búsqueda de vídeos para los días con pico.

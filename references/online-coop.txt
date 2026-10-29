@@ -1,0 +1,525 @@
+# Multijugador, Steam, leaderboards y Steam Deck: cómo está construido
+
+Guía de cómo funciona hoy toda la capa "online" de Toy Keeper: cooperativo, Steamworks
+(lobbies, P2P, overlay, logros, stats, rich presence, cloud, leaderboards), Discord, y cómo
+corre en Steam Deck a través de Proton. Incluye los problemas que ya nos encontramos, por qué
+pasaban y qué los arregla, más los riesgos que siguen abiertos.
+
+Complementa a `multi.md` (estudio de viabilidad) y `checklist-multi.md` (checklist por fases).
+Para subir logros al partner site ver `docs/steam-achievements.md`.
+
+---
+
+## 1. Mapa general
+
+```
+                       renderer (Vite + three.js, WebGL)
+  ┌───────────────────────────────────────────────────────────────────┐
+  │ Game.ts ── Multiplayer.ts ── protocol.ts (JSON, PROTOCOL_VERSION) │
+  │                 │                                                 │
+  │          Transport (interfaz)                                     │
+  │          ├── NetSession  (Net.ts)          -> WebSocket relay     │
+  │          └── SteamSession (SteamTransport) -> window.steamMp      │
+  │ SteamAPI.ts -> window.steamBridge (logros, stats, RP, LB, teclado)│
+  │ CloudSync.ts -> window.cloudBridge (Steam Remote Storage)         │
+  │ window.discordBridge (Rich Presence de Discord)                   │
+  └───────────────────────────────┬───────────────────────────────────┘
+                                  │ contextBridge + ipcRenderer
+                       electron/preload.cjs
+                                  │ ipcMain.handle / ipcMain.on
+  ┌───────────────────────────────┴───────────────────────────────────┐
+  │ electron/main.cjs                                                 │
+  │  steamworks.js (fork DavidBCD#feat/leaderboards) -> steam_api64   │
+  │  lobby actual + bomba P2P (33 ms) + callbacks de Steam            │
+  │  cliente IPC de Discord (named pipe discord-ipc-N)                │
+  └───────────────────────────────────────────────────────────────────┘
+
+  server/relay.mjs: relay WebSocket para dev y builds sin Steam
+```
+
+Regla de oro: **el renderer nunca habla con Steam directamente.** Todo pasa por el preload, y
+cada bridge es opcional. En el navegador o en un build sin Steam los bridges no existen y
+todas las llamadas son no-ops seguros. El juego tiene que funcionar entero sin ellos.
+
+---
+
+## 2. Multijugador
+
+### 2.1 Modelo: host autoritativo
+
+- El **host** (jugador 0) es dueño del mundo: juguetes, slots, cajas, monedas, bebé, robots,
+  victoria, guardado.
+- Los **invitados** mandan intenciones (`cmd`: `pickToy`, `placeToy`, `dropToy`, `throwToy`,
+  `boxPick`, `boxDrop`, `boxDrain`, `coin`, ...). El host valida, aplica y difunde el
+  resultado (`ev`) o un `reject` con el estado correcto.
+- Bebé, robots y física los simula solo el host. El invitado los ve como marionetas
+  interpoladas.
+- Al entrar, el invitado recibe un `welcome` con el `WorldState` completo. Además hay
+  reconciliación completa (`state`) a 1 Hz que corrige cualquier deriva.
+- El save de mundo es del host. El invitado nunca persiste el mundo. Logros, stats y
+  leaderboards son personales de cada jugador.
+
+Regla de `AGENTS.md`: una feature no está terminada hasta que funciona en co-op, incluido el
+invitado que entra después.
+
+### 2.2 Protocolo independiente del transporte
+
+`src/net/protocol.ts` define los mensajes (cliente -> host: `hello`, `pose`, `cmd`,
+`profile`, `progress`, `ping`, `resync`...; host -> cliente: `welcome`, `badVersion`,
+`players`, `ev`, `reject`, `state`, `peer`, `session`, `pong`...).
+
+`PROTOCOL_VERSION` viaja en el `welcome`. Si no coincide: toast claro y desconexión.
+**Subir la versión cada vez que cambie la forma de un mensaje**, o un build viejo y uno
+nuevo se corrompen el estado en silencio.
+
+`src/net/Transport.ts` es la interfaz común (`sendToHost`, `sendTo`, `broadcast`, `close` y
+callbacks). El juego no sabe si viaja por WebSocket o por Steam.
+
+### 2.3 Transporte 1: relay WebSocket (`server/relay.mjs` + `src/net/Net.ts`)
+
+- `npm run mp:relay` (puerto 8765, `RELAY_PORT` para cambiarlo).
+- El relay no simula nada: crea salas con código de 5 caracteres (sin 0/O/1/I), enruta
+  `msg` (cliente -> host), `to` (host -> uno) y `broadcast` (host -> todos).
+- Máximo 4 jugadores. Heartbeat de 20 s que expulsa sockets muertos.
+- Si el host se va, la sala se cierra (`roomClosed`). **No hay migración de host.**
+- Los clientes reconectan con backoff (hasta 5 intentos), también si el socket muere antes
+  del `joined` (un invitado que está construyendo la tienda puede bloquear el renderer más
+  que el heartbeat).
+- TLS: `RELAY_TLS_CERT` / `RELAY_TLS_KEY` con PEMs -> `wss://`. Detrás de un proxy que ya
+  termina TLS (Fly.io, Render, Railway) basta el modo `ws`.
+- Entrada por URL: `?host`, `?join=CODE`, `?relay=wss://host`.
+
+Uso: desarrollo, tests (`npm run test:mp`) y cualquier build sin Steam.
+
+### 2.4 Transporte 2: Steam lobbies + P2P (`src/net/SteamTransport.ts` + `electron/main.cjs`)
+
+Reparto de responsabilidades:
+
+| Quién | Qué hace |
+| --- | --- |
+| `main.cjs` | Crea/une/abandona el lobby, guarda `mpLobby`, bombea paquetes P2P cada 33 ms hacia el renderer, acepta sesiones P2P, escucha callbacks de Steam. |
+| `preload.cjs` (`window.steamMp`) | Puente fino: `createLobby`, `joinLobby`, `listLobbies`, `send`, `openInvite`, `onPacket`, `onLobbyChat`, `onJoinRequested`, `joinHandled`. |
+| `SteamTransport.ts` | Mapea steamId64 <-> id de jugador pequeño, saludo `__hello`, troceado de paquetes grandes, reintentos. |
+
+Detalles que importan:
+
+- **Lobbies sin nombres.** Un lobby no lleva el nombre del jugador, así que el invitado manda
+  `__hello` con su nombre cada 500 ms (hasta 20 veces) hasta que el host le contesta. El host
+  asigna id y responde con `welcome`.
+- **Re-saludo.** Si el host ya conoce a ese steamId pero vuelve a recibir `__hello` pasados
+  2 s, re-envía el `welcome`. Antes se ignoraba y un invitado que salía y volvía se quedaba
+  para siempre en "recibiendo mundo".
+- **Fiable vs no fiable.** `pose` y `players` van Unreliable (send type 0): alta frecuencia y
+  desechables. Todo lo demás va Reliable (send type 2).
+- **Troceado.** La API P2P clásica está pensada para mensajes pequeños y un `WorldState` de
+  Mass placement ocupa cientos de KB. Todo payload de más de 32 K caracteres se parte en
+  trozos `__chunk` fiables y se reensambla antes de `JSON.parse`. Los trozos incompletos
+  caducan a los 15 s.
+- **Filtro por lobby.** Cada sobre lleva `__lobby`; paquetes de otro lobby se descartan.
+- **Sesiones P2P.** El callback `P2PSessionRequest` (6) solo se acepta si estamos en un lobby.
+- **Salidas.** `LobbyChatUpdate` (5) con cambio distinto de "Entered" saca al jugador. Si el
+  que se va es el dueño del lobby, la sesión del invitado termina (`room-closed`).
+- **Tipos de lobby** (`createLobby({ kind })`):
+  - `invite`: FriendsOnly. Invitación por overlay y "Unirse a la partida" en amigos.
+  - `public`: Public, aparece en `listLobbies` (filtrable por región).
+  - `code`: Public pero oculto de la lista; lleva un código de 4 caracteres en los datos del
+    lobby y se resuelve con `getLobbies()`.
+- Máximo de miembros por defecto 4 (clamp 1..99).
+
+### 2.5 Cómo llega un invitado a la partida
+
+| Camino | Mecanismo |
+| --- | --- |
+| Botón "Invite players" (pausa) | Crea el lobby si no hay sesión y abre `overlay.activateInviteDialog(lobbyId)`. Sin Steam usa el relay y además abre el overlay de amigos si existe. |
+| Aceptar invitación con el juego abierto | Callback `GameLobbyJoinRequested` (8) -> `requestJoinLobby`. |
+| Aceptar invitación con el juego cerrado | Steam lanza el juego con `+connect_lobby <id>`; `pendingConnectLobby()` lo lee de `process.argv`. |
+| "Unirse a la partida" en la lista de amigos | Rich presence `connect = +connect_lobby <id>` puesta al crear el lobby y borrada al salir. |
+| Código de 4 letras | `resolveLobbyCode` busca el lobby con ese `code` en `getLobbies()`. |
+| Lista pública | `listLobbies(region)` filtra `kind === 'public'` y lobbies no llenos. |
+| Discord "Ask to join" | `ACTIVITY_JOIN` con `secret` -> mismo `requestJoinLobby`. |
+
+**Petición de unión persistente.** Salir de una sesión recarga la ventana. Una petición que
+llegaba justo durante la recarga caía en una página que se estaba destruyendo y se perdía (el
+invitado se quedaba en su propia tienda). Ahora `main.cjs` guarda `pendingJoinLobby`, la
+re-envía en cada `did-finish-load`, y el preload la guarda si aún no hay handler. Solo se
+olvida cuando el renderer llama a `joinHandled()`.
+
+### 2.6 Rich presence
+
+- Estado propio: claves `toys`, `max`, `status`, `steam_display` -> `#StatusToys` /
+  `#StatusFull`. Los tokens están en `steam_rich_presence.vdf` y **hay que subirlos en el
+  partner site** (Rich Presence localization) o Steam solo enseña `status` en "Ver info del
+  juego".
+- Agrupar la party en la lista de amigos: `steam_player_group` = id del lobby y
+  `steam_player_group_size`.
+- `connect` habilita "Unirse a la partida".
+- Actualizar solo cuando el valor cambia, nunca por frame.
+
+### 2.7 Discord
+
+`main.cjs` habla el protocolo IPC de Discord a mano (named pipe `\\?\pipe\discord-ipc-0..9`
+en Windows, socket en `XDG_RUNTIME_DIR` en Linux): `SET_ACTIVITY` con party y `joinSecret`
+y suscripción a `ACTIVITY_JOIN`. Sin SDK, sin dependencias. Debug con
+`TOY_KEEPER_DISCORD_DEBUG=1` (escribe `electron-discord-debug.log`).
+
+---
+
+## 3. Steamworks dentro de Electron
+
+### 3.1 La librería
+
+- `steamworks.js` desde el fork `github:DavidBCD/steamworks.js#feat/leaderboards`, porque el
+  paquete oficial no trae leaderboards.
+- El fork se instala desde git y **no trae binario nativo precompilado**. Lo compilamos una
+  vez y el resultado vive en `vendor/steamworks/win64/`. El `postinstall`
+  (`scripts/copy-steamworks.cjs`) lo copia a `node_modules/steamworks.js/dist/win64` en cada
+  `npm install`.
+- Recompilar: clonar el fork en `feat/leaderboards`, `npm i && npm run build`, copiar
+  `dist/win64/*` a `vendor/steamworks/win64/`.
+- Solo existe binario **win64**. Es una de las razones de ir a Deck por Proton (sección 8).
+
+### 3.2 Arranque
+
+- `initSteam()` en `app.whenReady` con `APP_ID = 4867330`. Si falla (Steam cerrado, sin
+  licencia, DLL ausente) devuelve `null` y el juego sigue sin Steam.
+- En desarrollo hace falta `steam_appid.txt` (con `4867330`) en el directorio de trabajo y
+  el cliente de Steam abierto.
+- `TOY_KEEPER_NO_STEAM=1` arranca sin Steam a propósito (para aislar problemas de mando).
+- `TOY_KEEPER_STEAM_DEBUG=1` escribe `electron-steam-debug.log` en el directorio de trabajo.
+
+### 3.3 Empaquetado (`npm run electron:exe`)
+
+1. `electron-packager` con `--asar.unpackDir=node_modules/steamworks.js`: un `.node` nativo no
+   se puede cargar desde dentro del asar.
+2. `scripts/sanitize-electron-package.cjs` reconstruye el asar desde una **allow-list**
+   (`dist`, `electron`, `node_modules`, `package.json`), deja de steamworks.js solo
+   `index.js`, `package.json`, `LICENSE`, `steam_api64.dll` y el `.node` win64, y re-empaqueta
+   con el mismo `unpackDir`. Antes era una lista de cosas a borrar y se colaban 46 MB de
+   capturas y saves.
+3. `steam_api64.dll` se copia también junto al `.exe`.
+4. Se borran los `.pak` de idiomas salvo `en-US` y `es`.
+
+Problemas que ya pasaron aquí:
+- `createPackage` sin `unpackDir` metía el binding dentro del asar: Electron lo extraía a un
+  temporal en cada arranque y la copia desempaquetada (con binarios de macOS y Linux) se
+  enviaba igualmente sin usarse.
+- Olvidar `steam_api64.dll` junto al binding -> `init` falla y el juego arranca "sin Steam"
+  sin avisar. Mirar siempre el log de debug en el primer build de una máquina nueva.
+
+---
+
+## 4. Logros y stats
+
+- `steam:unlockAchievement` -> `achievement.activate(apiName)` + `stats.store()`.
+- `steam:setStat` -> `stats.setInt` (siempre entero, nunca por encima de int32) +
+  `stats.store()`.
+- Stats publicadas: `TOYS`, `COINS`. Los contadores deben ser idempotentes: ya hubo un farmeo
+  de `TOYS` colocando, quitando y volviendo a colocar el mismo juguete. Se arregló
+  deduplicando por juguete.
+- Generar y subir logros: `npm run steam:achievements` y el flujo de
+  `docs/steam-achievements.md`. Publicar en el partner site es manual y publica **todo** lo
+  pendiente de la app.
+- En co-op cada jugador desbloquea lo suyo. El host no desbloquea por el invitado.
+
+---
+
+## 5. Leaderboards
+
+### 5.1 Qué se rankea
+
+`src/systems/ProgressiveStats.ts`: dos métricas de Endless (`toys`, `floors`) por mapa
+(`store`, `space`, `steampunk`, `western`), en dos periodos:
+
+- `global`: tablero permanente `<metric>_<map>_global`.
+- `weekly`: un tablero **nuevo por semana ISO** (`<metric>_<map>_2026_W40`). La semana cambia
+  el lunes en UTC para todos a la vez. Un único tablero `_weekly` que se reescribe no permite
+  "caer" de él, por eso uno por semana.
+
+Son contadores de por vida del jugador que solo crecen, no el progreso de la partida (una
+partida se puede borrar). Tope int32.
+
+### 5.2 Cómo se sube y se lee (`main.cjs`)
+
+- Todos los tableros: Descending + Numeric, `KeepBest`.
+- Subida: `uploadLeaderboardScore(board, DESC, NUM, KEEP_BEST, score, packName(persona))`.
+- Top: `findOrCreateLeaderboard` + `downloadLeaderboardEntries(board, Global, 1, N, 16)`.
+- Fila propia: `downloadLeaderboardEntries(board, AroundUser, 0, 0, 16)`.
+- Los tableros semanales se crean desde el cliente la primera vez que alguien los pide.
+
+### 5.3 Nombres en las filas (`electron/lb-names.cjs`)
+
+Una fila descargada trae `steamId` y `score`, sin nombre. Resolver nombres pide una Web API
+key, que es secreta y no puede ir dentro del cliente. Solución: el que sube mete su propio
+nombre de persona en los `details` de la entrada (hasta 64 int32): `details[0]` = longitud en
+bytes UTF-8, luego los bytes de 4 en 4, little-endian. 16 int32 -> nombre de hasta 60 bytes,
+cortado en un codepoint completo.
+
+Limitación conocida: con `KeepBest` Steam solo guarda los `details` de una subida que mejora la
+puntuación. Quien se cambia el nombre conserva el viejo en el tablero hasta que mejora.
+
+### 5.4 Sin Steam
+
+`src/systems/Leaderboards.ts`: si no hay fork o no hay Steam, el tablero es **local** y lo
+dice (`source: 'local'`): solo tu fila. Antes se inventaba rivales con puntuaciones sembradas;
+se quitó porque un ranking con jugadores falsos es peor que uno corto. Un tablero de Steam
+vacío se muestra vacío con tu fila, no se sustituye por el local.
+
+### 5.5 Riesgos
+
+- **Trampas.** Las puntuaciones las escribe el cliente; cualquiera puede subir lo que quiera.
+  Si importa: en el partner site marcar el tablero como de escritura confiable y subir desde un
+  servidor con la Web API. Hoy no compensa.
+- **Muchos tableros.** 2 métricas x 4 mapas x 52 semanas = 416 tableros semanales al año, más
+  los globales. Si se añaden mapas o métricas, crece en proporción.
+- **Fork sin mantenimiento oficial.** Cualquier actualización de steamworks.js hay que
+  rehacerla sobre el fork y recompilar.
+
+---
+
+## 6. Steam Cloud (`src/systems/CloudSync.ts`)
+
+- `localStorage` sigue siendo el almacén vivo. Cloud es un espejo vía API (Remote Storage), no
+  Auto-Cloud por rutas.
+- Al arrancar, `syncFromCloud()` reconcilia por clave con un manifiesto de timestamps
+  (`toykeeper.cloud.manifest`), gana el más nuevo, con lápidas para borrados.
+- Después, cada escritura se replica con debounce de 1,2 s.
+- Solo sincroniza una **allow-list** de claves de progreso. Ajustes de hardware (gráficos,
+  mapeos de teclas y mando, id de cliente multijugador) se quedan en cada máquina, para que el
+  Deck y el PC tengan cada uno su configuración.
+- Si Cloud está desactivado para la cuenta o la app, todo degrada a local sin errores.
+- Problema que hubo: la allow-list solo tenía las claves de la tienda original y muchas
+  partidas (otros mapas y tamaños) nunca subían. Se genera ahora desde `MAP_IDS` y
+  `TOY_SCALES`. **Al añadir un modo o mapa nuevo, comprobar que su clave entra aquí.**
+
+Ventaja para el Deck: como va por API y no por rutas de Windows, el mismo save viaja entre PC y
+Deck aunque en el Deck viva dentro del prefijo de Proton.
+
+---
+
+## 7. Overlay de Steam
+
+### 7.1 Qué lo hace funcionar
+
+```js
+app.commandLine.appendSwitch('in-process-gpu');
+```
+
+El overlay se inyecta en el proceso que presenta los frames. En Chromium eso es el proceso de
+GPU, que por defecto es otro proceso: sin este switch Shift+Tab no hace nada y
+`activateInviteDialog` / `activateDialog(Friends)` fallan sin error.
+
+Otros switches que acompañan:
+- `disable-renderer-backgrounding`, `disable-background-timer-throttling`,
+  `disable-backgrounding-occluded-windows` y `backgroundThrottling: false`: cuando el overlay
+  tapa la ventana, Chromium la considera oculta y frena timers y rAF. Eso congela el overlay
+  (solo se dibuja cuando el juego presenta un frame) y en co-op corta poses y pings.
+- `force_high_performance_gpu` salvo con `--safe-gpu`.
+- `powerSaveBlocker('prevent-app-suspension')`.
+
+### 7.2 Trampas
+
+- **No poner `disable-direct-composition`.** Parece arreglar cosas del overlay, pero apaga el
+  vsync: la ventana presenta sin límite (100+ fps, GPU al máximo). Con direct composition el
+  compositor presenta cuando el canvas cambia y respeta el tope de fps del motor.
+- El overlay necesita frames. Si un menú deja de renderizar del todo, el overlay se queda
+  congelado encima. Mantener al menos un frame de vez en cuando con el juego en pausa.
+- El overlay solo existe si el juego se lanzó desde Steam (o con Steam abierto y
+  `steam_appid.txt` en dev). Lanzado a mano desde el `.exe` en una máquina sin Steam: no hay
+  overlay, y el botón de invitar cae al relay.
+- `showGamepadTextInput` (teclado en pantalla) solo aparece en Big Picture o en el modo juego
+  del Deck. En escritorio devuelve `null` y la página sigue con el teclado físico. El código ya
+  lo trata así (`askSteamForText`).
+- En el **modo juego del Deck** el overlay no se inyecta: lo dibuja gamescope como una capa
+  aparte. Por eso allí funciona aunque la inyección falle. En el modo escritorio del Deck sí se
+  inyecta, igual que en Windows.
+
+---
+
+## 8. Steam Deck con Proton
+
+### 8.1 Por qué Proton y no un build nativo de Linux
+
+- Solo hay binario **win64** del fork de steamworks.js con leaderboards. Un build Linux
+  necesitaría compilar y vendorizar también el `.so` y su `libsteam_api.so`.
+- Electron en Linux añade problemas propios: `chrome-sandbox` con SUID, Wayland/X11,
+  dependencias del sistema.
+- Un solo build (Windows) para todos: lo que se prueba en PC es lo que corre en el Deck.
+  Proton traduce: Win32 -> Wine, D3D11 (ANGLE de Chromium) -> DXVK -> Vulkan, y
+  `steam_api64.dll` habla con el Steam de Linux a través de `lsteamclient`.
+
+No subir depot de Linux. Si la app tiene un depot Linux, Steam en el Deck lo usará en lugar de
+Proton.
+
+### 8.2 Lo que ya hace el código para el Deck
+
+**Mando: XInput en lugar de Windows.Gaming.Input** (`main.cjs`)
+
+```js
+app.commandLine.appendSwitch('disable-features', 'EnableWindowsGamingInputDataFetcher');
+```
+
+Este es el arreglo principal. Chromium activó por defecto entre las versiones 116 y 118
+(Electron 26 -> 27) la lectura de mandos por Windows.Gaming.Input. Ese camino no enumera el mando
+virtual de Steam Input (que se presenta como un pad de Xbox 360), y en el modo juego del Deck
+ese es el único mando que existe. Bajo Proton es peor: Wine implementa XInput bien y
+Windows.Gaming.Input casi nada. Resultado sin el switch: el juego no ve ningún mando. Electron
+cerró los reportes como "not planned" (#45732, #45989) y el de Valve (Proton#8154) sigue
+abierto, así que el switch es la solución. Cuesta la vibración de gatillos y las palancas del
+Elite, que el juego no usa.
+
+**Detectar que es un handheld** (`handheldByEnv`)
+
+Steam pone `SteamDeck=1` en el entorno de todo lo que lanza en un Deck y Proton lo pasa al
+build de Windows. También `SteamOS=1` y `SteamGamepadUI=1` (modo juego). Además
+`TOY_KEEPER_HANDHELD=1` lo fuerza para pruebas. El handler `steam:onDeck` mira primero el
+entorno y luego `utils.isSteamRunningOnSteamDeck()`.
+
+Nota: `SteamAPI.onSteamDeck()` está expuesto pero hoy el renderer no lo usa. Está listo para
+ajustar UI (tamaño de texto, glifos, calidad) cuando se necesite.
+
+**Teclado en pantalla.** Toda página que pide texto (nombre del personaje, del bebé, de los
+robots) llama a `steam.utils.showGamepadTextInput`. Sin esto esas páginas eran imposibles de
+terminar en un Deck.
+
+**Trackpad como ratón.** El trackpad del Deck manda movimiento de ratón sin pointer lock. En
+juego, si no hay pointer lock y hay `movementX/Y`, se usa para mirar
+(`controller.lookByPixels`).
+
+**Ejes del stick derecho.** Si el mando no llega con mapping `standard`, `GamepadInput` busca
+qué par de ejes (2/3, 3/4 o 4/5) se está moviendo para mirar.
+
+**Resolución.** La ventana nace a 1280x800, la nativa del Deck, en pantalla completa.
+
+**Bindings que no atrapan.** La página de reasignar botones se rendía sola y lee los botones
+físicos además del mapa que se edita, para que "Restaurar" sea siempre alcanzable. Ya hubo un
+bug donde B se tomaba como binding al intentar salir, A y B se intercambiaban y la página no se
+podía abandonar.
+
+### 8.3 Ajustes en el partner site (no son código)
+
+1. **Steam Input**: declarar soporte completo de mando y poner como configuración por defecto
+   un gamepad (no "teclado y ratón"). Si no, Steam Input se queda con el mando y envía teclas
+   de la configuración de escritorio: la Gamepad API no ve ningún pad y el libro responde a esas
+   teclas (B "entraba" en opciones). Diagnóstico: con `TOY_KEEPER_NO_STEAM=1` el pad aparece al
+   momento como "Xbox One Game Controller (STANDARD GAMEPAD)".
+2. **Rich Presence localization**: subir los tokens de `steam_rich_presence.vdf`.
+3. **Steam Cloud**: cuota y número de archivos suficientes para todas las claves de la
+   allow-list.
+4. **Compatibilidad con Steam Deck**: pedir la revisión cuando lo de abajo esté verde.
+
+### 8.4 Opciones de lanzamiento para depurar en el Deck
+
+En el Deck: Steam -> Toy Keeper -> engranaje -> Propiedades -> Opciones de lanzamiento.
+
+| Síntoma | Probar |
+| --- | --- |
+| Ver qué hace Steamworks | `TOY_KEEPER_STEAM_DEBUG=1 %command%` (el log queda en la carpeta del juego) |
+| Mando no responde o hace cosas raras | `TOY_KEEPER_NO_STEAM=1 %command%` para separar Steam Input del juego |
+| Forzar UI de handheld | `TOY_KEEPER_HANDHELD=1 %command%` |
+| Pantalla negra, cuelgue al arrancar o gráficos rotos | `%command% --safe-gpu` (sin `force_high_performance_gpu`, `powerPreference: 'default'`) |
+| Sigue en negro | `PROTON_USE_WINED3D=1 %command%` (OpenGL en vez de DXVK, más lento, solo para aislar) |
+| Discord | `TOY_KEEPER_DISCORD_DEBUG=1 %command%` |
+| Logs de Proton | `PROTON_LOG=1 %command%` -> `~/steam-<appid>.log` |
+
+Se pueden combinar: `TOY_KEEPER_STEAM_DEBUG=1 PROTON_LOG=1 %command% --safe-gpu`.
+
+Versión de Proton: probar con la estable actual y con Proton Experimental (Propiedades ->
+Compatibilidad -> Forzar herramienta). Si una versión concreta rompe algo, anotar cuál.
+
+### 8.5 Problemas conocidos y probables en Proton
+
+- **Discord no funciona dentro de Proton.** El juego busca el named pipe de Windows dentro de
+  Wine y el Discord de Linux escucha en un socket Unix: no se encuentran. Sin bridge
+  (tipo `wine-discord-ipc-bridge`) no hay presencia ni "Ask to join" de Discord en el Deck. No
+  rompe nada: Discord falla en silencio. La presencia y las invitaciones de Steam sí funcionan.
+- **Suspender el Deck.** Al suspender se congela todo el proceso. Al despertar, las sesiones
+  P2P y el lobby pueden haber caducado. El invitado debe tratarlo como desconexión (el host lo
+  verá salir por `LobbyChatUpdate`). Si el que suspende es el host, se acaba la partida para
+  todos.
+- **Ruta de datos.** `localStorage` y userData de Electron viven en
+  `steamapps/compatdata/4867330/pfx/drive_c/users/steamuser/AppData/Roaming/...`. Borrar el
+  prefijo (o cambiar de Proton a veces) borra lo local; Steam Cloud lo recupera.
+- **Logs de debug** escritos con `process.cwd()`: bajo Proton es la carpeta del juego en
+  `steamapps/common/`. Buscarlos ahí.
+- **Rendimiento.** El juego usa WebGL (three.js) sobre ANGLE -> DXVK. Tener en cuenta la GPU
+  del Deck al elegir la calidad por defecto cuando `onSteamDeck()` sea true.
+- **Primer arranque lento.** Proton compila shaders (DXVK) la primera vez. Steam lo cachea
+  después.
+
+### 8.6 Checklist para "Verificado en Steam Deck"
+
+- [x] Jugable entero con mando (XInput forzado, bindings sin trampas).
+- [x] Teclado en pantalla en todas las entradas de texto.
+- [x] Resolución nativa 1280x800 y pantalla completa.
+- [x] Sin launcher externo, sin cuentas propias.
+- [ ] Glifos del Deck en lugar de teclas de teclado cuando `onSteamDeck()`.
+- [ ] Texto legible a 1280x800 (revisar el libro y los toasts en el Deck real).
+- [ ] Steam Input con configuración gamepad por defecto en el partner site.
+- [ ] Prueba completa en un Deck real: arranque, partida, co-op, suspender y volver, Cloud.
+
+---
+
+## 9. Tabla de problemas: síntoma -> causa -> arreglo
+
+| Síntoma | Causa | Arreglo / estado |
+| --- | --- | --- |
+| Shift+Tab no abre nada, invitar no hace nada | Overlay no inyectado: GPU en otro proceso | `in-process-gpu` (hecho) |
+| GPU al 100 %, 100+ fps sin límite | Se añadió `disable-direct-composition` | No usar ese switch |
+| Overlay congelado | El juego no presenta frames o Chromium frena la ventana tapada | Switches de backgrounding (hecho); no parar el render del todo |
+| El mando no existe en Electron/Deck | Windows.Gaming.Input no ve el pad virtual de Steam | `disable-features=EnableWindowsGamingInputDataFetcher` (hecho) |
+| B "entra" en opciones, mando hace cosas de teclado | Steam Input manda teclas de la config de escritorio | Declarar soporte de mando en Steamworks (pendiente partner site) |
+| No se puede escribir nombre en Deck | Sin teclado físico | `showGamepadTextInput` (hecho) |
+| Invitado que vuelve se queda en "recibiendo mundo" | El host ignoraba el segundo `__hello` | Re-welcome tras 2 s (hecho) |
+| Aceptar "Join Game" justo al salir no hace nada | La petición llegaba durante la recarga | `pendingJoinLobby` + `joinHandled` (hecho) |
+| Mundo corrupto o JSON roto en Mass placement | Snapshot demasiado grande para un paquete P2P | Troceado de 32 K fiable (hecho) |
+| Juguetes pegados a una mano que ya no existe | Invitado se desconecta cargando | Host los suelta al reconectar o al salir (hecho) |
+| Build viejo + nuevo en la misma partida | Cambió la forma de un mensaje | `PROTOCOL_VERSION` -> `badVersion` (subirla siempre) |
+| Filas del leaderboard sin nombre | La API solo da steamId | Nombre empaquetado en `details` (hecho) |
+| Nombre viejo en el tablero | `KeepBest` no guarda details si no mejora | Aceptado |
+| Saves de otros mapas no llegan a otro PC | Allow-list de Cloud incompleta | Se genera desde `MAP_IDS`/`TOY_SCALES` (hecho) |
+| "Sin Steam" en el build sin explicación | Falta `steam_api64.dll` o el binario del fork | Revisar empaquetado; `TOY_KEEPER_STEAM_DEBUG=1` |
+| Discord sin presencia en Deck | Pipe de Windows vs socket de Linux | Aceptado (sin bridge) |
+| Contador `TOYS` farmeable | Colocar/quitar/colocar el mismo juguete | Deduplicado por juguete (hecho) |
+
+### Riesgos abiertos
+
+- **Código de lobby y filtro de distancia.** `getLobbies()` usa el filtro de distancia por
+  defecto de Steam (misma región o cercanas) y un límite de resultados. Un amigo en otro
+  continente, o con muchos lobbies públicos abiertos, puede no encontrar un código válido. Si
+  pasa, exponer en el fork el filtro de distancia "Worldwide" y un filtro por la clave `code`
+  (`addRequestLobbyListStringFilter`) en lugar de bajar la lista y buscar a mano.
+- **Sin migración de host.** Si el host se va (o suspende el Deck), la partida acaba para todos.
+- **API P2P clásica.** `sendP2PPacket`/`readP2PPacket` es la `ISteamNetworking` antigua, que
+  Valve marca como obsoleta frente a `ISteamNetworkingMessages`/`Sockets`. Funciona hoy. Si un
+  día falla, el cambio se queda dentro de `main.cjs` y `SteamTransport.ts` porque el protocolo
+  no depende del transporte.
+- **Bomba P2P a 30 Hz.** Añade hasta 33 ms de latencia a cada paquete. Suficiente para un
+  cooperativo tranquilo; si algún día hace falta menos, bajar el intervalo.
+- **Prueba con dos cuentas** del flujo completo invite -> aceptar -> unirse, `+connect_lobby`
+  con el juego cerrado y una sesión entera por P2P. No se puede automatizar ni hacer con dos
+  clientes de Steam en la misma máquina. Un PC + un Deck con dos cuentas es la pareja ideal:
+  prueba a la vez el co-op y Proton.
+
+---
+
+## 10. Cómo probar
+
+**Sin Steam (relay):**
+```bash
+npm run mp:relay
+npm run dev
+# host:    http://localhost:5173/?host
+# invitado http://localhost:5173/?join=CODE   (otro navegador o incógnito: localStorage separado)
+npm run test:mp       # suite de 2 navegadores
+npm run test:all      # con dev server y relay corriendo
+```
+
+**Con Steam en una máquina:** `steam_appid.txt` en la raíz, Steam abierto,
+`npm run electron:start` con `TOY_KEEPER_STEAM_DEBUG=1`. Comprueba init, creación de lobby,
+rich presence, overlay, logros, leaderboards y Cloud. Para P2P solo sirve el loopback.
+
+**Con dos cuentas:** `npm run electron:exe`, subir a una rama beta de Steam, instalar en PC y
+en Deck con cuentas distintas y amigas entre sí, y recorrer la tabla de la sección 2.5 entera.
+
+**En el Deck:** modo juego (el real) y modo escritorio (overlay inyectado, distinto), con las
+opciones de la sección 8.4 si algo falla.
