@@ -227,7 +227,9 @@ Requirements: PRD-013, PRD-016–022.
 
 Context: [Steam Voice guide](../references/steam-voice-steps.md) §§1–3, 5, 12; PRD §10 and architecture §11. [Marketing reference](../references/marketing.txt) purpose/data/snapshot/starting-order sections; PRD §11, visual §10 and architecture §12.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — **Gate T0 accepted by the owner** ([MSC-010 review](decisions/MSC-010-t0-baseline-review.md)). Architecture candidates are the working baseline (implemented: TS/Vite, secure Electron, electron-builder, checks, domain/content; pending spikes: Rapier, protocol, Steam transport, audio, 3D). Early-risk order confirmed: local Phase 2 and MSC-021–024 can run; MSC-025–030 are blocked by missing App ID, second account/network and Deck, and catalogs wait for T1. V0 voice deferral reviewed, V1 not required. Marketing measurement planned only (owner-run manual Steamworks exports, unknown never zero, no scraping/services), starting after a store page exists.
 
 ## Phase 2 — Local authoritative simulation and physical handling
 
