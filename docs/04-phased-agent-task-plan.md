@@ -309,7 +309,9 @@ Check: Boundary tests around empty/full containers and repeated collect requests
 
 Requirements: PRD-005–006, PRD-019.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added the domain `PortableContainer` (`src/domain/container.ts`): provisional capacity 20 pieces, per-material batch summary, `unloadAll()` that hands every item back exactly once, duplicate ids rejected, full intake refused without touching contents. The collector now captures through a `CollectionSink`: a full container makes compatible targets `blocked` ("Container full. Unload at the base intake.") and refuses to start a pull; if it fills mid-pull the piece is dropped and stays in the world; otherwise the piece leaves the world and enters the container in the same step. `fixedUpdate` returns explicit outcomes (collected / dropped with reason). HUD shows "Container n/20" with a full state. Checks: boundary tests for empty, capacity−1, full, overflow, repeated requests for the same piece, invalid capacity/mass, and collector integration (blocked at start, full on arrival keeps the piece, two pieces collected once each with removed count equal to container count); running Electron app showed "Container 1/20" after one collection; `npm run check` 7/7.
 
 ### MSC-016 — Implement medium-object grip and placement
 

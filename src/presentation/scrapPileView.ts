@@ -18,6 +18,7 @@ const HIGHLIGHT: Record<TargetFeedback['state'], Color> = {
   none: new Color('#000000'),
   compatible: new Color('#1e6f66'),
   incompatible: new Color('#5a2a12'),
+  blocked: new Color('#5a2a12'),
 };
 
 /** Renders active scrap pieces and highlights the current target. Presentation only. */

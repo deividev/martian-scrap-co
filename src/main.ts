@@ -10,6 +10,7 @@ if (!canvas) {
 createTestYardScene(canvas, {
   hint: document.querySelector<HTMLElement>('#input-hint'),
   feedback: document.querySelector<HTMLElement>('#target-feedback'),
+  container: document.querySelector<HTMLElement>('#container-status'),
 }).catch((error: unknown) => {
   canvas.dataset['sceneError'] = error instanceof Error ? error.message : String(error);
   console.error('Scene failed to start', error);

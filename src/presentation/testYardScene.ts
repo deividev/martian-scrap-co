@@ -16,6 +16,7 @@ import {
 import checkerUrl from '../assets/textures/smoke-checker.png';
 import { FIRST_PASS_CONTENT } from '../content/firstPass';
 import { parseContentPack } from '../content/schema';
+import { PortableContainer } from '../domain/container';
 import { EntityIdAllocator } from '../domain/ids';
 import { mergeFrames, type InputDevice } from '../input/actions';
 import { GamepadSource } from '../input/gamepadSource';
@@ -42,6 +43,7 @@ import { ScrapPileView } from './scrapPileView';
 export interface TestYardHud {
   readonly hint: HTMLElement | null;
   readonly feedback: HTMLElement | null;
+  readonly container: HTMLElement | null;
 }
 
 const PROMPTS: Record<InputDevice, string> = {
@@ -121,8 +123,11 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   const scrap = new ScrapField(world, [createTestYardScrap(new EntityIdAllocator())]);
   scrap.activateCluster('test-yard-pile');
   const scrapView = new ScrapPileView(scene, scrap, world);
-  const collector = new MagneticCollector(content.pack, scrap, world);
-  let collected = 0;
+  const container = new PortableContainer();
+  const collector = new MagneticCollector(content.pack, scrap, world, {
+    canAccept: (id) => container.canAccept(id),
+    accept: (item) => void container.add(item),
+  });
   let feedback: TargetFeedback = { state: 'none' };
   const forwardOf = (yaw: number, pitch: number) => ({
     x: -Math.sin(yaw) * Math.cos(pitch),
@@ -176,7 +181,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     while (accumulator >= step) {
       player.fixedUpdate(frame.move, step);
       const eye = player.view().eye;
-      if (collector.fixedUpdate({ x: eye.x, y: eye.y - 0.4, z: eye.z })) collected += 1;
+      collector.fixedUpdate({ x: eye.x, y: eye.y - 0.4, z: eye.z });
       world.step();
       accumulator -= step;
     }
@@ -197,12 +202,16 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       feedbackLabel.textContent =
         feedback.state === 'compatible'
           ? `${feedback.material.symbol} ${feedback.material.displayName}: collect`
-          : feedback.state === 'incompatible'
-            ? `${feedback.material.symbol} ${feedback.reason}`
-            : '';
+          : feedback.state === 'none'
+            ? ''
+            : `${feedback.material.symbol} ${feedback.reason}`;
       feedbackLabel.dataset['state'] = feedback.state;
     }
-    canvas.dataset['collected'] = String(collected);
+    canvas.dataset['collected'] = String(container.count);
+    if (hud.container) {
+      hud.container.textContent = `Container ${container.count}/${container.capacity}${container.isFull ? ' · FULL' : ''}`;
+      hud.container.dataset['full'] = String(container.isFull);
+    }
     canvas.dataset['player'] = JSON.stringify({
       x: Number(view.position.x.toFixed(2)),
       y: Number(view.position.y.toFixed(2)),

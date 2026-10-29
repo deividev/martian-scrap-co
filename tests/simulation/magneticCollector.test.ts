@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { FIRST_PASS_CONTENT } from '../../src/content/firstPass';
 import { parseContentPack, type ContentPack } from '../../src/content/schema';
 import { EntityIdAllocator, contentId, type EntityId } from '../../src/domain/ids';
+import { PortableContainer } from '../../src/domain/container';
 import { MagneticCollector } from '../../src/simulation/collection/magneticCollector';
 import { TARGETING, pickTarget, type AimRay } from '../../src/simulation/collection/targeting';
 import type { PhysicsWorldPort, Vec3 } from '../../src/simulation/physics/physicsPort';
@@ -25,7 +26,11 @@ interface Placement {
   readonly position: Vec3;
 }
 
-async function setup(placements: readonly Placement[], walls: readonly { position: Vec3; half: Vec3 }[] = []) {
+async function setup(
+  placements: readonly Placement[],
+  walls: readonly { position: Vec3; half: Vec3 }[] = [],
+  capacity = 20,
+) {
   const world = await createRapierWorld();
   worlds.push(world);
   world.addBox({ kind: 'fixed', position: { x: 0, y: -0.5, z: 0 }, halfExtents: { x: 20, y: 0.5, z: 20 } });
@@ -51,7 +56,12 @@ async function setup(placements: readonly Placement[], walls: readonly { positio
   ]);
   field.activateCluster('test-pile');
   for (let i = 0; i < 90; i += 1) world.step();
-  return { world, field, ids, collector: new MagneticCollector(pack(), field, world) };
+  const container = new PortableContainer(capacity);
+  const sink = {
+    canAccept: (id: EntityId) => container.canAccept(id),
+    accept: (item: Parameters<PortableContainer['add']>[0]) => void container.add(item),
+  };
+  return { world, field, ids, container, collector: new MagneticCollector(pack(), field, world, sink) };
 }
 
 const EYE: Vec3 = { x: 0, y: 1.4, z: 0 };
@@ -129,8 +139,8 @@ describe('pull and ownership transfer', () => {
     expect(collector.tryStartPull(feedback)).toBe(false);
     const collected: EntityId[] = [];
     for (let i = 0; i < 120; i += 1) {
-      const id = collector.fixedUpdate(EYE);
-      if (id) collected.push(id);
+      const outcome = collector.fixedUpdate(EYE);
+      if (outcome.kind === 'collected') collected.push(outcome.id);
       world.step();
     }
     expect(collected).toEqual([ids[0]]);
@@ -154,8 +164,63 @@ describe('pull and ownership transfer', () => {
     collector.tryStartPull(
       collector.evaluate(pickTarget(aimAt({ x: 0, y: 0.12, z: -2 }), field.activeTargets(), world)),
     );
-    expect(collector.fixedUpdate({ x: 0, y: 1.4, z: 30 })).toBeNull();
+    expect(collector.fixedUpdate({ x: 0, y: 1.4, z: 30 })).toEqual({
+      kind: 'dropped',
+      id: ids[0],
+      reason: 'out-of-range',
+    });
     expect(collector.pulling).toBeNull();
     expect(field.piece(ids[0] as EntityId)?.state).toBe('active');
+  });
+});
+
+describe('collector and portable container', () => {
+  const near = { x: 0, y: 0.12, z: -2 };
+
+  it('reports a full container as blocked and does not start a pull', async () => {
+    const { world, field, ids, container, collector } = await setup([{ material: 'ferrous', position: near }], [], 1);
+    container.add({ id: 'ent-zz' as EntityId, materialId: contentId('ferrous'), massKg: 1 });
+    const feedback = collector.evaluate(pickTarget(aimAt(near), field.activeTargets(), world));
+    expect(feedback.state).toBe('blocked');
+    if (feedback.state === 'blocked') expect(feedback.reason).toMatch(/Container full/);
+    expect(collector.tryStartPull(feedback)).toBe(false);
+    expect(field.piece(ids[0] as EntityId)?.state).toBe('active');
+  });
+
+  it('leaves the piece in the world if the container fills during the pull', async () => {
+    const { world, field, ids, container, collector } = await setup([{ material: 'ferrous', position: near }], [], 1);
+    collector.tryStartPull(collector.evaluate(pickTarget(aimAt(near), field.activeTargets(), world)));
+    container.add({ id: 'ent-zz' as EntityId, materialId: contentId('ferrous'), massKg: 1 });
+    const outcomes = [];
+    for (let i = 0; i < 120; i += 1) {
+      const outcome = collector.fixedUpdate(EYE);
+      if (outcome.kind !== 'none') outcomes.push(outcome);
+      world.step();
+    }
+    expect(outcomes).toEqual([{ kind: 'dropped', id: ids[0], reason: 'sink-full' }]);
+    expect(field.piece(ids[0] as EntityId)?.state).toBe('active');
+    expect(container.count).toBe(1);
+    expect(container.has(ids[0] as EntityId)).toBe(false);
+  });
+
+  it('transfers each collected piece into the container exactly once', async () => {
+    const pieces = [
+      { material: 'ferrous', position: { x: -0.2, y: 0.12, z: -2 } },
+      { material: 'ferrous', position: { x: 0.2, y: 0.12, z: -2 } },
+    ];
+    const { world, field, ids, container, collector } = await setup(pieces);
+    for (const piece of pieces) {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        collector.tryStartPull(collector.evaluate(pickTarget(aimAt(piece.position), field.activeTargets(), world)));
+      }
+      for (let i = 0; i < 120; i += 1) {
+        collector.fixedUpdate(EYE);
+        world.step();
+      }
+    }
+    expect(container.count).toBe(2);
+    expect(container.batches()).toEqual([{ materialId: 'ferrous', count: 2, massKg: 2 }]);
+    for (const id of ids) expect(field.piece(id)?.state).toBe('removed');
+    expect(field.metrics().removed).toBe(container.count);
   });
 });

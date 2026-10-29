@@ -1,4 +1,5 @@
 import type { ContentPack } from '../../content/schema';
+import type { ContainerItem } from '../../domain/container';
 import { contentId, type EntityId } from '../../domain/ids';
 import { checkCompatibility, type MaterialDefinition, type ToolDefinition } from '../../domain/materials';
 import type { PhysicsWorldPort, Vec3 } from '../physics/physicsPort';
@@ -9,12 +10,25 @@ export type TargetFeedback =
   | { readonly state: 'none' }
   | { readonly state: 'compatible'; readonly id: EntityId; readonly material: MaterialDefinition }
   | {
-      readonly state: 'incompatible';
+      /** `incompatible`: wrong tool for the material. `blocked`: compatible, but intake is refused (full). */
+      readonly state: 'incompatible' | 'blocked';
       readonly id: EntityId;
       readonly material: MaterialDefinition;
       /** Player-facing explanation; the piece stays where it is. */
       readonly reason: string;
     };
+
+/** Where collected pieces go. Capture removes a piece from the world only if the sink accepts it. */
+export interface CollectionSink {
+  canAccept(id: EntityId): boolean;
+  /** Called exactly once per captured piece, in the same step it leaves the world. */
+  accept(item: ContainerItem): void;
+}
+
+export type PullOutcome =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'collected'; readonly id: EntityId }
+  | { readonly kind: 'dropped'; readonly id: EntityId; readonly reason: 'out-of-range' | 'sink-full' | 'gone' };
 
 export const COLLECTOR_TUNING = Object.freeze({
   pullSpeed: 6,
@@ -34,15 +48,23 @@ export class MagneticCollector {
   readonly #field: ScrapField;
   readonly #physics: PhysicsWorldPort;
   readonly #tool: ToolDefinition;
+  readonly #sink: CollectionSink;
   #pulling: EntityId | null = null;
 
-  constructor(pack: ContentPack, field: ScrapField, physics: PhysicsWorldPort, toolId = 'magnetic-collector') {
+  constructor(
+    pack: ContentPack,
+    field: ScrapField,
+    physics: PhysicsWorldPort,
+    sink: CollectionSink,
+    toolId = 'magnetic-collector',
+  ) {
     const tool = pack.tools.get(contentId(toolId));
     if (!tool) throw new RangeError(`Unknown tool ${toolId}`);
     this.#pack = pack;
     this.#field = field;
     this.#physics = physics;
     this.#tool = tool;
+    this.#sink = sink;
   }
 
   get pulling(): EntityId | null {
@@ -55,7 +77,11 @@ export class MagneticCollector {
     const material = piece ? this.#pack.materials.get(piece.materialId) : undefined;
     if (!piece || piece.state !== 'active' || !material) return { state: 'none' };
     const result = checkCompatibility(this.#tool, material, 'small');
-    if (result.compatible) return { state: 'compatible', id: piece.id, material };
+    if (result.compatible) {
+      return this.#sink.canAccept(piece.id)
+        ? { state: 'compatible', id: piece.id, material }
+        : { state: 'blocked', id: piece.id, material, reason: 'Container full. Unload at the base intake.' };
+    }
     const tools = material.collectableBy
       .map((toolId) => this.#pack.tools.get(toolId)?.displayName)
       .filter((name): name is string => name !== undefined);
@@ -77,28 +103,33 @@ export class MagneticCollector {
     this.#pulling = null;
   }
 
-  /** Moves the pulled piece toward the collector; returns the id when ownership transfers. */
-  fixedUpdate(collector: Vec3): EntityId | null {
+  /** Moves the pulled piece toward the collector; transfers ownership atomically on arrival. */
+  fixedUpdate(collector: Vec3): PullOutcome {
     const id = this.#pulling;
-    if (id === null) return null;
+    if (id === null) return { kind: 'none' };
+    const piece = this.#field.piece(id);
     const body = this.#field.bodyOf(id);
-    if (this.#field.piece(id)?.state !== 'active' || body === undefined) {
+    if (piece?.state !== 'active' || body === undefined) {
       this.#pulling = null;
-      return null;
+      return { kind: 'dropped', id, reason: 'gone' };
     }
     const position = this.#physics.bodyPosition(body);
     const delta = { x: collector.x - position.x, y: collector.y - position.y, z: collector.z - position.z };
     const distance = Math.hypot(delta.x, delta.y, delta.z);
     if (distance > COLLECTOR_TUNING.dropDistance) {
       this.#pulling = null;
-      return null;
+      return { kind: 'dropped', id, reason: 'out-of-range' };
     }
     if (distance <= COLLECTOR_TUNING.captureDistance) {
       this.#pulling = null;
-      return this.#field.removePiece(id) ? id : null;
+      // Full at arrival: the piece stays in the world (never deleted), it just stops being pulled.
+      if (!this.#sink.canAccept(id)) return { kind: 'dropped', id, reason: 'sink-full' };
+      if (!this.#field.removePiece(id)) return { kind: 'dropped', id, reason: 'gone' };
+      this.#sink.accept({ id, materialId: piece.materialId, massKg: piece.massKg });
+      return { kind: 'collected', id };
     }
     const speed = COLLECTOR_TUNING.pullSpeed / distance;
     this.#physics.setLinearVelocity(body, { x: delta.x * speed, y: delta.y * speed, z: delta.z * speed });
-    return null;
+    return { kind: 'none' };
   }
 }
