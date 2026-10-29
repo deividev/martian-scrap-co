@@ -34,7 +34,9 @@ describe('resolveAppPaths', () => {
     const cwd = process.cwd();
     process.chdir(path.parse(cwd).root);
     try {
-      expect(resolveAppPaths({ appPath: 'X:/a', resourcesPath: 'X:/r', isPackaged: true, mainDir: 'X:/m' })).toEqual(before);
+      expect(resolveAppPaths({ appPath: 'X:/a', resourcesPath: 'X:/r', isPackaged: true, mainDir: 'X:/m' })).toEqual(
+        before,
+      );
     } finally {
       process.chdir(cwd);
     }

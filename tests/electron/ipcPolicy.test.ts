@@ -16,9 +16,12 @@ describe('validateInvoke', () => {
     expect(validateInvoke(IPC_CHANNELS.getAppInfo, [])).toEqual({ ok: true, channel: 'app:get-info' });
   });
 
-  it.each(['app:quit', 'fs:read', 'shell:open-external', '', 'APP:GET-INFO'])('rejects unapproved channel %j', (channel) => {
-    expect(validateInvoke(channel, []).ok).toBe(false);
-  });
+  it.each(['app:quit', 'fs:read', 'shell:open-external', '', 'APP:GET-INFO'])(
+    'rejects unapproved channel %j',
+    (channel) => {
+      expect(validateInvoke(channel, []).ok).toBe(false);
+    },
+  );
 
   it('rejects unexpected arguments on a zero-argument channel', () => {
     expect(validateInvoke(IPC_CHANNELS.getAppInfo, ['../../secrets']).ok).toBe(false);
@@ -42,12 +45,17 @@ describe('resolveDevServerUrl', () => {
     expect(resolveDevServerUrl('http://localhost:5173/path')).toBe('http://localhost:5173');
   });
 
-  it.each([undefined, '', 'not a url', 'http://192.168.1.10:5173', 'https://evil.example', 'file:///C:/x.html', 'javascript:alert(1)'])(
-    'rejects %j',
-    (raw) => {
-      expect(resolveDevServerUrl(raw)).toBeNull();
-    },
-  );
+  it.each([
+    undefined,
+    '',
+    'not a url',
+    'http://192.168.1.10:5173',
+    'https://evil.example',
+    'file:///C:/x.html',
+    'javascript:alert(1)',
+  ])('rejects %j', (raw) => {
+    expect(resolveDevServerUrl(raw)).toBeNull();
+  });
 });
 
 describe('isTrustedSenderUrl', () => {

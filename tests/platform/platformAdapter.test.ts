@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { createPlatformAdapter, isAppInfo } from '../../src/platform/platformAdapter';
 import type { AppInfo } from '../../src/platform/types';
 
-const INFO: AppInfo = { name: 'martian-scrap-co', version: '0.0.0', platform: 'win32', electron: '44.10.0', chrome: '152' };
+const INFO: AppInfo = {
+  name: 'martian-scrap-co',
+  version: '0.0.0',
+  platform: 'win32',
+  electron: '44.10.0',
+  chrome: '152',
+};
 
 describe('createPlatformAdapter', () => {
   it('reports every native capability as absent in a browser', async () => {

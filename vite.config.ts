@@ -18,7 +18,11 @@ function productionCsp(): Plugin {
     name: 'msc-production-csp',
     apply: 'build',
     transformIndexHtml: () => [
-      { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: PRODUCTION_CSP }, injectTo: 'head-prepend' },
+      {
+        tag: 'meta',
+        attrs: { 'http-equiv': 'Content-Security-Policy', content: PRODUCTION_CSP },
+        injectTo: 'head-prepend',
+      },
     ],
   };
 }

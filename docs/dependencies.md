@@ -11,6 +11,11 @@ Adopted third-party packages with exact versions, licenses and the compatibility
 | electron | 44.10.0 | MIT | dev (runtime shell) | MSC-006 | Approved desktop runtime. Ships Chromium 152 and Node 24.22.1. 45.1.0 was only eight days old, so the supported 44 line was chosen. |
 | @types/node | 24.19.2 | MIT | dev | MSC-006 | Matches Electron's embedded Node 24 for main/preload typechecking. |
 | vitest | 5.0.5 | MIT | dev | MSC-006 | Unit tests; requires Node `^22.12.0 \|\| ^24 \|\| >=26` and Vite 6–8. |
+| eslint | 10.12.0 | MIT | dev | MSC-008 | Flat config (`eslint.config.js`). 10.13.0 was under two weeks old. |
+| @eslint/js | 10.0.1 | MIT | dev | MSC-008 | ESLint recommended rules. |
+| typescript-eslint | 8.71.2 | MIT | dev | MSC-008 | Type-aware rules over both tsconfig projects; peer range `typescript >=4.8.4 <6.1.0` sets the TypeScript ceiling. 8.72.x was under two weeks old. |
+| globals | 17.13.0 | MIT | dev | MSC-008 | Node globals for `.js`/`.mjs` tooling files. |
+| prettier | 3.9.9 | MIT | dev | MSC-008 | Formatter for code/config; Markdown and `references/` are excluded to keep authored and archived layout. |
 | typescript | 6.0.3 | Apache-2.0 | dev | MSC-005 | Strict mode. **7.0.2 is the npm `latest`, but typescript-eslint 8.72.1 supports only `>=4.8.4 <6.1.0`**, so 6.0.3 keeps MSC-008 linting viable. Revisit when typescript-eslint supports 7.x. |
 
 ## Review notes

@@ -9,3 +9,4 @@ dist/
 .claude/
 dist-electron/
 release/
+.check-logs/

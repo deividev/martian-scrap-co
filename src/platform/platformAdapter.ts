@@ -8,7 +8,7 @@ export function isAppInfo(value: unknown): value is AppInfo {
   if (typeof value !== 'object' || value === null) return false;
   const record = value as Record<string, unknown>;
   return ['name', 'version', 'platform', 'electron', 'chrome'].every(
-    (key) => typeof record[key] === 'string' && (record[key] as string).length <= 128,
+    (key) => typeof record[key] === 'string' && record[key].length <= 128,
   );
 }
 

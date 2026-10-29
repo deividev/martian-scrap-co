@@ -88,7 +88,7 @@ Martian Scrap Co/                 Project root
 |-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006)
 |-- src/                         Renderer TypeScript: platform adapter, smoke scene
 |-- tests/                       Vitest unit tests
-`-- tools/                       validate-docs.ps1, run-electron-dev.mjs
+`-- tools/                       validate-docs.ps1, check.mjs runner, run-electron-dev.mjs
 
 Generated, not committed: dist/, dist-electron/, release/. Not created yet: native/, assets-source/.
 ```
@@ -105,6 +105,9 @@ npm run dev            # Vite dev server on http://127.0.0.1:5173
 npm run typecheck      # strict TypeScript check
 npm run build          # typecheck + renderer build (dist/) + Electron build (dist-electron/)
 npm test               # Vitest unit tests
+npm run lint           # ESLint (type-aware)
+npm run format         # Prettier write (format:check to verify)
+npm run check          # all local checks with bounded logs in .check-logs/ (-- --package adds packaging)
 npm run electron:start # build, then open the desktop app
 npm run electron:dev   # Electron against a running `npm run dev` server
 npm run package        # build + electron-builder Windows folder in release/win-unpacked/

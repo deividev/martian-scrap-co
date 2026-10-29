@@ -20,15 +20,25 @@
     "preview": "vite preview",
     "electron:start": "npm run build && electron .",
     "electron:dev": "npm run build:electron && node tools/run-electron-dev.mjs",
-    "package": "npm run build && electron-builder --win --config electron-builder.yml"
+    "package": "npm run build && electron-builder --win --config electron-builder.yml",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "node tools/check.mjs",
+    "validate:docs": "powershell.exe -NoProfile -File tools/validate-docs.ps1"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@types/node": "24.19.2",
     "@types/three": "0.186.0",
     "electron": "44.10.0",
     "electron-builder": "26.17.0",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
+    "prettier": "3.9.9",
     "three": "0.186.1",
     "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2",
     "vite": "8.3.5",
     "vitest": "5.0.5"
   }

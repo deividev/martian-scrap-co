@@ -1,0 +1,11 @@
+# Normalize authored text to LF in the repository and working tree.
+* text=auto eol=lf
+
+# Supplied raw guides and prompts are archived byte-for-byte (original CRLF/mixed endings kept).
+references/** -text
+
+*.png binary
+*.jpg binary
+*.glb binary
+*.wav binary
+*.ogg binary

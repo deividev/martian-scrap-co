@@ -193,7 +193,9 @@ Check: Introduce one intentional fixture failure and verify check failure, then 
 
 Requirements: PRD-019–022.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added ESLint 10 + typescript-eslint (type-aware, both tsconfig projects, domain import boundary for future `src/domain/`), Prettier, `.gitattributes` (LF for authored text; `references/**` now archived byte-for-byte with original endings) and `tools/check.mjs`. `npm run check` runs format, lint, typecheck, test, renderer build, Electron build and the docs validator in order (`-- --package` adds electron-builder), writes bounded head/tail logs to `.check-logs/` and exits non-zero on any failure. All local, no paid infrastructure. Checks: full run 7/7 PASS; an intentional failing fixture test made the runner report `test` FAIL with the assertion and exit 1, then was removed and the run returned to 7/7 PASS.
 
 ### MSC-009 — Define domain contracts and content schema
 

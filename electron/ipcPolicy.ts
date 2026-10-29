@@ -16,7 +16,8 @@ const CHANNEL_ARITY: Readonly<Record<IpcChannel, number>> = {
   'app:get-info': 0,
 };
 
-export type IpcValidation = { readonly ok: true; readonly channel: IpcChannel } | { readonly ok: false; readonly reason: string };
+export type IpcValidation =
+  { readonly ok: true; readonly channel: IpcChannel } | { readonly ok: false; readonly reason: string };
 
 export function isAllowedChannel(channel: string): channel is IpcChannel {
   return ALLOWED_CHANNELS.has(channel);
@@ -55,7 +56,11 @@ export function resolveDevServerUrl(raw: string | undefined): string | null {
 }
 
 /** The renderer frame must be our dev server origin or the exact packaged index file. */
-export function isTrustedSenderUrl(senderUrl: string | undefined, devServerOrigin: string | null, indexFileUrl: string): boolean {
+export function isTrustedSenderUrl(
+  senderUrl: string | undefined,
+  devServerOrigin: string | null,
+  indexFileUrl: string,
+): boolean {
   if (!senderUrl) return false;
   let url: URL;
   try {
