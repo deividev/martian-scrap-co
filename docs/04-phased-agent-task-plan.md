@@ -107,7 +107,9 @@ Requirements: PRD-016–020.
 
 Context: [Co-op guide](../references/online-coop.txt) §§2, 6; [Steam Voice guide](../references/steam-voice-steps.md) §§2, 5, 9–11; PRD §10 and architecture §11.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Owner approved the [MSC-003 policy](decisions/MSC-003-session-privacy-spending.md): friends/invite-only lobbies (no public list or codes at launch), host buys directly while guests request purchases unless marked "Can spend", host-only removal/save/reset powers, safe-save host exit with no migration. **V0: voice chat deferred**; all voice subwork is deferred/inapplicable. 13 tabletop scenarios recorded; Context used and Deviations listed. PRD-017/018/020 and PRD §10 updated.
 
 ### MSC-004 — Resolve personal progression and test access
 
