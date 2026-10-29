@@ -41,6 +41,28 @@ export interface RayHit {
   readonly distance: number;
 }
 
+/** Opaque handle of a kinematic character (player capsule). */
+export type CharacterHandle = number & { readonly __characterHandle: true };
+
+export interface CharacterSpec {
+  /** Capsule center in meters. */
+  readonly position: Vec3;
+  readonly radius: number;
+  /** Half height of the capsule's cylindrical part. */
+  readonly halfHeight: number;
+  /** Steepest walkable slope in degrees. */
+  readonly maxSlopeDegrees: number;
+  /** Highest ledge climbed automatically, in meters. */
+  readonly stepHeight: number;
+  /** Distance the character snaps down to stay on the ground, in meters. */
+  readonly snapDistance: number;
+}
+
+export interface CharacterMoveResult {
+  readonly position: Vec3;
+  readonly grounded: boolean;
+}
+
 export interface PhysicsWorldPort {
   /** Engine name and version, recorded in evidence. */
   readonly engine: string;
@@ -52,7 +74,13 @@ export interface PhysicsWorldPort {
   step(): void;
   bodyPosition(handle: PhysicsBodyHandle): Vec3;
   bodyRotation(handle: PhysicsBodyHandle): Quat;
-  castRay(origin: Vec3, direction: Vec3, maxDistance: number): RayHit | null;
+  /** Casts a ray; `excludeCharacter` ignores that character's own capsule. */
+  castRay(origin: Vec3, direction: Vec3, maxDistance: number, excludeCharacter?: CharacterHandle): RayHit | null;
+  /** Creates a kinematic capsule driven by collision-corrected moves. */
+  createCharacter(spec: CharacterSpec): CharacterHandle;
+  /** Applies a desired displacement, sliding along walls and slopes; takes effect on the next step. */
+  moveCharacter(handle: CharacterHandle, desired: Vec3): CharacterMoveResult;
+  teleportCharacter(handle: CharacterHandle, position: Vec3): void;
   bodyCount(): number;
   awakeBodyCount(): number;
   dispose(): void;

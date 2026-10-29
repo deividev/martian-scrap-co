@@ -23,3 +23,32 @@ body {
   color: #f4ece1;
   opacity: 0.8;
 }
+
+#crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: #f4ece1;
+  box-shadow: 0 0 0 2px rgba(27, 31, 46, 0.6);
+  pointer-events: none;
+}
+
+#input-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: rgba(27, 31, 46, 0.82);
+  color: #f4ece1;
+  font:
+    14px/1.4 system-ui,
+    sans-serif;
+  pointer-events: none;
+}

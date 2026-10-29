@@ -277,7 +277,9 @@ Check: Navigate ramps, corners and recovery zones on both input types.
 
 Requirements: PRD-003, PRD-022.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added one action vocabulary (`src/input/actions.ts`: move, look, jump, interact, pause, active device) fed by `KeyboardMouseSource` (WASD/arrows by physical code, pointer-locked mouse look, blur releases keys) and `GamepadSource` (standard mapping, rescaled radial deadzone, time-scaled stick look, edge-triggered A/X/Menu); settings defaults in `inputSettings.ts`. `PlayerController` drives a Rapier kinematic capsule (new character API in the physics port: slide, 40° slope limit, 0.3 m autostep, ground snap) with clamped pitch, calm Mars-gravity jump (~0.9 m) and recovery to the last fully supported ground (four-ray support check) from pits or recovery zones. The scene is now a first-person movement test yard (15°/30°/50° ramps, 20/50 cm steps, inside corner, pit) with a rounded robot proxy, crosshair and device-aware prompts. Checks: 10 controller tests on the yard (both ramps climbed, 50° blocked, 20 cm stepped/50 cm blocked, corner not penetrated, pit recovery, pitch clamp, jump height) plus a test proving keyboard W and a full forward stick give identical movement; 9 input tests; in-browser W press moved the player 4 m with the prompt switching to keyboard; `npm run check` 7/7. **Not yet exercised on real controller hardware**: the owner's keyboard/controller walkthrough is part of MSC-020.
 
 ### MSC-014 — Build collector compatibility and target feedback
 

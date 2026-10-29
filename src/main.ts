@@ -1,13 +1,13 @@
 import './style.css';
 import { createPlatformAdapter } from './platform/platformAdapter';
-import { createSmokeScene } from './presentation/smokeScene';
+import { createTestYardScene } from './presentation/testYardScene';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game');
 if (!canvas) {
   throw new Error('Missing #game canvas');
 }
 
-createSmokeScene(canvas).catch((error: unknown) => {
+createTestYardScene(canvas, document.querySelector<HTMLElement>('#input-hint')).catch((error: unknown) => {
   canvas.dataset['sceneError'] = error instanceof Error ? error.message : String(error);
   console.error('Scene failed to start', error);
 });

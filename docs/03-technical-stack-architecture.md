@@ -30,7 +30,7 @@ Pin exact library/native SDK versions only after the early compatibility test. R
 
 ## 2. Boundaries and planned structure
 
-The following are **planned paths**; they are created by their tasks (`src/presentation/` since MSC-005, `src/platform/` and `electron/` since MSC-006, `src/domain/` and `src/content/` since MSC-009, `src/simulation/physics/` since MSC-011; see each task Outcome):
+The following are **planned paths**; they are created by their tasks (`src/presentation/` since MSC-005, `src/platform/` and `electron/` since MSC-006, `src/domain/` and `src/content/` since MSC-009, `src/simulation/physics/` since MSC-011, `src/simulation/scrap/` since MSC-012, `src/input/` and `src/simulation/player/` since MSC-013; see each task Outcome):
 
 | Planned area | Responsibility | Forbidden dependency |
 |---|---|---|
