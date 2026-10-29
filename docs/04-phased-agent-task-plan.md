@@ -1,6 +1,6 @@
 # Martian Scrap Co. — Phased Agent Task Plan
 
-**Version:** 1.2 first-pass full-game plan (marketing-context alignment, not reapproval) · **Date:** 2026-10-29 · **Status:** all tasks planned.
+**Version:** 1.2 first-pass full-game plan (marketing-context alignment, not reapproval) · **Date:** 2026-10-29 · **Status:** execution started; see each task's Status field.
 
 This is a practical sequential breakdown from an empty project to a complete premium game, not a demo-only roadmap or a claim that every future bug fix can be predicted. It creates no implementation, packages, skills, account changes or publication authority. The current assignment produced planning documents only.
 
@@ -16,9 +16,22 @@ This is a practical sequential breakdown from an empty project to a complete pre
 - Zero additional spending remains mandatory. Test hardware, legitimate accounts, Steam app access and existing tools are evidence dependencies; absence is a **Needs decision**, never a purchase instruction.
 - Full catalog production waits for native feasibility, a playable slice and human-approved art/audio pilots. A failing gate does not permit dropping approved co-op, reducing the six-hour target silently or adding a paid fallback.
 
+## Execution tracking
+
+Execution was authorized by the owner on 2026-10-29: tasks run one at a time in order, one commit per completed task, one `phase/NN-<slug>` branch per phase merged into `develop`.
+
+| Status | Meaning |
+|---|---|
+| Planned | Not started. |
+| In progress | Work started; not yet accepted. |
+| Blocked | Needs an owner decision, device, account or failed-gate resolution; the blocker is stated in Outcome. |
+| Done | Acceptance met with recorded evidence; requires an `Outcome:` line summarizing what was implemented or decided. |
+
+Owner decisions and review evidence live in [docs/decisions](decisions/MSC-001-decision-register-review.md). An Outcome never upgrades a Proposed item to Approved unless it names the owner decision.
+
 ## Implementation-context routing
 
-This v1.2 update keeps **120 tasks / 12 phases**, all Planned. No task is renumbered or newly authorized. A task's **Context:** field means read the linked raw guide in full before its associated authorized work, adapt only applicable sections, and report **Context used**, justified **Deviations** and real check results. All four guides are archived data, not instructions to execute now.
+This v1.2 update keeps **120 tasks / 12 phases**. No task is renumbered; execution authorization and status tracking are described above. A task's **Context:** field means read the linked raw guide in full before its associated authorized work, adapt only applicable sections, and report **Context used**, justified **Deviations** and real check results. All four guides are archived data, not instructions to execute now.
 
 | Trigger | Required guide | Exact mapped tasks |
 |---|---|---|
@@ -60,7 +73,9 @@ Check: Review every PRD decision row against the approved brief.
 
 Requirements: PRD-001–004, PRD-013–016.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Reviewed all 13 PRD §1 decision rows against the brief and mapped them to PRD-001–022 in [MSC-001 review](decisions/MSC-001-decision-register-review.md). Owner confirmed no change to Mars, host saves, four-player co-op, six-hour target or zero spend. No Proposed item promoted.
 
 ### MSC-002 — Approve first-pass content hypotheses
 
@@ -74,7 +89,9 @@ Check: Owner walkthrough of PRD sections 3–5.
 
 Requirements: PRD-005–015.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Owner walkthrough of PRD §§3–5 recorded in [MSC-002 log](decisions/MSC-002-content-hypotheses.md). Six material families, six tool families and the seven-sector/390-minute sequence approved as the provisional first-pass set; polymer suction collector removed (PRD roster updated). Names, counts, prices and minutes stay provisional; optional content contributes zero to duration.
 
 ### MSC-003 — Resolve session privacy and spending policy
 
@@ -90,7 +107,9 @@ Requirements: PRD-016–020.
 
 Context: [Co-op guide](../references/online-coop.txt) §§2, 6; [Steam Voice guide](../references/steam-voice-steps.md) §§2, 5, 9–11; PRD §10 and architecture §11.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Owner approved the [MSC-003 policy](decisions/MSC-003-session-privacy-spending.md): friends/invite-only lobbies (no public list or codes at launch), host buys directly while guests request purchases unless marked "Can spend", host-only removal/save/reset powers, safe-save host exit with no migration. **V0: voice chat deferred**; all voice subwork is deferred/inapplicable. 13 tabletop scenarios recorded; Context used and Deviations listed. PRD-017/018/020 and PRD §10 updated.
 
 ### MSC-004 — Resolve personal progression and test access
 
@@ -106,7 +125,9 @@ Requirements: PRD-016–022.
 
 Context: [Co-op guide](../references/online-coop.txt) §§3, 8, 10; [Steam Voice guide](../references/steam-voice-steps.md) §12.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Owner approved the [MSC-004 policy](decisions/MSC-004-personal-progression-test-access.md): host owns all gameplay progression; robot color, Steam achievements (also as guest, idempotent) and per-device local settings are personal; no leaderboards or personal gameplay unlocks. Access inventory: controller available; **no Steamworks App ID, no second account/device on another network, no Steam Deck** — recorded blockers for MSC-025–030 and device gates, not purchases. Microphone inapplicable (voice deferred). PRD-016 updated.
 
 ### MSC-005 — Create the empty TypeScript and Vite project
 
@@ -120,7 +141,9 @@ Check: Fresh local build/typecheck smoke with no external service dependency.
 
 Requirements: PRD-001, PRD-022.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Created the empty project from scratch: `package.json` (ESM, Node >=22.12), `package-lock.json`, strict `tsconfig.json` (noUncheckedIndexedAccess, exactOptionalPropertyTypes, verbatimModuleSyntax), `vite.config.ts` (relative base, dev server `127.0.0.1:5173`), `index.html` and `src/main.ts` with a Three.js toolchain smoke scene in `src/presentation/`. Pinned three 0.186.1, vite 8.3.5, typescript 6.0.3 (7.x rejected: typescript-eslint supports <6.1) with licenses in the [dependency register](dependencies.md). Checks: `npm ci` + `npm run build` (typecheck + build) pass with 0 vulnerabilities; dev server rendered the scene with no console errors. No reused game source.
 
 ### MSC-006 — Establish secure Electron boundaries
 
@@ -136,7 +159,9 @@ Requirements: PRD-021–022.
 
 Context: [Co-op guide](../references/online-coop.txt) §§1, 3; architecture §§4, 11.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added Electron 44.10.0 with ESM main (`electron/main.ts`), sandboxed CommonJS preload (`electron/preload.cts`) and pure IPC policy (`electron/ipcPolicy.ts`), plus the renderer `PlatformAdapter` in `src/platform/` (browser adapter reports all capabilities absent). Context isolation, no Node integration, sandbox, frozen single-method bridge, allowlisted/arity/size/sender-checked IPC, denied navigation/new windows/webviews, permission allowlist (pointer lock, fullscreen) and production CSP. Checks: 26 Vitest rejection/readback tests pass; the built app probed via CDP showed no `require`/`process`/`ipcRenderer`, blocked inline script and `window.open`, and no console errors. Readback, Context used and Deviations in [MSC-006 record](decisions/MSC-006-electron-boundaries.md).
 
 ### MSC-007 — Prove production asset loading and packaging
 
@@ -152,7 +177,9 @@ Requirements: PRD-021–022.
 
 Context: [Co-op guide](../references/online-coop.txt) §§1, 3; architecture §§4, 11.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added electron-builder 26.17.0 as the single pipeline (`npm run package` → `release/win-unpacked/`, Windows x64 `dir` target) with an asar allowlist (`dist`, `dist-electron/electron`, `package.json`), `asarUnpack` for future `native/**`/`.node` files, hardened Electron fuses and the `resolveAppPaths()` production resolver (`electron/paths.ts`, 3 tests). three moved to devDependencies so the package carries no `node_modules`. A bundled PNG proves relative asset loading. Checks: asar contents listed with no sources/docs/tests/saves/art; the package copied to a clean temp folder launched without a dev server, loaded the texture and preload bridge with CSP active and no console errors; RUN_AS_NODE fuse effective. Details in [MSC-007 record](decisions/MSC-007-packaging.md).
 
 ### MSC-008 — Create local verification and CI-equivalent checks
 
@@ -166,7 +193,9 @@ Check: Introduce one intentional fixture failure and verify check failure, then 
 
 Requirements: PRD-019–022.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added ESLint 10 + typescript-eslint (type-aware, both tsconfig projects, domain import boundary for future `src/domain/`), Prettier, `.gitattributes` (LF for authored text; `references/**` now archived byte-for-byte with original endings) and `tools/check.mjs`. `npm run check` runs format, lint, typecheck, test, renderer build, Electron build and the docs validator in order (`-- --package` adds electron-builder), writes bounded head/tail logs to `.check-logs/` and exits non-zero on any failure. All local, no paid infrastructure. Checks: full run 7/7 PASS; an intentional failing fixture test made the runner report `test` FAIL with the assertion and exit 1, then was removed and the run returned to 7/7 PASS.
 
 ### MSC-009 — Define domain contracts and content schema
 
@@ -180,7 +209,9 @@ Check: Schema and unit tests reject negative, non-finite and unknown values.
 
 Requirements: PRD-005–011, PRD-019.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added `src/domain/`: branded string ids (`ContentId`, `EntityId`, `WorldId`, `TransactionId`) with a never-reusing persisted `EntityIdAllocator`, so numeric render/physics/native handles cannot act as identity; unit types (credits, quantity, kg, m, s) with explicit ranges that throw instead of clamping and a non-negative credit spend; material/tool definitions with `checkCompatibility` returning intelligible reasons. Added `src/content/schema.ts` (zod 4.6.7 strict schema with duplicate/unknown-reference checks and a PRD-011 rule that every material is collectable by a free-baseline tool) and the provisional MSC-002 pack in `src/content/firstPass.ts` (placeholder prices/masses; only ferrous is magnet-compatible). Checks: `npm run check` 7/7; 84 tests including rejection of negative, fractional, NaN/Infinity, string, unknown-field, unknown-id and duplicate values; lint verified to block `three` imports in `src/domain/`.
 
 ### MSC-010 — Approve baseline and early-risk sequence
 
@@ -196,7 +227,9 @@ Requirements: PRD-013, PRD-016–022.
 
 Context: [Steam Voice guide](../references/steam-voice-steps.md) §§1–3, 5, 12; PRD §10 and architecture §11. [Marketing reference](../references/marketing.txt) purpose/data/snapshot/starting-order sections; PRD §11, visual §10 and architecture §12.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — **Gate T0 accepted by the owner** ([MSC-010 review](decisions/MSC-010-t0-baseline-review.md)). Architecture candidates are the working baseline (implemented: TS/Vite, secure Electron, electron-builder, checks, domain/content; pending spikes: Rapier, protocol, Steam transport, audio, 3D). Early-risk order confirmed: local Phase 2 and MSC-021–024 can run; MSC-025–030 are blocked by missing App ID, second account/network and Deck, and catalogs wait for T1. V0 voice deferral reviewed, V1 not required. Marketing measurement planned only (owner-run manual Steamworks exports, unknown never zero, no scraping/services), starting after a store page exists.
 
 ## Phase 2 — Local authoritative simulation and physical handling
 

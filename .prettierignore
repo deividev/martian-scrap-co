@@ -1,0 +1,8 @@
+dist/
+dist-electron/
+release/
+.check-logs/
+package-lock.json
+# Archived raw guides and planning Markdown keep their authored layout.
+references/
+*.md

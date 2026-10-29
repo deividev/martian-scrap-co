@@ -77,7 +77,12 @@ foreach ($name in $requiredPngs) { Assert-NonemptyFile ('references/' + $name) }
 foreach ($name in $requiredPrompts) { Assert-NonemptyFile ('references/' + $name) }
 foreach ($name in $rawReferenceNames) { Assert-NonemptyFile ('references/' + $name) }
 
-$markdownFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.md')
+# Third-party, build and local tool folders are not project-authored documentation.
+$excludedDirs = @('node_modules', 'dist', 'release', '.git', '.claude', '.atl')
+$markdownFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.md' | Where-Object {
+    $relative = $_.FullName.Substring($rootPrefix.Length)
+    $excludedDirs -notcontains ($relative -split '[\\/]', 2)[0]
+})
 foreach ($file in $markdownFiles) {
     $content = [System.IO.File]::ReadAllText($file.FullName)
     if ($rawReferencePaths -contains $file.FullName) { continue }
@@ -164,7 +169,10 @@ if ($texts.ContainsKey($planPath)) {
             }
         }
         $status = [regex]::Match($body, '(?m)^Status:\s*([^\r\n]+)\r?$').Groups[1].Value.Trim()
-        if ($status -cne 'Planned') { $failures.Add($id + ': status must be Planned') }
+        if (@('Planned', 'In progress', 'Blocked', 'Done') -cnotcontains $status) { $failures.Add($id + ': unknown status ' + $status) }
+        if ($status -in @('Done', 'Blocked') -and [regex]::Matches($body, '(?m)^Outcome:\s*\S').Count -ne 1) {
+            $failures.Add($id + ': ' + $status + ' requires one nonempty Outcome field')
+        }
         $deps = [regex]::Match($body, '(?m)^Depends on:\s*([^\r\n]+)\r?$').Groups[1].Value.Trim()
         if ($deps -eq 'none') { continue }
         foreach ($depValue in ($deps -split ',')) {
@@ -247,5 +255,5 @@ Write-Output ('PHASES: ' + $phaseCount)
 Write-Output ('FAILURES: ' + $failures.Count)
 foreach ($failure in $failures) { Write-Output ('FAIL: ' + $failure) }
 if ($failures.Count -gt 0) { exit 1 }
-Write-Output 'PASS: authored links/import, four archived guides, context routes/conditional gates, tasks/dependencies and Planned statuses.'
+Write-Output 'PASS: authored links/import, four archived guides, context routes/conditional gates, tasks/dependencies and tracked statuses.'
 exit 0

@@ -1,6 +1,6 @@
 # Martian Scrap Co. — Project Guide
 
-**Canonical project context for agents and the human owner.** Version 1.2, updated 2026-10-29: marketing-measurement context added, not product reapproval. This is a self-contained **planning-only** package, not an implemented game. All 120 tasks across 12 phases are **Planned**. Current authorization covers documentation/context alignment only; it is **not** permission to implement the roadmap automatically.
+**Canonical project context for agents and the human owner.** Version 1.2, updated 2026-10-29: marketing-measurement context added, not product reapproval. This package started as **planning-only** and is not yet an implemented game. On 2026-10-29 the owner authorized sequential execution of the 120-task plan, one task at a time with per-task commits, a branch per phase and integration into `develop`; each task's current state is its **Status** field in the [task plan](docs/04-phased-agent-task-plan.md). Owner-decision and validation gates still apply; the roadmap is never executed past an unapproved or failed gate.
 
 ## Start here
 
@@ -54,7 +54,7 @@ Read the applicable guide in full before its scoped implementation, then only re
 
 For marketing work, propose a zero-extra-cost evidence plan before any external action: dated wishlist additions/removals/net and traffic snapshots where legitimately available, a dated action/asset-change log, capsule/UTM limitations and explicit partial/unread/error states. Do not turn historical correlations into proven causation or promised wishlists/sales. Source scraping/API assertions require current verification before an integration; do not access/copy credentials or create a marketing dashboard automatically. A demo funnel applies only if a demo is separately approved; demo median playtime is not six-hour campaign proof. Final price remains deferred until full-game completion. No posts, contact, ticket replies, publication, data collection or service/automation execution is authorized by this documentation update.
 
-**Conditional voice gates:** V0 at MSC-003/MSC-010 records owner approval or deferral of voice, privacy/transmission/listening policy and zero-cost scope. If deferred, all voice-specific subwork is skipped explicitly; the base tasks still apply and no voice feature is claimed. If approved, V1 in MSC-025–027 proves required APIs/binary framing and real two-way mic playback in the packaged Steam path before MSC-088 implements the service; four-player and Deck evidence follows in MSC-103/MSC-107–109. A failure blocks voice-dependent work and requests a decision, never silently drops confirmed co-op.
+**Conditional voice gates:** **V0 resolved at MSC-003 (2026-10-29): voice DEFERRED** — skip voice-specific subwork explicitly until a new owner decision after MSC-030. V0 at MSC-003/MSC-010 records owner approval or deferral of voice, privacy/transmission/listening policy and zero-cost scope. If deferred, all voice-specific subwork is skipped explicitly; the base tasks still apply and no voice feature is claimed. If approved, V1 in MSC-025–027 proves required APIs/binary framing and real two-way mic playback in the packaged Steam path before MSC-088 implements the service; four-player and Deck evidence follows in MSC-103/MSC-107–109. A failure blocks voice-dependent work and requests a decision, never silently drops confirmed co-op.
 
 Proposed voice safeguards, if authorized: explicit enable/microphone permission; mute/PTT and truthful availability/capture/transmit indicators; authenticated lobby-scoped bounded delivery; no voice recording by default; stop/drain/discard and reconnect cleanup. Listening topology, always-on/proximity modes, exact bindings/formats/rates and permission details still require design decisions. Gameplay must remain completable without voice. Trailer/debug recording must exclude player voice unless separately consented, with recording permissions and accurate footage/feature claims.
 
@@ -76,28 +76,44 @@ Concepts are not runtime screenshots, finished models or performance evidence. H
 ## What exists now
 
 ```text
-Martian Scrap Co/                 Current documentation package
+Martian Scrap Co/                 Project root
 |-- AGENT.md                     Canonical context and policy
 |-- AGENTS.md                    Codex entry: read AGENT.md
 |-- CLAUDE.md                    Claude entry: imports AGENT.md
-|-- docs/                        Four v1 planning documents
+|-- docs/                        Four planning documents, decisions/ records, dependency register
 |-- references/                  Six PNGs, three prompt MDs, four raw supplied guides
-`-- tools/validate-docs.ps1       Planning-package structural validator
+|-- index.html, vite.config.ts   Vite entry and config (MSC-005)
+|-- electron-builder.yml         Packaging allowlist, asarUnpack and fuses (MSC-007)
+|-- package.json, package-lock.json, tsconfig.json
+|-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006)
+|-- src/                         Renderer TypeScript: domain, content, platform adapter, smoke scene
+|-- tests/                       Vitest unit tests
+`-- tools/                       validate-docs.ps1, check.mjs runner, run-electron-dev.mjs
 
-Future only, NOT created: src/, electron/, native/, tests/, assets-source/,
-game tooling, package.json, node_modules, repository/configuration and builds.
+Generated, not committed: dist/, dist-electron/, release/. Not created yet: native/, assets-source/.
 ```
 
 The folder omits final punctuation for normal Windows compatibility; the product display name remains **Martian Scrap Co.**
 
-## Only runnable project command now
+## Runnable project commands
 
-From this project root:
+From this project root (Node.js >= 22.12):
 
 ```powershell
-powershell.exe -NoProfile -File .\tools\validate-docs.ps1
+npm install            # install pinned dependencies from the lockfile
+npm run dev            # Vite dev server on http://127.0.0.1:5173
+npm run typecheck      # strict TypeScript check
+npm run build          # typecheck + renderer build (dist/) + Electron build (dist-electron/)
+npm test               # Vitest unit tests
+npm run lint           # ESLint (type-aware)
+npm run format         # Prettier write (format:check to verify)
+npm run check          # all local checks with bounded logs in .check-logs/ (-- --package adds packaging)
+npm run electron:start # build, then open the desktop app
+npm run electron:dev   # Electron against a running `npm run dev` server
+npm run package        # build + electron-builder Windows folder in release/win-unpacked/
+powershell.exe -NoProfile -File .	oolsalidate-docs.ps1
 ```
 
-The [validator](tools/validate-docs.ps1) checks this planning snapshot's files, authored links/import/context routing, four raw guide files, six PNGs and all 120 Planned tasks/12 phases. Only the exact raw guide files are treated as archived data rather than project-authored link dependencies. It derives root from its own location. It is **not game verification**; no game/npm test/build commands exist yet. Any future script names in the architecture are explicitly planned.
+The [validator](tools/validate-docs.ps1) checks this planning snapshot's files, authored links/import/context routing, four raw guide files, six PNGs and all 120 tasks/12 phases with tracked statuses (Planned, In progress, Blocked, Done; Done and Blocked require an Outcome). Only the exact raw guide files are treated as archived data rather than project-authored link dependencies. It derives root from its own location. It is **not game verification**. Adopted dependency versions and licenses are recorded in the [dependency register](docs/dependencies.md).
 
 All project-authored document/reference links and image sources are relative to their containing files. Art images use relative HTML image elements plus adjacent ordinary **Open reference** links; if a viewer suppresses HTML, use those links. Copy the **entire root** to relocate it; no authored Markdown dependency points to the original chat outputs. External web citations still require internet. Exact raw supplied guides intentionally retain historical paths/links as data, not runnable dependencies.
