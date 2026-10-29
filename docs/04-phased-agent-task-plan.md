@@ -89,7 +89,9 @@ Check: Owner walkthrough of PRD sections 3–5.
 
 Requirements: PRD-005–015.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Owner walkthrough of PRD §§3–5 recorded in [MSC-002 log](decisions/MSC-002-content-hypotheses.md). Six material families, six tool families and the seven-sector/390-minute sequence approved as the provisional first-pass set; polymer suction collector removed (PRD roster updated). Names, counts, prices and minutes stay provisional; optional content contributes zero to duration.
 
 ### MSC-003 — Resolve session privacy and spending policy
 

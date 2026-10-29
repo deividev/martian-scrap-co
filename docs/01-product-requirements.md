@@ -80,7 +80,7 @@ Names, count, prices and yield rates are unapproved. Start with these six behavi
 | Ferrous scrap | Cool gray brackets, bolts, ribbed plates | Ordinary magnetic collector | Ferrous-only hopper and dense block. |
 | Aluminum | Pale broad panels, light frames, stamped triangle | Hand/cart or compatible grip tool, not ordinary magnet | Separate light-metal hopper; folded panel bale. |
 | Copper | Warm coils and exposed bundled cable | Grip/cable tool; not ordinary magnet | Cut cable mounts, then coil bale. |
-| Polymer | Saturated housings and molded ribs | Hand/cart or proposed suction-compatible collector | Plastic-only press, rounded compressed bundle. |
+| Polymer | Saturated housings and molded ribs | Hand/cart or compatible grip tool (suction collector removed at MSC-002) | Plastic-only press, rounded compressed bundle. |
 | Heliofoil — fictional | Teal-edged layered solar sheeting | Proposed sheet clamp | Release frame first; laminated bale, no magic magnet attraction. |
 | Regolith ceramic — fictional technology | Cream ribbed heat shields, dotted stamp | Hand/cart or pad gripper | Predefined panel separation; contained ceramic compact, stylized not hazardous dust. |
 
@@ -205,4 +205,4 @@ Source dashboard/cookie/API assertions require current verification before any a
 
 ## Review checkpoint
 
-Approve or revise the proposed roster, tool families, sector sequence, spending/privacy policy and acceptance protocol before full production. This document is a first complete design hypothesis, not a claim that these systems, test results or future bug fixes already exist.
+Approve or revise the proposed roster, tool families, sector sequence, spending/privacy policy and acceptance protocol before full production. **MSC-002 (2026-10-29):** the owner approved the six material families, six tool families and seven-sector/390-minute sequence as the **provisional first-pass set** to build and test, removing the polymer suction collector; names, counts, prices, yields and minutes remain unapproved until measured ([decision log](decisions/MSC-002-content-hypotheses.md)). This document is a first complete design hypothesis, not a claim that these systems, test results or future bug fixes already exist.
