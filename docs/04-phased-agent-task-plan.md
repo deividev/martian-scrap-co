@@ -375,7 +375,9 @@ Requirements: PRD-001, PRD-005, PRD-022.
 
 Context: [Capture guide](../references/TRAILER_CAPTURE_INSTRUCTIONS.md) camera/format/review guidance; visual §9 and architecture §11.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added a seeded, parameterized dense-yard fixture (`src/simulation/benchmark/denseYardFixture.ts`, presets `baseline` and `dense`) that keeps decorative instances, dormant pieces, active bodies, props, carts, a cuttable rover and station geometry separate, and a benchmark scene that drives four real collectors, four pushed carts and periodic cuts with a smooth camera orbit, then reports frame/simulation percentiles, awake bodies, draw calls, triangles, counts per category, interactions, late-join snapshot size and memory with the Vite-injected build hash. Launch: `?benchmark=` or allowlisted `--benchmark=` / `--benchmark-seconds=` flags. Baseline captured on the packaged clean build `0286085` (Ryzen 7 3700X, RTX 2060, 120 Hz): dense simulation p99 5.2 ms with up to 552 awake bodies; 40,000 decorative instances added draw calls but no physics cost; dense snapshot 1.67 MB (needs chunking at MSC-024); frame time is v-sync capped. Evidence in [MSC-019 baseline](benchmarks/MSC-019-baseline.md). No safe-count claims; no video, screenshots or audio recorded; compactor, networking and Deck not yet covered.
 
 ### MSC-020 — Review core handling and simulation feasibility
 
