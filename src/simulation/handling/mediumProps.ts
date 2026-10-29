@@ -27,18 +27,33 @@ export class MediumPropSet {
 
   constructor(physics: PhysicsWorldPort, specs: readonly MediumPropSpec[]) {
     this.#physics = physics;
-    for (const spec of specs) {
-      if (this.#props.has(spec.id)) throw new Error(`Duplicate prop ${spec.id}`);
-      const body = physics.addBox({
-        kind: 'dynamic',
-        position: spec.position,
-        halfExtents: spec.halfExtents,
-        massKg: spec.massKg,
-        friction: 0.8,
-      });
-      this.#props.set(spec.id, { ...spec, body });
-      this.#lastRest.set(spec.id, { position: spec.position, rotation: IDENTITY });
-    }
+    for (const spec of specs) this.add(spec);
+  }
+
+  /** Adds a prop (e.g. a chunk released by cutting). Ids are never reused. */
+  add(spec: MediumPropSpec, rotation: Quat = IDENTITY): MediumProp {
+    if (this.#props.has(spec.id)) throw new Error(`Duplicate prop ${spec.id}`);
+    const body = this.#physics.addBox({
+      kind: 'dynamic',
+      position: spec.position,
+      halfExtents: spec.halfExtents,
+      rotation,
+      massKg: spec.massKg,
+      friction: 0.8,
+    });
+    const prop = { ...spec, body };
+    this.#props.set(spec.id, prop);
+    this.#lastRest.set(spec.id, { position: spec.position, rotation });
+    return prop;
+  }
+
+  /** Removes a prop that stopped existing as one object (split by a cut, compacted, sold). */
+  remove(id: EntityId): void {
+    const prop = this.#props.get(id);
+    if (!prop) return;
+    this.#physics.removeBody(prop.body);
+    this.#props.delete(id);
+    this.#lastRest.delete(id);
   }
 
   get(id: EntityId): MediumProp | undefined {

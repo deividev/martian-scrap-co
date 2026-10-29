@@ -1,6 +1,8 @@
+import type { AssemblyDefinition } from '../../domain/assembly';
 import { contentId, type EntityIdAllocator } from '../../domain/ids';
 import type { BoxBodySpec, Quat, Vec3 } from '../physics/physicsPort';
 import type { RecoveryZone } from '../player/playerController';
+import type { AssemblyLayout } from '../handling/assemblyBody';
 import type { MediumPropSpec } from '../handling/mediumProps';
 import type { ScrapClusterSpec } from '../scrap/scrapField';
 
@@ -124,3 +126,50 @@ export function createTestYardProps(allocator: EntityIdAllocator): MediumPropSpe
     },
   ];
 }
+
+/**
+ * Cutting prototype (MSC-018): a rover chassis with a cover that must come off before the copper
+ * coil, and a side panel carrying a bracket. Authored joints only; no free-form fracture.
+ */
+export const TEST_YARD_ROVER: AssemblyDefinition = {
+  id: 'test-yard-rover',
+  anchor: 'frame',
+  fragments: [
+    { id: 'frame', materialId: contentId('ferrous'), massKg: 80 },
+    { id: 'cover', materialId: contentId('aluminum'), massKg: 10 },
+    { id: 'coil', materialId: contentId('copper'), massKg: 14 },
+    { id: 'side', materialId: contentId('aluminum'), massKg: 9 },
+    { id: 'bracket', materialId: contentId('ferrous'), massKg: 3 },
+  ],
+  joints: [
+    { id: 'cover-left', between: ['frame', 'cover'] },
+    { id: 'cover-right', between: ['frame', 'cover'] },
+    { id: 'coil-mount', between: ['frame', 'coil'], requires: ['cover-left', 'cover-right'] },
+    { id: 'side-bolt', between: ['frame', 'side'] },
+    { id: 'bracket-weld', between: ['side', 'bracket'] },
+  ],
+};
+
+export const TEST_YARD_ROVER_LAYOUT: AssemblyLayout = {
+  fragments: {
+    frame: { position: { x: -6, y: 0.4, z: 4 }, halfExtents: { x: 0.9, y: 0.4, z: 0.6 } },
+    coil: { position: { x: -6.3, y: 0.95, z: 4 }, halfExtents: { x: 0.15, y: 0.15, z: 0.15 } },
+    cover: { position: { x: -6, y: 1.15, z: 4 }, halfExtents: { x: 0.7, y: 0.05, z: 0.5 } },
+    side: { position: { x: -6, y: 0.4, z: 4.65 }, halfExtents: { x: 0.8, y: 0.35, z: 0.05 } },
+    bracket: { position: { x: -5.6, y: 0.45, z: 4.75 }, halfExtents: { x: 0.1, y: 0.1, z: 0.05 } },
+  },
+  joints: {
+    'cover-left': { x: -6.65, y: 1.15, z: 4.45 },
+    'cover-right': { x: -5.35, y: 1.15, z: 4.45 },
+    'coil-mount': { x: -6.3, y: 0.82, z: 4.12 },
+    'side-bolt': { x: -6.7, y: 0.4, z: 4.71 },
+    'bracket-weld': { x: -5.6, y: 0.57, z: 4.81 },
+  },
+  fragmentNames: {
+    frame: 'Rover frame',
+    cover: 'Cover panel',
+    coil: 'Copper coil',
+    side: 'Side panel',
+    bracket: 'Bracket',
+  },
+};

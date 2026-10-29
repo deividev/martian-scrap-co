@@ -18,13 +18,15 @@ import checkerUrl from '../assets/textures/smoke-checker.png';
 import { FIRST_PASS_CONTENT } from '../content/firstPass';
 import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
-import { EntityIdAllocator } from '../domain/ids';
+import { AssemblyState } from '../domain/assembly';
+import { EntityIdAllocator, transactionId } from '../domain/ids';
 import { mergeFrames, type InputDevice } from '../input/actions';
 import { GamepadSource } from '../input/gamepadSource';
 import { DEFAULT_INPUT_SETTINGS } from '../input/inputSettings';
 import { KeyboardMouseSource } from '../input/keyboardMouseSource';
 import { MagneticCollector, type TargetFeedback } from '../simulation/collection/magneticCollector';
 import { pickTarget, type TargetPick } from '../simulation/collection/targeting';
+import { AssemblyBody } from '../simulation/handling/assemblyBody';
 import { CART_TUNING, Cart, type LoadResult } from '../simulation/handling/cart';
 import { ClaimRegistry } from '../simulation/handling/claims';
 import { GripController, type PlaceResult } from '../simulation/handling/gripController';
@@ -38,12 +40,15 @@ import { ScrapField } from '../simulation/scrap/scrapField';
 import {
   TEST_YARD_BLOCKS,
   TEST_YARD_RECOVERY_ZONES,
+  TEST_YARD_ROVER,
+  TEST_YARD_ROVER_LAYOUT,
   TEST_YARD_SPAWN,
   createTestYardProps,
   createTestYardScrap,
   yardBodySpec,
 } from '../simulation/yard/testYard';
 import { createRobotProxy } from './robotProxy';
+import { PropView } from './propView';
 import { MATERIAL_COLORS, ScrapPileView } from './scrapPileView';
 
 export interface TestYardHud {
@@ -53,8 +58,9 @@ export interface TestYardHud {
 }
 
 const PROMPTS: Record<InputDevice, string> = {
-  'keyboard-mouse': 'WASD move · Mouse look · E / click use · F unload · Q/R rotate · Space jump · Esc release mouse',
-  gamepad: 'Left stick move · Right stick look · X use · Y unload · LB/RB rotate · A jump · Menu pause',
+  'keyboard-mouse':
+    'WASD move · Mouse look · E / click use or cut · F unload · Q/R rotate · Space jump · Esc release mouse',
+  gamepad: 'Left stick move · Right stick look · X use or cut · Y unload · LB/RB rotate · A jump · Menu pause',
   none: 'Click to play · WASD or left stick to move',
 };
 
@@ -161,15 +167,39 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     claimed: 'Someone else is holding that.',
     unknown: '',
   };
-  const propMeshes = props.all().map((prop) => {
-    const { x, y, z } = prop.halfExtents;
-    const mesh = new Mesh(
-      new BoxGeometry(x * 2, y * 2, z * 2),
-      new MeshStandardMaterial({ color: MATERIAL_COLORS[prop.materialId] ?? '#ff00ff', roughness: 0.5 }),
-    );
-    scene.add(mesh);
-    return { prop, mesh };
-  });
+  const propView = new PropView(scene, props, world);
+  const rover = new AssemblyBody(
+    world,
+    props,
+    new AssemblyState(TEST_YARD_ROVER, () => allocator.allocate()),
+    TEST_YARD_ROVER_LAYOUT,
+  );
+  const fragmentMeshes = new Map(
+    rover.state.anchoredFragments().map((fragmentId) => {
+      const placement = TEST_YARD_ROVER_LAYOUT.fragments[fragmentId];
+      const material = TEST_YARD_ROVER.fragments.find((fragment) => fragment.id === fragmentId)?.materialId ?? '';
+      const h = placement?.halfExtents ?? { x: 0.1, y: 0.1, z: 0.1 };
+      const mesh = new Mesh(
+        new BoxGeometry(h.x * 2, h.y * 2, h.z * 2),
+        new MeshStandardMaterial({ color: MATERIAL_COLORS[material] ?? '#ff00ff', roughness: 0.55 }),
+      );
+      if (placement) mesh.position.set(placement.position.x, placement.position.y, placement.position.z);
+      scene.add(mesh);
+      return [fragmentId, mesh] as const;
+    }),
+  );
+  const jointMarkerMaterial = new MeshStandardMaterial({ color: '#f08a3c', emissive: '#7a3410' });
+  const jointMarkers = new Map(
+    TEST_YARD_ROVER.joints.map((joint) => {
+      const marker = new Mesh(new BoxGeometry(0.09, 0.09, 0.09), jointMarkerMaterial);
+      const position = TEST_YARD_ROVER_LAYOUT.joints[joint.id];
+      if (position) marker.position.set(position.x, position.y, position.z);
+      scene.add(marker);
+      return [joint.id, marker] as const;
+    }),
+  );
+  let cutCounter = 0;
+  const jointLabel = (id: string): string => id.replace('-', ' ');
   const PLACE_MESSAGES: Record<Exclude<PlaceResult, { ok: true }>['reason'], string> = {
     'not-holding': '',
     blocked: 'Cannot place here: something is in the way.',
@@ -249,6 +279,22 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
           noticeUntil = now + 1500;
         }
       }
+    } else if (rover.pickJoint(aim, player.characterHandle)) {
+      feedback = { state: 'none' };
+      const joint = rover.pickJoint(aim, player.characterHandle);
+      if (joint?.available) {
+        prompt = `Cut ${jointLabel(joint.jointId)}`;
+        if (frame.interact) {
+          cutCounter += 1;
+          rover.cut(joint.jointId, transactionId(`txn-cut${cutCounter.toString(36)}`));
+        }
+      } else if (joint) {
+        const blockers = TEST_YARD_ROVER.joints
+          .find((candidate) => candidate.id === joint.jointId)
+          ?.requires?.filter((id) => !rover.state.isCut(id))
+          .map(jointLabel);
+        prompt = `Blocked: cut ${blockers?.join(' and ') ?? 'other joints'} first`;
+      }
     } else {
       const loose = props.targets().filter((target) => !cart.loads.includes(target.id));
       const propPick = pickTarget(aim, loose, world, player.characterHandle);
@@ -303,12 +349,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     const cartRotation = world.bodyRotation(cart.body);
     cartGroup.position.set(cartPosition.x, cartPosition.y, cartPosition.z);
     cartGroup.quaternion.set(cartRotation.x, cartRotation.y, cartRotation.z, cartRotation.w);
-    for (const { prop, mesh } of propMeshes) {
-      const p = world.bodyPosition(prop.body);
-      const r = world.bodyRotation(prop.body);
-      mesh.position.set(p.x, p.y, p.z);
-      mesh.quaternion.set(r.x, r.y, r.z, r.w);
-    }
+    propView.sync();
+    const anchored = new Set(rover.state.anchoredFragments());
+    for (const [fragmentId, mesh] of fragmentMeshes) mesh.visible = anchored.has(fragmentId);
+    for (const [jointId, marker] of jointMarkers) marker.visible = rover.jointPosition(jointId) !== null;
     scrapView.sync();
     scrapView.highlight(feedback);
     if (feedbackLabel) {
@@ -324,6 +368,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     }
     canvas.dataset['collected'] = String(container.count);
     canvas.dataset['held'] = grip.held ?? '';
+    canvas.dataset['rover'] = JSON.stringify({
+      cut: TEST_YARD_ROVER.joints.filter((j) => rover.state.isCut(j.id)).map((j) => j.id),
+      chunks: rover.state.chunks().length,
+    });
     canvas.dataset['cart'] = JSON.stringify({ loads: cart.loads.length, pushing, recoveries: cart.recoveries });
     if (hud.container) {
       hud.container.textContent = `Container ${container.count}/${container.capacity}${container.isFull ? ' · FULL' : ''}`;

@@ -357,7 +357,9 @@ Check: Cut joints in alternative valid orders and retry identical commands.
 
 Requirements: PRD-008, PRD-019, PRD-021.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added the pure cutting model `src/domain/assembly.ts`: authored fragments and joints with an anchor and acyclic access requirements (validated: unknown references, duplicates, cycles, detached fragments, bad masses). `AssemblyState.cut(joint, txn)` cuts each joint at most once, releases anything no longer connected to the anchor as one chunk entity, splits a loose chunk into two new entities while retiring the old one (ids never reused), records every transaction result for retries and snapshots/restores without re-creating chunks. `AssemblyBody` mirrors it physically: anchored fragments are fixed bodies, released chunks become medium props sized to their fragments at their current place, and `pickJoint` uses an 8° cone, 2.6 m reach and line of sight. The test yard has a rover chassis (cover must come off before the copper coil; side panel carries a bracket) with joint markers and "Cut …" / "Blocked: cut … first" prompts; released chunks can be grabbed and carted. `MediumPropSet` can add/remove props; `PropView` renders them dynamically. Checks: 8 domain tests (access order, sub-assembly release and split, three alternative valid orders reaching the identical final layout, retried transaction returns the recorded result, already-cut/unknown refused, no id reuse and fragment conservation, snapshot restore) and 5 physics tests (chunk placement and mass, split replacement, no duplicate on retry, full dismantle, joint picking/blocked); in the running Electron app "Cut side bolt" released "Side panel + Bracket" as a grabbable chunk; `npm run check` 7/7.
 
 ### MSC-019 — Build representative benchmark fixture
 
