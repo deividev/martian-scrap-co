@@ -30,7 +30,7 @@ Pin exact library/native SDK versions only after the early compatibility test. R
 
 ## 2. Boundaries and planned structure
 
-The following are **planned paths**, not existing files or a scaffold created by this package:
+The following are **planned paths**; they are created by their tasks (`src/presentation/` exists since MSC-005, see each task Outcome):
 
 | Planned area | Responsibility | Forbidden dependency |
 |---|---|---|

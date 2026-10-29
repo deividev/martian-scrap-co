@@ -141,7 +141,9 @@ Check: Fresh local build/typecheck smoke with no external service dependency.
 
 Requirements: PRD-001, PRD-022.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Created the empty project from scratch: `package.json` (ESM, Node >=22.12), `package-lock.json`, strict `tsconfig.json` (noUncheckedIndexedAccess, exactOptionalPropertyTypes, verbatimModuleSyntax), `vite.config.ts` (relative base, dev server `127.0.0.1:5173`), `index.html` and `src/main.ts` with a Three.js toolchain smoke scene in `src/presentation/`. Pinned three 0.186.1, vite 8.3.5, typescript 6.0.3 (7.x rejected: typescript-eslint supports <6.1) with licenses in the [dependency register](dependencies.md). Checks: `npm ci` + `npm run build` (typecheck + build) pass with 0 vulnerabilities; dev server rendered the scene with no console errors. No reused game source.
 
 ### MSC-006 — Establish secure Electron boundaries
 

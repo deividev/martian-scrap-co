@@ -1,2 +1,9 @@
 # Local agent tooling caches
 .atl/
+
+# Dependencies and build output
+node_modules/
+dist/
+
+# Local agent/editor configuration
+.claude/

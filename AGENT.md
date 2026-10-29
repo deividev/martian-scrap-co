@@ -76,28 +76,34 @@ Concepts are not runtime screenshots, finished models or performance evidence. H
 ## What exists now
 
 ```text
-Martian Scrap Co/                 Current documentation package
+Martian Scrap Co/                 Project root
 |-- AGENT.md                     Canonical context and policy
 |-- AGENTS.md                    Codex entry: read AGENT.md
 |-- CLAUDE.md                    Claude entry: imports AGENT.md
-|-- docs/                        Four v1 planning documents
+|-- docs/                        Four planning documents, decisions/ records, dependency register
 |-- references/                  Six PNGs, three prompt MDs, four raw supplied guides
+|-- index.html, vite.config.ts   Vite entry and config (MSC-005)
+|-- package.json, package-lock.json, tsconfig.json
+|-- src/                         TypeScript source (toolchain smoke scene so far)
 `-- tools/validate-docs.ps1       Planning-package structural validator
 
-Future only, NOT created: src/, electron/, native/, tests/, assets-source/,
-game tooling, package.json, node_modules, repository/configuration and builds.
+Not created yet: electron/, native/, tests/, assets-source/ and packaged builds.
 ```
 
 The folder omits final punctuation for normal Windows compatibility; the product display name remains **Martian Scrap Co.**
 
-## Only runnable project command now
+## Runnable project commands
 
-From this project root:
+From this project root (Node.js >= 22.12):
 
 ```powershell
-powershell.exe -NoProfile -File .\tools\validate-docs.ps1
+npm install            # install pinned dependencies from the lockfile
+npm run dev            # Vite dev server on http://127.0.0.1:5173
+npm run typecheck      # strict TypeScript check
+npm run build          # typecheck + production build into dist/
+powershell.exe -NoProfile -File .	oolsalidate-docs.ps1
 ```
 
-The [validator](tools/validate-docs.ps1) checks this planning snapshot's files, authored links/import/context routing, four raw guide files, six PNGs and all 120 tasks/12 phases with tracked statuses (Planned, In progress, Blocked, Done; Done and Blocked require an Outcome). Only the exact raw guide files are treated as archived data rather than project-authored link dependencies. It derives root from its own location. It is **not game verification**; no game/npm test/build commands exist yet. Any future script names in the architecture are explicitly planned.
+The [validator](tools/validate-docs.ps1) checks this planning snapshot's files, authored links/import/context routing, four raw guide files, six PNGs and all 120 tasks/12 phases with tracked statuses (Planned, In progress, Blocked, Done; Done and Blocked require an Outcome). Only the exact raw guide files are treated as archived data rather than project-authored link dependencies. It derives root from its own location. It is **not game verification**. Adopted dependency versions and licenses are recorded in the [dependency register](docs/dependencies.md).
 
 All project-authored document/reference links and image sources are relative to their containing files. Art images use relative HTML image elements plus adjacent ordinary **Open reference** links; if a viewer suppresses HTML, use those links. Copy the **entire root** to relocate it; no authored Markdown dependency points to the original chat outputs. External web citations still require internet. Exact raw supplied guides intentionally retain historical paths/links as data, not runnable dependencies.

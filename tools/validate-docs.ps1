@@ -77,7 +77,12 @@ foreach ($name in $requiredPngs) { Assert-NonemptyFile ('references/' + $name) }
 foreach ($name in $requiredPrompts) { Assert-NonemptyFile ('references/' + $name) }
 foreach ($name in $rawReferenceNames) { Assert-NonemptyFile ('references/' + $name) }
 
-$markdownFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.md')
+# Third-party, build and local tool folders are not project-authored documentation.
+$excludedDirs = @('node_modules', 'dist', 'release', '.git', '.claude', '.atl')
+$markdownFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.md' | Where-Object {
+    $relative = $_.FullName.Substring($rootPrefix.Length)
+    $excludedDirs -notcontains ($relative -split '[\\/]', 2)[0]
+})
 foreach ($file in $markdownFiles) {
     $content = [System.IO.File]::ReadAllText($file.FullName)
     if ($rawReferencePaths -contains $file.FullName) { continue }
