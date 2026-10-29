@@ -28,6 +28,7 @@
     "validate:docs": "powershell.exe -NoProfile -File tools/validate-docs.ps1"
   },
   "devDependencies": {
+    "@dimforge/rapier3d-compat": "0.21.0",
     "@eslint/js": "10.0.1",
     "@types/node": "24.19.2",
     "@types/three": "0.186.0",

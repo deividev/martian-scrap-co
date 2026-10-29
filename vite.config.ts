@@ -4,7 +4,8 @@ import { defineConfig, type Plugin } from 'vite';
 // The Electron main process sets a looser header only for the loopback dev server.
 const PRODUCTION_CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  // Rapier compiles its WebAssembly module at runtime; this allows WASM only, not JS eval.
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self'",
   "img-src 'self' data: blob:",
   "connect-src 'self'",

@@ -17,6 +17,7 @@ Adopted third-party packages with exact versions, licenses and the compatibility
 | globals | 17.13.0 | MIT | dev | MSC-008 | Node globals for `.js`/`.mjs` tooling files. |
 | prettier | 3.9.9 | MIT | dev | MSC-008 | Formatter for code/config; Markdown and `references/` are excluded to keep authored and archived layout. |
 | zod | 4.6.7 | MIT | dev (bundled) | MSC-009 | Runtime validator for content packs (later saves and network payloads). Zero dependencies; strict objects reject unknown fields. Kept in devDependencies while only the Vite-bundled renderer uses it; move to dependencies when the main process validates saves (MSC-036). |
+| @dimforge/rapier3d-compat | 0.21.0 | Apache-2.0 | dev (bundled) | MSC-011 | Physics engine (rigid bodies, queries, joints). The compat build embeds WASM, requiring `'wasm-unsafe-eval'` in CSP. Identical probe results in Node, browser and packaged Electron. |
 | typescript | 6.0.3 | Apache-2.0 | dev | MSC-005 | Strict mode. **7.0.2 is the npm `latest`, but typescript-eslint 8.72.1 supports only `>=4.8.4 <6.1.0`**, so 6.0.3 keeps MSC-008 linting viable. Revisit when typescript-eslint supports 7.x. |
 
 ## Review notes

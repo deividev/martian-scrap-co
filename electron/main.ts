@@ -19,7 +19,7 @@ const devServerOrigin = app.isPackaged ? null : resolveDevServerUrl(process.env[
 // Production pages carry their own CSP meta tag (vite.config.ts); dev responses get this header.
 const DEV_CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   `connect-src 'self' ${devServerOrigin ? devServerOrigin.replace(/^http/, 'ws') : ''}`.trim(),

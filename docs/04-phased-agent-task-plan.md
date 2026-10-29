@@ -245,7 +245,9 @@ Check: Run identical basic bodies/queries in dev and packaged runtime.
 
 Requirements: PRD-005, PRD-008.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added the engine-neutral `PhysicsWorldPort` and a Rapier 0.21.0 (compat WASM) implementation in `src/simulation/physics/`, documented conventions (+Y up, SI units, Mars gravity 3.721 m/s², fixed 1/60 s step with capped catch-up, numeric handles never used as identity) and turned the smoke scene into a small falling-crates sandbox. CSP now allows `'wasm-unsafe-eval'` only. Check: the same probe (3 boxes, 600 steps, downward ray) gave identical results in Vitest/Node, the browser dev server and the packaged Electron app from a clean folder; 4 new tests. Details in [MSC-011 record](decisions/MSC-011-physics-conventions.md).
 
 ### MSC-012 — Separate visual density from active bodies
 
