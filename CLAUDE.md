@@ -2,7 +2,7 @@
 
 @AGENT.md
 
-The imported [AGENT.md](AGENT.md) is the canonical project context and work policy. This file is a lightweight entry point, not a second policy source. This is a planning-only package for a complete first-person Mars recycling game, solo/up to four online players, with host-owned shared progression and a buried surface-station finale. Three.js + Electron is chosen; game source/build commands do not exist and all 120 tasks remain Planned.
+The imported [AGENT.md](AGENT.md) is the canonical project context and work policy. This file is a lightweight entry point, not a second policy source. This is a planning-only package for a complete first-person Mars recycling game, solo/up to four online players, with host-owned shared progression and a buried surface-station finale. Three.js + Electron is chosen; sequential task execution started on 2026-10-29; check each task's Status in the task plan before assuming anything exists.
 
 ## Read order after the imported baseline
 

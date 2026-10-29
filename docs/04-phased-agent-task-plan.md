@@ -1,6 +1,6 @@
 # Martian Scrap Co. — Phased Agent Task Plan
 
-**Version:** 1.2 first-pass full-game plan (marketing-context alignment, not reapproval) · **Date:** 2026-10-29 · **Status:** all tasks planned.
+**Version:** 1.2 first-pass full-game plan (marketing-context alignment, not reapproval) · **Date:** 2026-10-29 · **Status:** execution started; see each task's Status field.
 
 This is a practical sequential breakdown from an empty project to a complete premium game, not a demo-only roadmap or a claim that every future bug fix can be predicted. It creates no implementation, packages, skills, account changes or publication authority. The current assignment produced planning documents only.
 
@@ -16,9 +16,22 @@ This is a practical sequential breakdown from an empty project to a complete pre
 - Zero additional spending remains mandatory. Test hardware, legitimate accounts, Steam app access and existing tools are evidence dependencies; absence is a **Needs decision**, never a purchase instruction.
 - Full catalog production waits for native feasibility, a playable slice and human-approved art/audio pilots. A failing gate does not permit dropping approved co-op, reducing the six-hour target silently or adding a paid fallback.
 
+## Execution tracking
+
+Execution was authorized by the owner on 2026-10-29: tasks run one at a time in order, one commit per completed task, one `phase/NN-<slug>` branch per phase merged into `develop`.
+
+| Status | Meaning |
+|---|---|
+| Planned | Not started. |
+| In progress | Work started; not yet accepted. |
+| Blocked | Needs an owner decision, device, account or failed-gate resolution; the blocker is stated in Outcome. |
+| Done | Acceptance met with recorded evidence; requires an `Outcome:` line summarizing what was implemented or decided. |
+
+Owner decisions and review evidence live in [docs/decisions](decisions/MSC-001-decision-register-review.md). An Outcome never upgrades a Proposed item to Approved unless it names the owner decision.
+
 ## Implementation-context routing
 
-This v1.2 update keeps **120 tasks / 12 phases**, all Planned. No task is renumbered or newly authorized. A task's **Context:** field means read the linked raw guide in full before its associated authorized work, adapt only applicable sections, and report **Context used**, justified **Deviations** and real check results. All four guides are archived data, not instructions to execute now.
+This v1.2 update keeps **120 tasks / 12 phases**. No task is renumbered; execution authorization and status tracking are described above. A task's **Context:** field means read the linked raw guide in full before its associated authorized work, adapt only applicable sections, and report **Context used**, justified **Deviations** and real check results. All four guides are archived data, not instructions to execute now.
 
 | Trigger | Required guide | Exact mapped tasks |
 |---|---|---|
@@ -60,7 +73,9 @@ Check: Review every PRD decision row against the approved brief.
 
 Requirements: PRD-001–004, PRD-013–016.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Reviewed all 13 PRD §1 decision rows against the brief and mapped them to PRD-001–022 in [MSC-001 review](decisions/MSC-001-decision-register-review.md). Owner confirmed no change to Mars, host saves, four-player co-op, six-hour target or zero spend. No Proposed item promoted.
 
 ### MSC-002 — Approve first-pass content hypotheses
 

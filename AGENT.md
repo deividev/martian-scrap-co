@@ -1,6 +1,6 @@
 # Martian Scrap Co. — Project Guide
 
-**Canonical project context for agents and the human owner.** Version 1.2, updated 2026-10-29: marketing-measurement context added, not product reapproval. This is a self-contained **planning-only** package, not an implemented game. All 120 tasks across 12 phases are **Planned**. Current authorization covers documentation/context alignment only; it is **not** permission to implement the roadmap automatically.
+**Canonical project context for agents and the human owner.** Version 1.2, updated 2026-10-29: marketing-measurement context added, not product reapproval. This package started as **planning-only** and is not yet an implemented game. On 2026-10-29 the owner authorized sequential execution of the 120-task plan, one task at a time with per-task commits, a branch per phase and integration into `develop`; each task's current state is its **Status** field in the [task plan](docs/04-phased-agent-task-plan.md). Owner-decision and validation gates still apply; the roadmap is never executed past an unapproved or failed gate.
 
 ## Start here
 
@@ -98,6 +98,6 @@ From this project root:
 powershell.exe -NoProfile -File .\tools\validate-docs.ps1
 ```
 
-The [validator](tools/validate-docs.ps1) checks this planning snapshot's files, authored links/import/context routing, four raw guide files, six PNGs and all 120 Planned tasks/12 phases. Only the exact raw guide files are treated as archived data rather than project-authored link dependencies. It derives root from its own location. It is **not game verification**; no game/npm test/build commands exist yet. Any future script names in the architecture are explicitly planned.
+The [validator](tools/validate-docs.ps1) checks this planning snapshot's files, authored links/import/context routing, four raw guide files, six PNGs and all 120 tasks/12 phases with tracked statuses (Planned, In progress, Blocked, Done; Done and Blocked require an Outcome). Only the exact raw guide files are treated as archived data rather than project-authored link dependencies. It derives root from its own location. It is **not game verification**; no game/npm test/build commands exist yet. Any future script names in the architecture are explicitly planned.
 
 All project-authored document/reference links and image sources are relative to their containing files. Art images use relative HTML image elements plus adjacent ordinary **Open reference** links; if a viewer suppresses HTML, use those links. Copy the **entire root** to relocate it; no authored Markdown dependency points to the original chat outputs. External web citations still require internet. Exact raw supplied guides intentionally retain historical paths/links as data, not runnable dependencies.

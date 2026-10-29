@@ -164,7 +164,10 @@ if ($texts.ContainsKey($planPath)) {
             }
         }
         $status = [regex]::Match($body, '(?m)^Status:\s*([^\r\n]+)\r?$').Groups[1].Value.Trim()
-        if ($status -cne 'Planned') { $failures.Add($id + ': status must be Planned') }
+        if (@('Planned', 'In progress', 'Blocked', 'Done') -cnotcontains $status) { $failures.Add($id + ': unknown status ' + $status) }
+        if ($status -in @('Done', 'Blocked') -and [regex]::Matches($body, '(?m)^Outcome:\s*\S').Count -ne 1) {
+            $failures.Add($id + ': ' + $status + ' requires one nonempty Outcome field')
+        }
         $deps = [regex]::Match($body, '(?m)^Depends on:\s*([^\r\n]+)\r?$').Groups[1].Value.Trim()
         if ($deps -eq 'none') { continue }
         foreach ($depValue in ($deps -split ',')) {
@@ -247,5 +250,5 @@ Write-Output ('PHASES: ' + $phaseCount)
 Write-Output ('FAILURES: ' + $failures.Count)
 foreach ($failure in $failures) { Write-Output ('FAIL: ' + $failure) }
 if ($failures.Count -gt 0) { exit 1 }
-Write-Output 'PASS: authored links/import, four archived guides, context routes/conditional gates, tasks/dependencies and Planned statuses.'
+Write-Output 'PASS: authored links/import, four archived guides, context routes/conditional gates, tasks/dependencies and tracked statuses.'
 exit 0
