@@ -13,6 +13,8 @@ export interface ActionFrame {
   /** Edge-triggered: true only on the frame the action was pressed. */
   readonly jump: boolean;
   readonly interact: boolean;
+  /** Context action, e.g. unload a cart. */
+  readonly secondary: boolean;
   readonly pause: boolean;
   /** Edge-triggered rotate step for a held object: -1, 0 or 1. */
   readonly rotate: -1 | 0 | 1;
@@ -24,6 +26,7 @@ export const EMPTY_FRAME: ActionFrame = Object.freeze({
   look: Object.freeze({ yaw: 0, pitch: 0 }),
   jump: false,
   interact: false,
+  secondary: false,
   pause: false,
   rotate: 0,
   device: 'none',
@@ -59,6 +62,7 @@ export function mergeFrames(primary: ActionFrame, secondary: ActionFrame): Actio
       secondary.look.pitch !== 0 ||
       secondary.jump ||
       secondary.interact ||
+      secondary.secondary ||
       secondary.pause ||
       secondary.rotate !== 0);
   return {
@@ -66,6 +70,7 @@ export function mergeFrames(primary: ActionFrame, secondary: ActionFrame): Actio
     look: { yaw: primary.look.yaw + secondary.look.yaw, pitch: primary.look.pitch + secondary.look.pitch },
     jump: primary.jump || secondary.jump,
     interact: primary.interact || secondary.interact,
+    secondary: primary.secondary || secondary.secondary,
     pause: primary.pause || secondary.pause,
     rotate: primary.rotate !== 0 ? primary.rotate : secondary.rotate,
     device: secondaryActive ? secondary.device : primary.device,

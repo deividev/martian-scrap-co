@@ -131,6 +131,15 @@ export async function createRapierWorld(options: RapierWorldOptions = {}): Promi
       bodyOf(handle).setGravityScale(scale, true);
     },
 
+    setBodyEnabled(handle: PhysicsBodyHandle, enabled: boolean): void {
+      bodyOf(handle).setEnabled(enabled);
+    },
+
+    bodyLinearVelocity(handle: PhysicsBodyHandle): Vec3 {
+      const { x, y, z } = bodyOf(handle).linvel();
+      return { x, y, z };
+    },
+
     castRay(origin: Vec3, direction: Vec3, maxDistance: number, excludeCharacter?: CharacterHandle): RayHit | null {
       assertFiniteVec('origin', origin);
       assertFiniteVec('direction', direction);

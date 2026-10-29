@@ -84,6 +84,9 @@ export interface PhysicsWorldPort {
   setBodyPose(handle: PhysicsBodyHandle, position: Vec3, rotation: Quat): void;
   /** 1 is normal gravity, 0 floats (held objects). */
   setGravityScale(handle: PhysicsBodyHandle, scale: number): void;
+  /** A disabled body neither simulates nor collides (objects riding in a cart). */
+  setBodyEnabled(handle: PhysicsBodyHandle, enabled: boolean): void;
+  bodyLinearVelocity(handle: PhysicsBodyHandle): Vec3;
   /** Casts a ray; `excludeCharacter` ignores that character's own capsule. */
   castRay(origin: Vec3, direction: Vec3, maxDistance: number, excludeCharacter?: CharacterHandle): RayHit | null;
   /** Creates a kinematic capsule driven by collision-corrected moves. */

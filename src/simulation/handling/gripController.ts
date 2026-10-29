@@ -1,6 +1,7 @@
 import type { EntityId } from '../../domain/ids';
 import type { TargetPick } from '../collection/targeting';
-import type { PhysicsWorldPort, Quat, Vec3 } from '../physics/physicsPort';
+import type { PhysicsWorldPort, Vec3 } from '../physics/physicsPort';
+import { wrapAngle as wrap, yawOf, yawQuat } from '../physics/quat';
 import { PLAYER_TUNING } from '../player/playerController';
 import type { ClaimRegistry, HolderId } from './claims';
 import type { MediumPropSet } from './mediumProps';
@@ -25,10 +26,6 @@ export type GrabResult =
 export type PlaceResult =
   | { readonly ok: true; readonly id: EntityId }
   | { readonly ok: false; readonly reason: 'not-holding' | 'blocked' | 'overlaps-player' };
-
-const yawOf = (q: Quat): number => Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.x * q.x + q.y * q.y));
-const yawQuat = (yaw: number): Quat => ({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
-const wrap = (angle: number): number => Math.atan2(Math.sin(angle), Math.cos(angle));
 
 /**
  * Medium-object grip (MSC-016). The held object stays a physical body steered toward a hold point,

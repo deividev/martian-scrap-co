@@ -341,7 +341,9 @@ Check: Drive loaded/empty routes and recover overturned/out-of-bounds cases.
 
 Requirements: PRD-005, PRD-014.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added `Cart` (`src/simulation/handling/cart.ts`): a 40 kg push cart claimed by one pusher, steered to a point 1.4 m ahead of the player with heading following the player; up to 4 loads / 60 kg (provisional). Loaded props are claimed by the cart and ride on bed slots with their bodies disabled, so they cannot fall out or be grabbed; `unloadAll` lines them up beside the cart with physics restored and claims released. Recovery assistance: the cart rights itself after more than 1 s tipped past 60°, and returns (with its loads) to its last settled spot if it leaves the yard. Physics port gained body enable/disable and linear velocity readback; quaternion helpers moved to `physics/quat.ts`; new `secondary` action (F / Y) unloads. Test yard has a cart: aim to push, drop a held prop over the bed to load, F to unload. Checks: 10 cart tests (empty route, turning, second-player push refused, full 4-item load carried along a route, mass/duplicate limits, claimed prop refused, unload with physics and claims restored, bed detection, tip-over self-righting with load kept, out-of-bounds return with loads); in the running Electron app a prop was grabbed, loaded (1/4), pushed 3.3 m and unloaded; `npm run check` 7/7.
 
 ### MSC-018 — Prototype designed cutting joints
 

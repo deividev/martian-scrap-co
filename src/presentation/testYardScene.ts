@@ -5,6 +5,7 @@ import {
   DirectionalLight,
   Euler,
   Fog,
+  Group,
   Mesh,
   MeshStandardMaterial,
   PerspectiveCamera,
@@ -24,6 +25,7 @@ import { DEFAULT_INPUT_SETTINGS } from '../input/inputSettings';
 import { KeyboardMouseSource } from '../input/keyboardMouseSource';
 import { MagneticCollector, type TargetFeedback } from '../simulation/collection/magneticCollector';
 import { pickTarget, type TargetPick } from '../simulation/collection/targeting';
+import { CART_TUNING, Cart, type LoadResult } from '../simulation/handling/cart';
 import { ClaimRegistry } from '../simulation/handling/claims';
 import { GripController, type PlaceResult } from '../simulation/handling/gripController';
 import { MediumPropSet } from '../simulation/handling/mediumProps';
@@ -51,8 +53,8 @@ export interface TestYardHud {
 }
 
 const PROMPTS: Record<InputDevice, string> = {
-  'keyboard-mouse': 'WASD move · Mouse look · E / click collect or grab · Q/R rotate · Space jump · Esc release mouse',
-  gamepad: 'Left stick move · Right stick look · X collect or grab · LB/RB rotate · A jump · Menu pause',
+  'keyboard-mouse': 'WASD move · Mouse look · E / click use · F unload · Q/R rotate · Space jump · Esc release mouse',
+  gamepad: 'Left stick move · Right stick look · X use · Y unload · LB/RB rotate · A jump · Menu pause',
   none: 'Click to play · WASD or left stick to move',
 };
 
@@ -136,7 +138,29 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   let feedback: TargetFeedback = { state: 'none' };
 
   const props = new MediumPropSet(world, createTestYardProps(allocator));
-  const grip = new GripController(world, props, new ClaimRegistry(), 'player-0');
+  const claims = new ClaimRegistry();
+  const grip = new GripController(world, props, claims, 'player-0');
+  const cart = new Cart(world, props, claims, allocator.allocate(), { x: 2, y: 0.4, z: 5 });
+  const cartGroup = new Group();
+  const cartBed = new Mesh(
+    new BoxGeometry(CART_TUNING.halfExtents.x * 2, CART_TUNING.halfExtents.y * 2, CART_TUNING.halfExtents.z * 2),
+    new MeshStandardMaterial({ color: '#f08a3c', roughness: 0.6 }),
+  );
+  const cartHandle = new Mesh(
+    new BoxGeometry(0.08, 0.5, CART_TUNING.halfExtents.z * 1.6),
+    new MeshStandardMaterial({ color: '#2f3a4f' }),
+  );
+  cartHandle.position.set(0, 0.3, CART_TUNING.halfExtents.z + 0.05);
+  cartHandle.rotation.y = Math.PI / 2;
+  cartGroup.add(cartBed, cartHandle);
+  scene.add(cartGroup);
+  const LOAD_MESSAGES: Record<Exclude<LoadResult, { ok: true }>['reason'], string> = {
+    full: 'Cart full (4 items).',
+    'too-heavy': 'Too heavy for the cart.',
+    'already-loaded': '',
+    claimed: 'Someone else is holding that.',
+    unknown: '',
+  };
   const propMeshes = props.all().map((prop) => {
     const { x, y, z } = prop.halfExtents;
     const mesh = new Mesh(
@@ -199,10 +223,26 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     const aim = { origin: aimView.eye, direction: forwardOf(aimView.yaw, aimView.pitch) };
     let prompt = '';
     if (frame.rotate !== 0) grip.rotate(frame.rotate);
-    if (grip.held !== null) {
+    const pushing = cart.pusher() === 'player-0';
+    if (pushing) {
       feedback = { state: 'none' };
-      prompt = `Holding ${props.get(grip.held)?.displayName ?? 'object'} · place`;
-      if (frame.interact) {
+      prompt = `Pushing cart (${cart.loads.length}/${CART_TUNING.maxLoadCount}) · use to let go · unload`;
+      if (frame.interact) cart.stopPush('player-0');
+      if (frame.secondary) cart.unloadAll();
+    } else if (grip.held !== null) {
+      feedback = { state: 'none' };
+      const heldId = grip.held;
+      const heldProp = props.get(heldId);
+      const overBed = heldProp ? cart.isOverBed(world.bodyPosition(heldProp.body)) : false;
+      prompt = `Holding ${heldProp?.displayName ?? 'object'} · ${overBed ? 'load into cart' : 'place'}`;
+      if (frame.interact && overBed) {
+        grip.forceRelease();
+        const loaded = cart.load(heldId);
+        if (!loaded.ok && LOAD_MESSAGES[loaded.reason]) {
+          notice = LOAD_MESSAGES[loaded.reason];
+          noticeUntil = now + 1500;
+        }
+      } else if (frame.interact) {
         const placed = grip.tryPlace(aimView.position);
         if (!placed.ok) {
           notice = PLACE_MESSAGES[placed.reason];
@@ -210,10 +250,22 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         }
       }
     } else {
-      const propPick = pickTarget(aim, props.targets(), world, player.characterHandle);
+      const loose = props.targets().filter((target) => !cart.loads.includes(target.id));
+      const propPick = pickTarget(aim, loose, world, player.characterHandle);
       const scrapPick = pickTarget(aim, scrap.activeTargets(), world, player.characterHandle);
-      const best = closer(propPick, scrapPick);
-      if (best && best === propPick) {
+      const cartPick = pickTarget(
+        aim,
+        [{ id: cart.id, body: cart.body, position: world.bodyPosition(cart.body) }],
+        world,
+        player.characterHandle,
+      );
+      const best = closer(cartPick, closer(propPick, scrapPick));
+      if (best && best === cartPick) {
+        feedback = { state: 'none' };
+        prompt = `Cart (${cart.loads.length}/${CART_TUNING.maxLoadCount}) · use to push · unload`;
+        if (frame.interact) cart.startPush('player-0');
+        if (frame.secondary) cart.unloadAll();
+      } else if (best && best === propPick) {
         feedback = { state: 'none' };
         prompt = `${props.get(best.candidate.id)?.displayName ?? 'Object'}: grab`;
         if (frame.interact) grip.tryGrab(best, aimView.yaw);
@@ -230,6 +282,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       const eye = player.view().eye;
       collector.fixedUpdate({ x: eye.x, y: eye.y - 0.4, z: eye.z });
       grip.fixedUpdate(eye, player.view().yaw);
+      cart.fixedUpdate(step, { holder: 'player-0', eye, yaw: player.view().yaw });
       world.step();
       props.recordSettled(grip.held === null ? undefined : new Set([grip.held]));
       props.recoverFallen();
@@ -246,6 +299,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       crate.mesh.position.set(p.x, p.y, p.z);
       crate.mesh.quaternion.set(r.x, r.y, r.z, r.w);
     }
+    const cartPosition = world.bodyPosition(cart.body);
+    const cartRotation = world.bodyRotation(cart.body);
+    cartGroup.position.set(cartPosition.x, cartPosition.y, cartPosition.z);
+    cartGroup.quaternion.set(cartRotation.x, cartRotation.y, cartRotation.z, cartRotation.w);
     for (const { prop, mesh } of propMeshes) {
       const p = world.bodyPosition(prop.body);
       const r = world.bodyRotation(prop.body);
@@ -267,6 +324,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     }
     canvas.dataset['collected'] = String(container.count);
     canvas.dataset['held'] = grip.held ?? '';
+    canvas.dataset['cart'] = JSON.stringify({ loads: cart.loads.length, pushing, recoveries: cart.recoveries });
     if (hud.container) {
       hud.container.textContent = `Container ${container.count}/${container.capacity}${container.isFull ? ' · FULL' : ''}`;
       hud.container.dataset['full'] = String(container.isFull);
