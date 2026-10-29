@@ -209,7 +209,9 @@ Check: Schema and unit tests reject negative, non-finite and unknown values.
 
 Requirements: PRD-005–011, PRD-019.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added `src/domain/`: branded string ids (`ContentId`, `EntityId`, `WorldId`, `TransactionId`) with a never-reusing persisted `EntityIdAllocator`, so numeric render/physics/native handles cannot act as identity; unit types (credits, quantity, kg, m, s) with explicit ranges that throw instead of clamping and a non-negative credit spend; material/tool definitions with `checkCompatibility` returning intelligible reasons. Added `src/content/schema.ts` (zod 4.6.7 strict schema with duplicate/unknown-reference checks and a PRD-011 rule that every material is collectable by a free-baseline tool) and the provisional MSC-002 pack in `src/content/firstPass.ts` (placeholder prices/masses; only ferrous is magnet-compatible). Checks: `npm run check` 7/7; 84 tests including rejection of negative, fractional, NaN/Infinity, string, unknown-field, unknown-id and duplicate values; lint verified to block `three` imports in `src/domain/`.
 
 ### MSC-010 — Approve baseline and early-risk sequence
 
