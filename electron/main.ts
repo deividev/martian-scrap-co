@@ -16,6 +16,18 @@ const indexFileUrl = pathToFileURL(appPaths.indexHtml).href;
 // Dev loading is only possible in an unpackaged run and only from a loopback origin.
 const devServerOrigin = app.isPackaged ? null : resolveDevServerUrl(process.env['MSC_DEV_SERVER_URL']);
 
+// Optional benchmark launch (MSC-019): `--benchmark=<preset>` and `--benchmark-seconds=<n>`, allowlisted.
+const BENCHMARK_PRESETS: ReadonlySet<string> = new Set(['baseline', 'dense']);
+function benchmarkQuery(argv: readonly string[]): Record<string, string> {
+  const value = (name: string): string | undefined =>
+    argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
+  const preset = value('benchmark');
+  if (!preset || !BENCHMARK_PRESETS.has(preset)) return {};
+  const seconds = Number(value('benchmark-seconds') ?? '15');
+  return { benchmark: preset, seconds: String(Number.isInteger(seconds) ? Math.min(120, Math.max(5, seconds)) : 15) };
+}
+const startupQuery = benchmarkQuery(process.argv);
+
 // Production pages carry their own CSP meta tag (vite.config.ts); dev responses get this header.
 const DEV_CSP = [
   "default-src 'self'",
@@ -88,9 +100,10 @@ function createMainWindow(): BrowserWindow {
   });
   window.once('ready-to-show', () => window.show());
   if (devServerOrigin) {
-    void window.loadURL(devServerOrigin);
+    const search = new URLSearchParams(startupQuery).toString();
+    void window.loadURL(search ? `${devServerOrigin}/?${search}` : devServerOrigin);
   } else {
-    void window.loadFile(appPaths.indexHtml);
+    void window.loadFile(appPaths.indexHtml, { query: startupQuery });
   }
   return window;
 }
