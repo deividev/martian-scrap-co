@@ -1,6 +1,7 @@
 import { contentId, type EntityIdAllocator } from '../../domain/ids';
 import type { BoxBodySpec, Quat, Vec3 } from '../physics/physicsPort';
 import type { RecoveryZone } from '../player/playerController';
+import type { MediumPropSpec } from '../handling/mediumProps';
 import type { ScrapClusterSpec } from '../scrap/scrapField';
 
 /** A static block of the movement test yard; shared by physics and presentation. */
@@ -92,4 +93,34 @@ export function createTestYardScrap(allocator: EntityIdAllocator): ScrapClusterS
     massKg: 1.5,
   }));
   return { id: 'test-yard-pile', pieces, decorativeInstances: 0 };
+}
+
+/** Medium props for grip tests (MSC-016): a panel, a housing and a cable spool box. */
+export function createTestYardProps(allocator: EntityIdAllocator): MediumPropSpec[] {
+  return [
+    {
+      id: allocator.allocate(),
+      materialId: contentId('aluminum'),
+      displayName: 'Aluminum panel',
+      position: { x: 3, y: 0.2, z: 2 },
+      halfExtents: { x: 0.45, y: 0.04, z: 0.32 },
+      massKg: 6,
+    },
+    {
+      id: allocator.allocate(),
+      materialId: contentId('polymer'),
+      displayName: 'Polymer housing',
+      position: { x: 4.2, y: 0.4, z: 2 },
+      halfExtents: { x: 0.3, y: 0.25, z: 0.3 },
+      massKg: 8,
+    },
+    {
+      id: allocator.allocate(),
+      materialId: contentId('copper'),
+      displayName: 'Copper spool box',
+      position: { x: 5.4, y: 0.4, z: 2 },
+      halfExtents: { x: 0.25, y: 0.25, z: 0.25 },
+      massKg: 12,
+    },
+  ];
 }

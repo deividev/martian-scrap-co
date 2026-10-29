@@ -23,7 +23,10 @@ import { GamepadSource } from '../input/gamepadSource';
 import { DEFAULT_INPUT_SETTINGS } from '../input/inputSettings';
 import { KeyboardMouseSource } from '../input/keyboardMouseSource';
 import { MagneticCollector, type TargetFeedback } from '../simulation/collection/magneticCollector';
-import { pickTarget } from '../simulation/collection/targeting';
+import { pickTarget, type TargetPick } from '../simulation/collection/targeting';
+import { ClaimRegistry } from '../simulation/handling/claims';
+import { GripController, type PlaceResult } from '../simulation/handling/gripController';
+import { MediumPropSet } from '../simulation/handling/mediumProps';
 import { PHYSICS_CONVENTIONS } from '../simulation/physics/conventions';
 import type { PhysicsBodyHandle } from '../simulation/physics/physicsPort';
 import { runPhysicsProbe } from '../simulation/physics/probe';
@@ -34,11 +37,12 @@ import {
   TEST_YARD_BLOCKS,
   TEST_YARD_RECOVERY_ZONES,
   TEST_YARD_SPAWN,
+  createTestYardProps,
   createTestYardScrap,
   yardBodySpec,
 } from '../simulation/yard/testYard';
 import { createRobotProxy } from './robotProxy';
-import { ScrapPileView } from './scrapPileView';
+import { MATERIAL_COLORS, ScrapPileView } from './scrapPileView';
 
 export interface TestYardHud {
   readonly hint: HTMLElement | null;
@@ -47,8 +51,8 @@ export interface TestYardHud {
 }
 
 const PROMPTS: Record<InputDevice, string> = {
-  'keyboard-mouse': 'WASD move · Mouse look · E / click collect · Space jump · Esc release mouse',
-  gamepad: 'Left stick move · Right stick look · X collect · A jump · Menu pause',
+  'keyboard-mouse': 'WASD move · Mouse look · E / click collect or grab · Q/R rotate · Space jump · Esc release mouse',
+  gamepad: 'Left stick move · Right stick look · X collect or grab · LB/RB rotate · A jump · Menu pause',
   none: 'Click to play · WASD or left stick to move',
 };
 
@@ -120,7 +124,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     PHYSICS_CONVENTIONS.marsGravity,
     TEST_YARD_RECOVERY_ZONES,
   );
-  const scrap = new ScrapField(world, [createTestYardScrap(new EntityIdAllocator())]);
+  const allocator = new EntityIdAllocator();
+  const scrap = new ScrapField(world, [createTestYardScrap(allocator)]);
   scrap.activateCluster('test-yard-pile');
   const scrapView = new ScrapPileView(scene, scrap, world);
   const container = new PortableContainer();
@@ -129,6 +134,27 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     accept: (item) => void container.add(item),
   });
   let feedback: TargetFeedback = { state: 'none' };
+
+  const props = new MediumPropSet(world, createTestYardProps(allocator));
+  const grip = new GripController(world, props, new ClaimRegistry(), 'player-0');
+  const propMeshes = props.all().map((prop) => {
+    const { x, y, z } = prop.halfExtents;
+    const mesh = new Mesh(
+      new BoxGeometry(x * 2, y * 2, z * 2),
+      new MeshStandardMaterial({ color: MATERIAL_COLORS[prop.materialId] ?? '#ff00ff', roughness: 0.5 }),
+    );
+    scene.add(mesh);
+    return { prop, mesh };
+  });
+  const PLACE_MESSAGES: Record<Exclude<PlaceResult, { ok: true }>['reason'], string> = {
+    'not-holding': '',
+    blocked: 'Cannot place here: something is in the way.',
+    'overlaps-player': 'Cannot place here: too close to you.',
+  };
+  let notice = '';
+  let noticeUntil = 0;
+  const closer = (a: TargetPick | null, b: TargetPick | null): TargetPick | null =>
+    !a ? b : !b ? a : a.angle <= b.angle ? a : b;
   const forwardOf = (yaw: number, pitch: number) => ({
     x: -Math.sin(yaw) * Math.cos(pitch),
     y: Math.sin(pitch),
@@ -170,11 +196,32 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     player.applyLook(frame);
 
     const aimView = player.view();
-    const direction = forwardOf(aimView.yaw, aimView.pitch);
-    feedback = collector.evaluate(
-      pickTarget({ origin: aimView.eye, direction }, scrap.activeTargets(), world, player.characterHandle),
-    );
-    if (frame.interact) collector.tryStartPull(feedback);
+    const aim = { origin: aimView.eye, direction: forwardOf(aimView.yaw, aimView.pitch) };
+    let prompt = '';
+    if (frame.rotate !== 0) grip.rotate(frame.rotate);
+    if (grip.held !== null) {
+      feedback = { state: 'none' };
+      prompt = `Holding ${props.get(grip.held)?.displayName ?? 'object'} · place`;
+      if (frame.interact) {
+        const placed = grip.tryPlace(aimView.position);
+        if (!placed.ok) {
+          notice = PLACE_MESSAGES[placed.reason];
+          noticeUntil = now + 1500;
+        }
+      }
+    } else {
+      const propPick = pickTarget(aim, props.targets(), world, player.characterHandle);
+      const scrapPick = pickTarget(aim, scrap.activeTargets(), world, player.characterHandle);
+      const best = closer(propPick, scrapPick);
+      if (best && best === propPick) {
+        feedback = { state: 'none' };
+        prompt = `${props.get(best.candidate.id)?.displayName ?? 'Object'}: grab`;
+        if (frame.interact) grip.tryGrab(best, aimView.yaw);
+      } else {
+        feedback = collector.evaluate(scrapPick);
+        if (frame.interact) collector.tryStartPull(feedback);
+      }
+    }
 
     // Fixed-step simulation with bounded catch-up.
     accumulator = Math.min(accumulator + dt, step * 5);
@@ -182,7 +229,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       player.fixedUpdate(frame.move, step);
       const eye = player.view().eye;
       collector.fixedUpdate({ x: eye.x, y: eye.y - 0.4, z: eye.z });
+      grip.fixedUpdate(eye, player.view().yaw);
       world.step();
+      props.recordSettled(grip.held === null ? undefined : new Set([grip.held]));
+      props.recoverFallen();
       accumulator -= step;
     }
 
@@ -196,18 +246,27 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       crate.mesh.position.set(p.x, p.y, p.z);
       crate.mesh.quaternion.set(r.x, r.y, r.z, r.w);
     }
+    for (const { prop, mesh } of propMeshes) {
+      const p = world.bodyPosition(prop.body);
+      const r = world.bodyRotation(prop.body);
+      mesh.position.set(p.x, p.y, p.z);
+      mesh.quaternion.set(r.x, r.y, r.z, r.w);
+    }
     scrapView.sync();
     scrapView.highlight(feedback);
     if (feedbackLabel) {
-      feedbackLabel.textContent =
+      const scrapText =
         feedback.state === 'compatible'
           ? `${feedback.material.symbol} ${feedback.material.displayName}: collect`
           : feedback.state === 'none'
             ? ''
             : `${feedback.material.symbol} ${feedback.reason}`;
-      feedbackLabel.dataset['state'] = feedback.state;
+      const showingNotice = now < noticeUntil;
+      feedbackLabel.textContent = showingNotice ? notice : prompt || scrapText;
+      feedbackLabel.dataset['state'] = showingNotice ? 'blocked' : prompt ? 'compatible' : feedback.state;
     }
     canvas.dataset['collected'] = String(container.count);
+    canvas.dataset['held'] = grip.held ?? '';
     if (hud.container) {
       hud.container.textContent = `Container ${container.count}/${container.capacity}${container.isFull ? ' · FULL' : ''}`;
       hud.container.dataset['full'] = String(container.isFull);

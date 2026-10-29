@@ -100,9 +100,35 @@ export async function createRapierWorld(options: RapierWorldOptions = {}): Promi
       return { x, y, z, w };
     },
 
+    isSleeping(handle: PhysicsBodyHandle): boolean {
+      return bodyOf(handle).isSleeping();
+    },
+
     setLinearVelocity(handle: PhysicsBodyHandle, velocity: Vec3): void {
       assertFiniteVec('velocity', velocity);
       bodyOf(handle).setLinvel(velocity, true);
+    },
+
+    setAngularVelocity(handle: PhysicsBodyHandle, velocity: Vec3): void {
+      assertFiniteVec('angular velocity', velocity);
+      bodyOf(handle).setAngvel(velocity, true);
+    },
+
+    setBodyPose(handle: PhysicsBodyHandle, position: Vec3, rotation: Quat): void {
+      assertFiniteVec('position', position);
+      if (![rotation.x, rotation.y, rotation.z, rotation.w].every(Number.isFinite)) {
+        throw new RangeError('rotation must be finite');
+      }
+      const body = bodyOf(handle);
+      body.setTranslation(position, true);
+      body.setRotation(rotation, true);
+      body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    },
+
+    setGravityScale(handle: PhysicsBodyHandle, scale: number): void {
+      if (!Number.isFinite(scale) || scale < 0 || scale > 10) throw new RangeError('gravity scale out of range');
+      bodyOf(handle).setGravityScale(scale, true);
     },
 
     castRay(origin: Vec3, direction: Vec3, maxDistance: number, excludeCharacter?: CharacterHandle): RayHit | null {

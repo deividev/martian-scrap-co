@@ -96,3 +96,17 @@ describe('GamepadSource', () => {
     expect(frame.move).toEqual({ x: 0, y: 0 });
   });
 });
+
+describe('rotate action', () => {
+  it('maps R/Q and RB/LB to single-frame rotate steps', () => {
+    const keyboard = new KeyboardMouseSource(DEFAULT_INPUT_SETTINGS);
+    keyboard.handleKeyDown('KeyR');
+    expect(keyboard.poll().rotate).toBe(1);
+    expect(keyboard.poll().rotate).toBe(0);
+    keyboard.handleKeyDown('KeyQ');
+    expect(keyboard.poll().rotate).toBe(-1);
+    const source = new GamepadSource(DEFAULT_INPUT_SETTINGS, () => [pad([0, 0, 0, 0], [4])]);
+    expect(source.poll(1 / 60).rotate).toBe(-1);
+    expect(source.poll(1 / 60).rotate).toBe(0);
+  });
+});

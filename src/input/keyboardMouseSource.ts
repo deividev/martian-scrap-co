@@ -10,9 +10,11 @@ export const KEYBOARD_BINDINGS = Object.freeze({
   jump: ['Space'],
   interact: ['KeyE', 'Mouse0'],
   pause: ['Escape', 'KeyP'],
+  rotateRight: ['KeyR'],
+  rotateLeft: ['KeyQ'],
 });
 
-type EdgeAction = 'jump' | 'interact' | 'pause';
+type EdgeAction = 'jump' | 'interact' | 'pause' | 'rotateRight' | 'rotateLeft';
 
 export class KeyboardMouseSource {
   readonly #held = new Set<string>();
@@ -34,7 +36,7 @@ export class KeyboardMouseSource {
     this.#touched = true;
     this.#held.add(code);
     if (repeat) return;
-    for (const action of ['jump', 'interact', 'pause'] as const) {
+    for (const action of ['jump', 'interact', 'pause', 'rotateRight', 'rotateLeft'] as const) {
       if ((KEYBOARD_BINDINGS[action] as readonly string[]).includes(code)) this.#pressed.add(action);
     }
   }
@@ -69,6 +71,7 @@ export class KeyboardMouseSource {
       jump: this.#pressed.has('jump'),
       interact: this.#pressed.has('interact'),
       pause: this.#pressed.has('pause'),
+      rotate: this.#pressed.has('rotateRight') ? 1 : this.#pressed.has('rotateLeft') ? -1 : 0,
       device: this.#touched ? 'keyboard-mouse' : 'none',
     };
     this.#pressed.clear();

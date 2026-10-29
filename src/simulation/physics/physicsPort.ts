@@ -74,8 +74,16 @@ export interface PhysicsWorldPort {
   step(): void;
   bodyPosition(handle: PhysicsBodyHandle): Vec3;
   bodyRotation(handle: PhysicsBodyHandle): Quat;
+  /** True when the engine has put the body to sleep (settled). */
+  isSleeping(handle: PhysicsBodyHandle): boolean;
   /** Sets a dynamic body's linear velocity in m/s and wakes it. */
   setLinearVelocity(handle: PhysicsBodyHandle, velocity: Vec3): void;
+  /** Sets a dynamic body's angular velocity in rad/s and wakes it. */
+  setAngularVelocity(handle: PhysicsBodyHandle, velocity: Vec3): void;
+  /** Teleports a body (recovery, resets); velocities are cleared. */
+  setBodyPose(handle: PhysicsBodyHandle, position: Vec3, rotation: Quat): void;
+  /** 1 is normal gravity, 0 floats (held objects). */
+  setGravityScale(handle: PhysicsBodyHandle, scale: number): void;
   /** Casts a ray; `excludeCharacter` ignores that character's own capsule. */
   castRay(origin: Vec3, direction: Vec3, maxDistance: number, excludeCharacter?: CharacterHandle): RayHit | null;
   /** Creates a kinematic capsule driven by collision-corrected moves. */

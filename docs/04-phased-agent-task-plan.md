@@ -325,7 +325,9 @@ Check: Pick/drop near edges, other props and player collision proxies.
 
 Requirements: PRD-005, PRD-008.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added `ClaimRegistry` (one holder per object; second claims fail instead of stealing; holder-only release; `releaseAll` for disconnects), `MediumPropSet` (dynamic medium props with recovery to the last settled, sleeping pose when they fall below −20 m) and `GripController`: the held object stays a physical body steered to a hold point 1.6 m ahead and 0.45 m below the eye (readable in first person), floats while held, rotates in 45° steps (new `rotate` action: Q/R, LB/RB) and cannot pass through walls or props. Placement is refused and the object kept when it is held back by an obstacle (`blocked`) or overlaps the player; a valid place restores gravity and releases the claim. Physics port gained sleep state, angular velocity, pose teleport and gravity scale. The test yard has three medium props; aim chooses between props and scrap by angle, with grab/holding/refusal prompts. Checks: 10 grip/claim tests (claim and hold point, claimed-by-other refusal, rotation, valid place, wall blocking + refused placement, player overlap refusal, props not passing through each other, edge drop recovered to the last settled pose not the release point) and a rotate input test; in the running Electron app the player aimed at "Polymer housing: grab", grabbed, rotated and placed it; `npm run check` 7/7. Observation for MSC-020: a held object at full follow speed can shove lighter props hard.
 
 ### MSC-017 — Prototype cart handling and recovery
 

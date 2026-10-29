@@ -14,6 +14,8 @@ export interface ActionFrame {
   readonly jump: boolean;
   readonly interact: boolean;
   readonly pause: boolean;
+  /** Edge-triggered rotate step for a held object: -1, 0 or 1. */
+  readonly rotate: -1 | 0 | 1;
   readonly device: InputDevice;
 }
 
@@ -23,6 +25,7 @@ export const EMPTY_FRAME: ActionFrame = Object.freeze({
   jump: false,
   interact: false,
   pause: false,
+  rotate: 0,
   device: 'none',
 });
 
@@ -56,13 +59,15 @@ export function mergeFrames(primary: ActionFrame, secondary: ActionFrame): Actio
       secondary.look.pitch !== 0 ||
       secondary.jump ||
       secondary.interact ||
-      secondary.pause);
+      secondary.pause ||
+      secondary.rotate !== 0);
   return {
     move,
     look: { yaw: primary.look.yaw + secondary.look.yaw, pitch: primary.look.pitch + secondary.look.pitch },
     jump: primary.jump || secondary.jump,
     interact: primary.interact || secondary.interact,
     pause: primary.pause || secondary.pause,
+    rotate: primary.rotate !== 0 ? primary.rotate : secondary.rotate,
     device: secondaryActive ? secondary.device : primary.device,
   };
 }
