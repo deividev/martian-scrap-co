@@ -7,9 +7,12 @@ import {
   MeshStandardMaterial,
   PerspectiveCamera,
   PlaneGeometry,
+  SRGBColorSpace,
   Scene,
+  TextureLoader,
   WebGLRenderer,
 } from 'three';
+import checkerUrl from '../assets/textures/smoke-checker.png';
 
 /** Toolchain smoke scene: proves TypeScript, Vite and Three.js render together. Not gameplay. */
 export function createSmokeScene(canvas: HTMLCanvasElement): () => void {
@@ -27,7 +30,15 @@ export function createSmokeScene(canvas: HTMLCanvasElement): () => void {
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
 
-  const crate = new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial({ color: '#8c939c' }));
+  // Loads a bundled file asset to prove relative asset URLs work from the packaged app.
+  const crateMaterial = new MeshStandardMaterial({ color: '#ffffff' });
+  new TextureLoader().load(checkerUrl, (texture) => {
+    texture.colorSpace = SRGBColorSpace;
+    crateMaterial.map = texture;
+    crateMaterial.needsUpdate = true;
+    canvas.dataset['assetsLoaded'] = 'true';
+  });
+  const crate = new Mesh(new BoxGeometry(1, 1, 1), crateMaterial);
   crate.position.y = 0.5;
   scene.add(crate);
 

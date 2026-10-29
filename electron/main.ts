@@ -3,11 +3,15 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { AppInfo } from '../src/platform/types.js';
 import { IPC_CHANNELS, isTrustedSenderUrl, resolveDevServerUrl, validateInvoke } from './ipcPolicy.js';
+import { resolveAppPaths } from './paths.js';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const preloadPath = path.join(here, 'preload.cjs');
-const indexHtmlPath = path.join(app.getAppPath(), 'dist', 'index.html');
-const indexFileUrl = pathToFileURL(indexHtmlPath).href;
+const appPaths = resolveAppPaths({
+  appPath: app.getAppPath(),
+  resourcesPath: process.resourcesPath,
+  isPackaged: app.isPackaged,
+  mainDir: path.dirname(fileURLToPath(import.meta.url)),
+});
+const indexFileUrl = pathToFileURL(appPaths.indexHtml).href;
 
 // Dev loading is only possible in an unpackaged run and only from a loopback origin.
 const devServerOrigin = app.isPackaged ? null : resolveDevServerUrl(process.env['MSC_DEV_SERVER_URL']);
@@ -70,7 +74,7 @@ function createMainWindow(): BrowserWindow {
     backgroundColor: '#1b1f2e',
     show: false,
     webPreferences: {
-      preload: preloadPath,
+      preload: appPaths.preload,
       contextIsolation: true,
       nodeIntegration: false,
       nodeIntegrationInWorker: false,
@@ -86,7 +90,7 @@ function createMainWindow(): BrowserWindow {
   if (devServerOrigin) {
     void window.loadURL(devServerOrigin);
   } else {
-    void window.loadFile(indexHtmlPath);
+    void window.loadFile(appPaths.indexHtml);
   }
   return window;
 }

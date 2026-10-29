@@ -83,13 +83,14 @@ Martian Scrap Co/                 Project root
 |-- docs/                        Four planning documents, decisions/ records, dependency register
 |-- references/                  Six PNGs, three prompt MDs, four raw supplied guides
 |-- index.html, vite.config.ts   Vite entry and config (MSC-005)
+|-- electron-builder.yml         Packaging allowlist, asarUnpack and fuses (MSC-007)
 |-- package.json, package-lock.json, tsconfig.json
 |-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006)
 |-- src/                         Renderer TypeScript: platform adapter, smoke scene
 |-- tests/                       Vitest unit tests
 `-- tools/                       validate-docs.ps1, run-electron-dev.mjs
 
-Not created yet: native/, assets-source/ and packaged builds.
+Generated, not committed: dist/, dist-electron/, release/. Not created yet: native/, assets-source/.
 ```
 
 The folder omits final punctuation for normal Windows compatibility; the product display name remains **Martian Scrap Co.**
@@ -106,6 +107,7 @@ npm run build          # typecheck + renderer build (dist/) + Electron build (di
 npm test               # Vitest unit tests
 npm run electron:start # build, then open the desktop app
 npm run electron:dev   # Electron against a running `npm run dev` server
+npm run package        # build + electron-builder Windows folder in release/win-unpacked/
 powershell.exe -NoProfile -File .	oolsalidate-docs.ps1
 ```
 

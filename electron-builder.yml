@@ -1,0 +1,42 @@
+# Single packaging pipeline (architecture §1, §4). Builds the Steam-ready Windows folder.
+appId: com.deividev.martianscrapco
+productName: Martian Scrap Co
+copyright: Copyright © 2026 David Seco Diaz
+artifactName: MartianScrapCo-${version}-${os}-${arch}.${ext}
+
+directories:
+  output: release
+
+# Allowlist: only compiled renderer, compiled Electron code and package.json enter app.asar.
+# Sources, docs, references, tests, tools, saves and source art are excluded by omission.
+files:
+  - dist/**/*
+  - dist-electron/electron/**/*
+  - package.json
+  - '!**/*.map'
+
+# Native modules (.node, Steam DLLs) must load from disk, not from inside the asar archive.
+asar: true
+asarUnpack:
+  - native/**
+  - '**/*.node'
+
+electronLanguages:
+  - en-US
+
+# Harden the shipped binary: no ELECTRON_RUN_AS_NODE, no NODE_OPTIONS, no --inspect,
+# load only from app.asar and verify its integrity.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+
+win:
+  target:
+    - target: dir
+      arch: x64
+  # Zero-spend: no code-signing certificate is assumed (architecture §4).
+  signAndEditExecutable: true

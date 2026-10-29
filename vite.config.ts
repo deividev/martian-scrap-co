@@ -41,5 +41,7 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     target: 'es2022',
+    // Keep assets as real files so packaged relative loading is exercised.
+    assetsInlineLimit: 0,
   },
 });

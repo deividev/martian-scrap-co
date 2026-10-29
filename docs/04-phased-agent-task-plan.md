@@ -177,7 +177,9 @@ Requirements: PRD-021–022.
 
 Context: [Co-op guide](../references/online-coop.txt) §§1, 3; architecture §§4, 11.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added electron-builder 26.17.0 as the single pipeline (`npm run package` → `release/win-unpacked/`, Windows x64 `dir` target) with an asar allowlist (`dist`, `dist-electron/electron`, `package.json`), `asarUnpack` for future `native/**`/`.node` files, hardened Electron fuses and the `resolveAppPaths()` production resolver (`electron/paths.ts`, 3 tests). three moved to devDependencies so the package carries no `node_modules`. A bundled PNG proves relative asset loading. Checks: asar contents listed with no sources/docs/tests/saves/art; the package copied to a clean temp folder launched without a dev server, loaded the texture and preload bridge with CSP active and no console errors; RUN_AS_NODE fuse effective. Details in [MSC-007 record](decisions/MSC-007-packaging.md).
 
 ### MSC-008 — Create local verification and CI-equivalent checks
 

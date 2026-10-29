@@ -4,7 +4,8 @@ Adopted third-party packages with exact versions, licenses and the compatibility
 
 | Package | Version | License | Kind | Adopted in | Reason / compatibility notes |
 |---|---|---|---|---|---|
-| three | 0.186.1 | MIT | runtime | MSC-005 | Approved rendering library. WebGLRenderer only; WebGPU is not a launch dependency. |
+| three | 0.186.1 | MIT | dev (bundled) | MSC-005 | Approved rendering library. WebGLRenderer only; WebGPU is not a launch dependency. Moved to devDependencies at MSC-007 because Vite bundles it into the renderer; nothing ships in `node_modules`. |
+| electron-builder | 26.17.0 | MIT | dev | MSC-007 | Single packaging pipeline. 26.18.x was under two weeks old. Downloads the Electron zip for packaging (free, from GitHub releases). |
 | @types/three | 0.186.0 | MIT | dev | MSC-005 | Type definitions matching the three 0.186 line. |
 | vite | 8.3.5 | MIT | dev | MSC-005 | Build/dev server. Requires Node `^20.19.0 \|\| >=22.12.0`; local Node is 22.12.0. Relative `base: './'` for packaged local loading; dev server bound to `127.0.0.1:5173`. |
 | electron | 44.10.0 | MIT | dev (runtime shell) | MSC-006 | Approved desktop runtime. Ships Chromium 152 and Node 24.22.1. 45.1.0 was only eight days old, so the supported 44 line was chosen. |
