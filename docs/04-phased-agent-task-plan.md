@@ -125,7 +125,9 @@ Requirements: PRD-016–022.
 
 Context: [Co-op guide](../references/online-coop.txt) §§3, 8, 10; [Steam Voice guide](../references/steam-voice-steps.md) §12.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Owner approved the [MSC-004 policy](decisions/MSC-004-personal-progression-test-access.md): host owns all gameplay progression; robot color, Steam achievements (also as guest, idempotent) and per-device local settings are personal; no leaderboards or personal gameplay unlocks. Access inventory: controller available; **no Steamworks App ID, no second account/device on another network, no Steam Deck** — recorded blockers for MSC-025–030 and device gates, not purchases. Microphone inapplicable (voice deferred). PRD-016 updated.
 
 ### MSC-005 — Create the empty TypeScript and Vite project
 

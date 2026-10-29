@@ -134,7 +134,7 @@ First expose the station access and its identity plaque. Next remove outer utili
 
 ## 6. Cooperative product contract
 
-**PRD-016 — Session ownership (Approved).** One host owns the world, currency, equipment and upgrades; guests contribute only to that campaign. Solo can reopen the host's campaign. A guest starting independently creates a separate world, never a copy of the host's progress. Personal cosmetics, settings and achievement persistence are **Proposed policy**, not approved campaign carryover.
+**PRD-016 — Session ownership (Approved).** One host owns the world, currency, equipment and upgrades; guests contribute only to that campaign. Solo can reopen the host's campaign. A guest starting independently creates a separate world, never a copy of the host's progress. Personal cosmetics, settings and achievement persistence follow the **policy approved at MSC-004** ([record](decisions/MSC-004-personal-progression-test-access.md)): robot color and Steam achievements are personal, settings stay local per device, no leaderboards or personal gameplay unlocks; none of it is campaign carryover.
 
 **PRD-017 — Joining and privacy (Approved policy at MSC-003; Validation required).** Detailed rules: [MSC-003 policy](decisions/MSC-003-session-privacy-spending.md). Start with private/friends-invite sessions using Steam invitations; public browsing or short codes are not assumed launch requirements. Show host identity, current occupancy and host-save ownership before joining. Handle invitations while open and when launched from closed state. Full lobbies, denied access and incompatible protocol versions return clear recoverable messages. No custom account or paid server is proposed.
 
