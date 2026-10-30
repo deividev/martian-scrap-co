@@ -104,3 +104,17 @@ Raised by the owner with the approval (2026-10-30). They must be done before MSC
 | R2 | Improve the cart model. | Same style reference; keep the collider and handling unchanged unless a change is reviewed. |
 | R3 | Improve the scenery around the yard and base. | Ground, rocks, mesas, station and base area. |
 | R4 | Build the giant scrap mountain from real material pieces, mixed small, medium and large, each with real collision. | Replaces the decorative instances plus heightfield. Must respect the MSC-019 budgets (≤ 300 awake bodies, draw calls ≤ 150): pieces stay asleep or static until disturbed, are activated by area, and the dense benchmark is re-run as evidence. Small pieces stay collectable, medium ones breakable, large ones cuttable. |
+
+### Follow-up results (2026-10-30)
+
+| # | Result |
+|---|---|
+| R1 | New machine models anchored on the gameplay concept and the stylized press: sorting bay (one bay per material, cream sign with the material icon, pile that follows the bin count), intake hopper with conveyor, yellow/blue compactor press with control box and beacon, grated output deck, pressed-piece bales on yellow pallets, navy/yellow sale machine. The base is laid out in flow order facing the yard: compactor, sorting bay, hopper, sale machine. [Review](../../art/sculpt/base/review.md). |
+| R2 | Cart rebuilt like the concept (yellow tub, dark rim and bumpers, hub wheels, push handle); collider and handling unchanged. |
+| R3 | Layered rocks, stepped mesas, ribbed shipping containers and floodlights (all with colliders), ground tone patches, grated base floor, sun moved so machine fronts are lit. |
+| R4 | The mountain is now real pieces: about 1,200 large and medium parts plus about 1,000 small pieces in solid clusters, every one with a collider, stacked on a visible core; the slope follows the mountain shape (stacking is capped) so the rim can be worked from the ground. Small pieces wake near the player and are vacuumed as usual; medium parts are grabbed or broken/cut; large parts are cut into small pieces of their material. A part is blocked only while a large part rests on it; medium parts resting on a part that leaves become falling props, so nothing floats. The layout is deterministic from a seed (a save only needs changed ids). |
+
+**In-app evidence (Electron, reference PC):** a medium aluminum part was grabbed and placed; a large iron part with medium parts on top was cut in a held 4 s cut into 12 iron pieces and the parts on top fell as props; a buried part shows "tiene piezas encima, retíralas primero". Simulation stayed at p95 0.8–1.2 ms, p99 ≤ 1.8 ms, 0 awake bodies at rest (19 briefly after a cut), active pieces 236–293 at the mountain foot (≤ 300).
+
+**Budget not met:** draw calls fell from about 1,100 to 186–233 (static batching with baked vertex colors, instanced scrap and mountain, small pieces without shadows), still above the accepted ≤ 150. Remaining cost: the three crew robots (36), base and scenery batches (36), mountain/scrap instancing (about 40), plus the shadow pass. Triangles are about 1.0 M. Per the project rule this needs an owner decision before scale-up: keep reducing (robot atlas/merging, fewer silhouettes per material, shadow distance) or revise the test-yard budget.
+
