@@ -26,6 +26,8 @@ export interface BoxBodySpec {
   readonly massKg?: number;
   readonly friction?: number;
   readonly restitution?: number;
+  /** Dynamic bodies may fall asleep when slow (default true); offline settling turns it off. */
+  readonly canSleep?: boolean;
 }
 
 /** Fixed terrain surface sampled from a height function over a rectangle (e.g. the scrap mountain). */
@@ -37,6 +39,8 @@ export interface HeightfieldSpec {
   readonly cols: number;
   /** World-space height above `center.y` at a world (x, z) position. */
   readonly height: (x: number, z: number) => number;
+  /** Surface friction; defaults to the engine default. */
+  readonly friction?: number;
 }
 
 export interface Quat {

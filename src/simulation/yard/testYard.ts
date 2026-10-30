@@ -3,7 +3,6 @@ import { contentId, type EntityIdAllocator } from '../../domain/ids';
 import type { BoxBodySpec, Quat, Vec3 } from '../physics/physicsPort';
 import type { RecoveryZone } from '../player/playerController';
 import type { AssemblyLayout } from '../handling/assemblyBody';
-import { mulberry32 } from '../benchmark/denseYardFixture';
 import type { BreakableSpec } from '../handling/breakables';
 import type { MediumPropSpec } from '../handling/mediumProps';
 import type { ScrapClusterSpec } from '../scrap/scrapField';
@@ -182,48 +181,10 @@ export const TEST_YARD_ROVER_LAYOUT: AssemblyLayout = {
   },
 };
 
-const FOOT_MATERIALS = [
-  'ferrous',
-  'ferrous',
-  'ferrous',
-  'ferrous',
-  'aluminum',
-  'copper',
-  'polymer',
-  'heliofoil',
-  'regolith-ceramic',
-];
-
 /** Ground position just outside the scrap mountain's edge at a given x (plus an offset toward the yard). */
 export function mountainFootZ(x: number, offset: number): number {
   const ratio = Math.min(1, Math.abs(x - SCRAP_MOUNTAIN.center.x) / SCRAP_MOUNTAIN.radiusX);
   return SCRAP_MOUNTAIN.center.z + SCRAP_MOUNTAIN.radiusZ * Math.sqrt(1 - ratio * ratio) + offset;
-}
-
-/**
- * Many small pieces spilled at the foot of the scrap mountain for the start of the game (owner feedback
- * 2026-10-30). Clusters start dormant and are activated when the player comes near.
- */
-export function createMountainFootScrap(allocator: EntityIdAllocator): ScrapClusterSpec[] {
-  const random = mulberry32(7);
-  return [-15, -9, -3, 3, 9, 15].map((cx, clusterIndex) => {
-    const cz = mountainFootZ(cx, 2.2);
-    return {
-      id: `mountain-foot-${clusterIndex}`,
-      decorativeInstances: 0,
-      pieces: Array.from({ length: 36 }, (_, index) => ({
-        id: allocator.allocate(),
-        materialId: contentId(FOOT_MATERIALS[Math.floor(random() * FOOT_MATERIALS.length)] ?? 'ferrous'),
-        position: {
-          x: cx + (random() - 0.5) * 4.5,
-          y: 0.12 + Math.floor(index / 18) * 0.25 + random() * 0.1,
-          z: cz + (random() - 0.5) * 2.5,
-        },
-        halfExtents: { x: 0.08 + random() * 0.06, y: 0.05 + random() * 0.05, z: 0.08 + random() * 0.06 },
-        massKg: 0.8 + random() * 1.4,
-      })),
-    };
-  });
 }
 
 /** Medium junk that breaks into small pieces of several materials (for the early-mid game). */

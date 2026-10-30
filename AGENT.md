@@ -113,6 +113,7 @@ npm run check          # all local checks with bounded logs in .check-logs/ (-- 
 npm run electron:start # build, then open the desktop app
 npm run electron:dev   # Electron against a running `npm run dev` server
 npm run package        # build + electron-builder Windows folder in release/win-unpacked/
+npm run bake:mountain  # re-settle the scrap mountain with the game physics; rewrites src/simulation/yard/scrapMountain.baked.json
 # Benchmark: append ?benchmark=baseline|dense to the dev URL, or run the packaged exe with --benchmark=dense --benchmark-seconds=20
 powershell.exe -NoProfile -File .	oolsalidate-docs.ps1
 ```

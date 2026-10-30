@@ -3,7 +3,10 @@ import { EntityIdAllocator, contentId } from '../../src/domain/ids';
 import type { PhysicsWorldPort } from '../../src/simulation/physics/physicsPort';
 import { createRapierWorld } from '../../src/simulation/physics/rapierWorld';
 import { ScrapField } from '../../src/simulation/scrap/scrapField';
-import { SCRAP_MOUNTAIN, mountainHeight } from '../../src/simulation/yard/backdrop';
+import { BoundsGrid, boxBounds, mayRestOn } from '../../src/simulation/physics/boxSupport';
+import { IDENTITY_QUAT } from '../../src/simulation/physics/quat';
+import { addBackdropColliders, createBackdropLayout } from '../../src/simulation/yard/backdrop';
+import { mountainFootZ } from '../../src/simulation/yard/testYard';
 import { ScrapMountain, createScrapMountainLayout } from '../../src/simulation/yard/scrapMountain';
 
 const STATION = { x: -6, z: -46, radius: 9 };
@@ -12,31 +15,83 @@ afterEach(() => {
   for (const world of worlds.splice(0)) world.dispose();
 });
 
-describe('scrap mountain layout (owner follow-up R4)', () => {
-  const layout = createScrapMountainLayout(new EntityIdAllocator(), STATION);
+describe('settled scrap mountain (owner follow-up R4, physics check 2026-10-30)', () => {
+  const layout = createScrapMountainLayout(new EntityIdAllocator());
+  const small = layout.smallClusters.flatMap((cluster) => cluster.pieces);
 
-  it('is deterministic and mixes large, medium and small pieces of every material', () => {
-    const again = createScrapMountainLayout(new EntityIdAllocator(), STATION);
-    expect(again.pieces.map((piece) => piece.position)).toEqual(layout.pieces.map((piece) => piece.position));
-    const large = layout.pieces.filter((piece) => piece.size === 'large');
-    const medium = layout.pieces.filter((piece) => piece.size === 'medium');
-    const small = layout.smallClusters.flatMap((cluster) => cluster.pieces);
-    expect(large.length).toBeGreaterThan(250);
-    expect(medium.length).toBeGreaterThan(400);
-    expect(small.length).toBeGreaterThan(800);
+  it('mixes large, medium and many small pieces of every material, with stable ids', () => {
+    const again = createScrapMountainLayout(new EntityIdAllocator());
+    expect(again.pieces.map((piece) => piece.id)).toEqual(layout.pieces.map((piece) => piece.id));
+    expect(layout.pieces.filter((piece) => piece.size === 'large').length).toBeGreaterThan(60);
+    expect(layout.pieces.filter((piece) => piece.size === 'medium').length).toBeGreaterThan(300);
+    expect(small.length).toBeGreaterThan(5000);
     const materials = new Set([...layout.pieces, ...small].map((piece) => piece.materialId));
     expect(materials.size).toBe(6);
     expect(layout.smallClusters.every((cluster) => cluster.solid === true)).toBe(true);
+    for (const piece of layout.pieces) {
+      expect(Math.hypot(piece.position.x - STATION.x, piece.position.z - STATION.z)).toBeGreaterThan(7);
+    }
   });
 
-  it('stacks every piece on the core or on earlier pieces, keeping the station clear', () => {
-    const order = new Map(layout.pieces.map((piece, index) => [piece.id, index]));
-    for (const [index, piece] of layout.pieces.entries()) {
-      for (const below of piece.restsOn) expect(order.get(below)).toBeLessThan(index);
-      const core = mountainHeight(piece.position.x, piece.position.z) * SCRAP_MOUNTAIN.colliderScale;
-      expect(piece.position.y + piece.halfExtents.y).toBeGreaterThan(core);
-      expect(Math.hypot(piece.position.x - STATION.x, piece.position.z - STATION.z)).toBeGreaterThan(8);
+  it('buries most parts under small pieces', () => {
+    const grid = new BoundsGrid<number>();
+    const smallBounds = small.map((piece) =>
+      boxBounds({
+        position: piece.position,
+        rotation: piece.rotation ?? IDENTITY_QUAT,
+        halfExtents: piece.halfExtents,
+      }),
+    );
+    smallBounds.forEach((bounds, index) => grid.set(index, bounds));
+    const covered = layout.pieces.filter((piece) => {
+      const lower = boxBounds(piece);
+      return [...grid.near(lower, 0.1)].some((index) => {
+        const upper = smallBounds[index];
+        return upper !== undefined && mayRestOn(upper, lower);
+      });
+    });
+    expect(covered.length / layout.pieces.length).toBeGreaterThan(0.7);
+  });
+
+  it('is at rest: whole areas simulated as dynamic bodies neither move, overlap nor fall', async () => {
+    const world = await createRapierWorld();
+    worlds.push(world);
+    addBackdropColliders(world, createBackdropLayout());
+    // Four mountain areas and the starter spill at the foot wake; everything else stays fixed, as in the game.
+    const areas = [
+      { x: 0, z: -24 },
+      { x: 14, z: -36 },
+      { x: 3, z: mountainFootZ(3, 2.2) },
+      { x: -20, z: -40 },
+      { x: 10, z: -50 },
+    ];
+    const inArea = (p: { x: number; z: number }): boolean =>
+      areas.some((area) => Math.hypot(p.x - area.x, p.z - area.z) < 5);
+    // As in the game, medium and large parts stay fixed until worked; small pieces wake when disturbed.
+    const all = [
+      ...layout.pieces.map((piece) => ({ ...piece, small: false })),
+      ...small.map((piece) => ({ ...piece, rotation: piece.rotation ?? IDENTITY_QUAT, small: true })),
+    ];
+    const dynamic: { handle: ReturnType<typeof world.addBox>; start: { x: number; y: number; z: number } }[] = [];
+    for (const piece of all) {
+      const awake = piece.small && inArea(piece.position);
+      const handle = world.addBox({
+        kind: awake ? 'dynamic' : 'fixed',
+        position: piece.position,
+        rotation: piece.rotation,
+        halfExtents: piece.halfExtents,
+        massKg: piece.massKg,
+      });
+      if (awake) dynamic.push({ handle, start: piece.position });
     }
+    expect(dynamic.length).toBeGreaterThan(150);
+    for (let i = 0; i < 90; i += 1) world.step();
+    const moved = dynamic.map(({ handle, start }) => {
+      const p = world.bodyPosition(handle);
+      return Math.hypot(p.x - start.x, p.y - start.y, p.z - start.z);
+    });
+    const worst = Math.max(...moved);
+    expect(worst).toBeLessThan(0.05);
   });
 });
 
@@ -44,7 +99,7 @@ describe('ScrapMountain', () => {
   it('gives every part a collider, blocks parts under a large part and frees medium parts on top', async () => {
     const world = await createRapierWorld();
     worlds.push(world);
-    const layout = createScrapMountainLayout(new EntityIdAllocator(), STATION);
+    const layout = createScrapMountainLayout(new EntityIdAllocator());
     const mountain = new ScrapMountain(world, layout.pieces);
     const underLarge = layout.pieces.filter((piece) => mountain.blockers(piece.id).length > 0);
     for (const piece of underLarge) {
@@ -107,7 +162,7 @@ describe('ScrapMountain', () => {
   it('finds embedded parts near a point for aiming', async () => {
     const world = await createRapierWorld();
     worlds.push(world);
-    const layout = createScrapMountainLayout(new EntityIdAllocator(), STATION);
+    const layout = createScrapMountainLayout(new EntityIdAllocator());
     const mountain = new ScrapMountain(world, layout.pieces);
     const sample = layout.pieces[Math.floor(layout.pieces.length / 2)];
     expect(sample).toBeDefined();
@@ -144,5 +199,84 @@ describe('ScrapMountain', () => {
     field.deactivateCluster('mountain-test');
     expect(field.metrics()).toMatchObject({ solidDormant: 1, physicsBodies: 0 });
     expect(field.snapshot().clusters[0]?.solid).toBe(true);
+  });
+});
+
+describe('ScrapField demand waking (mountain physics check 2026-10-30)', () => {
+  const column = async () => {
+    const world = await createRapierWorld();
+    worlds.push(world);
+    world.addBox({ kind: 'fixed', position: { x: 0, y: -0.5, z: 0 }, halfExtents: { x: 5, y: 0.5, z: 5 } });
+    const ids = new EntityIdAllocator();
+    // Three pieces stacked on the ground, plus one off to the side.
+    const pieces = [0.1, 0.3, 0.5, 0.1].map((y, index) => ({
+      id: ids.allocate(),
+      materialId: contentId('ferrous'),
+      position: { x: index === 3 ? 2 : 0, y, z: 0 },
+      halfExtents: { x: 0.1, y: 0.1, z: 0.1 },
+      massKg: 1,
+    }));
+    const field = new ScrapField(world, [{ id: 'pile-test', decorativeInstances: 0, solid: true, pieces }]);
+    return { world, field, pieces };
+  };
+
+  it('offers dormant pieces as targets with their fixed collider', async () => {
+    const { field, pieces } = await column();
+    const near = field.targetsNear({ x: 0, y: 0.3, z: 0 }, 1);
+    expect(near.map((target) => target.id).sort()).toEqual(
+      pieces
+        .slice(0, 3)
+        .map((piece) => piece.id)
+        .sort(),
+    );
+    expect(field.activeCount).toBe(0);
+  });
+
+  it('wakes a disturbed piece and everything resting on it, but nothing beside it', async () => {
+    const { field, pieces } = await column();
+    const [bottom, , top, side] = pieces;
+    if (!bottom || !top || !side) return;
+    expect(field.disturb(bottom.id)).toBe(3);
+    expect(field.piece(top.id)?.state).toBe('active');
+    expect(field.piece(side.id)?.state).toBe('dormant');
+  });
+
+  it('wakes what rested on a part that leaves and on a collected piece', async () => {
+    const { field, pieces } = await column();
+    const [bottom, middle, top] = pieces;
+    if (!bottom || !middle || !top) return;
+    expect(field.wakeAbove({ position: top.position, rotation: IDENTITY_QUAT, halfExtents: top.halfExtents })).toBe(0);
+    expect(field.removePiece(bottom.id)).toBe(true);
+    expect(field.piece(middle.id)?.state).toBe('active');
+    expect(field.piece(top.id)?.state).toBe('active');
+  });
+
+  it('pushes pieces the player walks into and settles them again far away once still', async () => {
+    const { world, field, pieces } = await column();
+    const side = pieces[3];
+    if (!side) return;
+    expect(field.disturbWithin({ min: { x: 1.8, y: 0, z: -0.2 }, max: { x: 2.2, y: 1, z: 0.2 } })).toBe(1);
+    expect(field.settleFar({ x: 2, y: 0, z: 0 }, 5)).toBe(0);
+    const body = field.bodyOf(side.id);
+    expect(body).toBeDefined();
+    for (let i = 0; i < 300 && body !== undefined && !world.isSleeping(body); i += 1) world.step();
+    expect(field.settleFar({ x: 2, y: 0, z: 0 }, 5)).toBe(0);
+    expect(field.settleFar({ x: 20, y: 0, z: 0 }, 5)).toBe(1);
+    expect(field.piece(side.id)?.state).toBe('dormant');
+    expect(field.metrics().solidDormant).toBe(4);
+  });
+
+  it('keeps colliders only for clusters near a player', async () => {
+    const { field, pieces } = await column();
+    const side = pieces[3];
+    if (!side) return;
+    expect(field.streamSolids([{ x: 40, y: 0, z: 0 }], 10)).toBe(1);
+    expect(field.metrics().solidDormant).toBe(0);
+    expect(field.targetsNear({ x: 0, y: 0.3, z: 0 }, 1)).toEqual([]);
+    expect(field.streamSolids([{ x: 12, y: 0, z: 0 }], 16)).toBe(1);
+    expect(field.metrics().solidDormant).toBe(4);
+    // Inside the hysteresis band nothing changes.
+    expect(field.streamSolids([{ x: 19, y: 0, z: 0 }], 16)).toBe(0);
+    expect(field.disturb(side.id)).toBe(1);
   });
 });

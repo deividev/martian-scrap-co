@@ -25,6 +25,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "node tools/check.mjs",
+    "bake:mountain": "node tools/bake-mountain.mjs",
     "validate:docs": "powershell.exe -NoProfile -File tools/validate-docs.ps1"
   },
   "devDependencies": {

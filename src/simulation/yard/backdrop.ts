@@ -117,6 +117,8 @@ export function addBackdropColliders(physics: PhysicsWorldPort, layout: Backdrop
     rows: 48,
     cols: 48,
     height: (x, z) => mountainHeight(x, z) * SCRAP_MOUNTAIN.colliderScale,
+    // Packed scrap is rough: pieces settle on the core's steepest slopes (about 33 degrees) without sliding.
+    friction: 1,
   });
   for (const rock of layout.rocks) {
     physics.addBox({

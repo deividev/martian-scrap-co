@@ -41,7 +41,7 @@ import { GamepadSource } from '../input/gamepadSource';
 import { DEFAULT_INPUT_SETTINGS } from '../input/inputSettings';
 import { KeyboardMouseSource } from '../input/keyboardMouseSource';
 import { MagneticCollector, type TargetFeedback } from '../simulation/collection/magneticCollector';
-import { pickTarget, type TargetPick } from '../simulation/collection/targeting';
+import { TARGETING, pickTarget, type TargetCandidate, type TargetPick } from '../simulation/collection/targeting';
 import { AssemblyBody } from '../simulation/handling/assemblyBody';
 import { Breakables, cutYields } from '../simulation/handling/breakables';
 import { CART_TUNING, Cart, type LoadResult } from '../simulation/handling/cart';
@@ -67,7 +67,6 @@ import {
   TEST_YARD_SALE_TERMINAL,
   TEST_YARD_SORTING_BAY,
   BALE_HALF_EXTENTS,
-  createMountainFootScrap,
   createTestYardBreakables,
   createTestYardProps,
   createTestYardScrap,
@@ -216,17 +215,11 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     TEST_YARD_RECOVERY_ZONES,
   );
   const allocator = new EntityIdAllocator();
-  // Owner follow-up R4: the giant mountain is real pieces (large, medium and small) with real colliders.
-  const mountainLayout = createScrapMountainLayout(allocator, {
-    x: backdrop.station.position.x,
-    z: backdrop.station.position.z,
-    radius: backdrop.station.radius,
-  });
-  const scrap = new ScrapField(world, [
-    createTestYardScrap(allocator),
-    ...createMountainFootScrap(allocator),
-    ...mountainLayout.smallClusters,
-  ]);
+  // Owner follow-up R4: the giant mountain is real pieces (large, medium and small) with real colliders, settled
+  // offline with the game's physics (it includes the starter spill at its foot).
+  const mountainLayout = createScrapMountainLayout(allocator);
+  const scrap = new ScrapField(world, [createTestYardScrap(allocator), ...mountainLayout.smallClusters]);
+  scrap.streamSolids([TEST_YARD_SPAWN], 16);
   const mountain = new ScrapMountain(world, mountainLayout.pieces);
   const mountainView = new MountainView(
     scene,
@@ -365,6 +358,9 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   let lastGain: { credits: number; until: number } | null = null;
   let wasSucking = false;
   let lastActivation = 0;
+  let lastTouch = 0;
+  /** Mountain wake tuning (owner check 2026-10-30; placeholders within the MSC-019 budgets). */
+  const MOUNTAIN_WAKE = { settleDistance: 7, activeBudget: 260, touchReach: 0.65, solidRadius: 16 } as const;
   const cart = new Cart(world, props, claims, allocator.allocate(), { x: 2, y: 0.4, z: 5 });
   const cartGroup = createCartModel(CART_TUNING.halfExtents);
   scene.add(mergeStatic(cartGroup));
@@ -424,6 +420,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   /** A medium part that left the pile becomes an ordinary breakable prop (and falls if it was on top). */
   const partToProp = (piece: MountainPieceSpec) => {
     releasedParts.set(piece.id, piece);
+    scrap.wakeAbove(piece);
     const prop = props.add(
       {
         id: piece.id,
@@ -709,15 +706,24 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       }
     } else {
       const loose = props.targets().filter((target) => !cart.loads.includes(target.id));
-      const propPick = pickTarget(aim, loose, world, player.characterHandle);
-      const scrapPick = pickTarget(aim, scrap.activeTargets(), world, player.characterHandle);
+      // What the crosshair touches wins; the aim cone only helps when it touches nothing interactable (the
+      // mountain is full of pieces, so a near piece must never steal the aim from the part in front of you).
+      const aimHit = world.castRay(aim.origin, aim.direction, TARGETING.reachMeters, player.characterHandle);
+      const direct = (candidates: readonly TargetCandidate[]): TargetPick | null => {
+        const candidate = aimHit && candidates.find((target) => target.body === aimHit.body);
+        return candidate && aimHit ? { candidate, distance: aimHit.distance, angle: 0 } : null;
+      };
+      const propPick = direct(loose) ?? pickTarget(aim, loose, world, player.characterHandle);
+      const scrapTargets = scrap.targetsNear(aim.origin, TARGETING.reachMeters);
+      const scrapPick = direct(scrapTargets) ?? pickTarget(aim, scrapTargets, world, player.characterHandle);
       const cartPick = pickTarget(
         aim,
         [{ id: cart.id, body: cart.body, position: world.bodyPosition(cart.body) }],
         world,
         player.characterHandle,
       );
-      const mountainPick = pickTarget(aim, mountain.targetsNear(aim.origin, 4), world, player.characterHandle);
+      const mountainTargets = mountain.targetsNear(aim.origin, 4);
+      const mountainPick = direct(mountainTargets) ?? pickTarget(aim, mountainTargets, world, player.characterHandle);
       const best = closer(cartPick, closer(mountainPick, closer(propPick, scrapPick)));
       if (best && best === cartPick) {
         feedback = { state: 'none' };
@@ -746,6 +752,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
               run: () => {
                 const left = mountain.remove(partId);
                 if (!left) return;
+                scrap.wakeAbove(left.piece);
                 for (const freed of left.freed) partToProp(freed);
                 breakables.shatter(left.piece.position, cutYields([left.piece]), `cut-${partId}`);
               },
@@ -871,19 +878,32 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       prompt = i18n.t('sale.needBale');
     }
 
-    // Wake clusters near the player and let distant ones sleep (MSC-012 activation).
+    // Wake clusters near the player and let distant ones sleep (MSC-012 activation). The mountain is different:
+    // its settled pieces stay fixed until disturbed (collector, player, lost support), so nothing moves on its own.
     if (now - lastActivation > 500) {
       lastActivation = now;
       for (const cluster of scrap.clusterCenters()) {
-        if (cluster.remaining === 0) continue;
+        if (cluster.remaining === 0 || cluster.id.startsWith('pile-')) continue;
         const distance = Math.hypot(aimView.position.x - cluster.x, aimView.position.z - cluster.z);
-        // Mountain pile cells wake closer than the starter clusters to stay inside the active-piece budget.
-        const [wake, sleep] = cluster.id.startsWith('pile-') ? [12, 16] : [16, 22];
-        if (distance < wake) scrap.activateCluster(cluster.id);
-        else if (distance > sleep && !collector.pulling.some((id) => scrap.piece(id) && scrap.bodyOf(id))) {
+        if (distance < 16) scrap.activateCluster(cluster.id);
+        else if (distance > 22 && !collector.pulling.some((id) => scrap.piece(id) && scrap.bodyOf(id))) {
           scrap.deactivateCluster(cluster.id);
         }
       }
+      // Disturbed mountain pieces that came to rest away from the player become fixed again where they lie.
+      scrap.settleFar(aimView.position, MOUNTAIN_WAKE.settleDistance, new Set(collector.pulling));
+      // Only the mountain around the player holds colliders (each costs simulation time even at rest).
+      scrap.streamSolids([aimView.position], MOUNTAIN_WAKE.solidRadius);
+    }
+    // Pieces the player walks into are pushed for real (while the active-piece budget allows).
+    if (now - lastTouch > 100 && scrap.activeCount < MOUNTAIN_WAKE.activeBudget) {
+      lastTouch = now;
+      const { x, y, z } = aimView.position;
+      const reach = MOUNTAIN_WAKE.touchReach;
+      scrap.disturbWithin({
+        min: { x: x - reach, y: y - 1.05, z: z - reach },
+        max: { x: x + reach, y: y + 0.9, z: z + reach },
+      });
     }
 
     // MSC-032: the compactor runs on its own; a finished bale waits inside while the pad is occupied.
@@ -978,7 +998,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     for (const [jointId, marker] of jointMarkers) marker.visible = rover.jointPosition(jointId) !== null;
     scrapView.sync();
     scrapView.highlight(feedback);
-    mountainView.sync();
+    mountainView.sync(aimView.position);
     if (feedbackLabel) {
       let scrapText = '';
       if (feedback.state !== 'none') {

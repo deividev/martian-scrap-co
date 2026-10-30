@@ -123,3 +123,29 @@ Raised by the owner with the approval (2026-10-30). They must be done before MSC
 
 Measured in Electron on the test yard: **99 draw calls at spawn, 82 at the mountain** after cutting a large part (293 active pieces), triangles about 0.62–0.79 M, simulation p95 1.2–1.3 ms, p99 ≤ 2.2 ms. The look is unchanged in side-by-side captures, and the economy loop (bale grab, sale +40 C, no double payment), the mountain cut and the spawn view were re-run. Within the ≤ 150 budget; no shadow-distance change was needed.
 
+## Mountain physics follow-up (owner check 2026-10-30)
+
+**Owner report:** mountain pieces behaved strangely: some fell when the player approached, some floated, some passed through each other. The mountain must be pieces burying each other, never passing through the player or each other, with real physics and collisions at every size, and medium and large parts buried under heaps of small pieces.
+
+**Cause:** the first layout stacked pieces on a height grid instead of simulating them. Parts were embedded 25% into each other on purpose, small pieces sat over gaps, and whole areas switched to dynamic bodies when the player came within 12 m. Overlapping pieces were pushed apart violently ("flying") and unsupported ones dropped ("falling when approached").
+
+**Changes:**
+
+- **Settled offline with the game's physics** (`npm run bake:mountain`, `src/simulation/yard/mountainBake.ts`, data in `scrapMountain.baked.json`). Large parts drop first, then medium parts, then heaps of small pieces poured mostly over the parts (70% on the part's footprint), then the starter spill at the foot. Each wave is simulated without engine sleep until every piece stays under 3 cm/s, then frozen as fixed colliders exactly as the game holds a dormant pile. Pieces that never rested or left the mound are discarded. Three joint passes then re-settle all small pieces together as dynamic bodies, because the game can wake any of them. The mountain core collider has friction 1.0 (packed scrap), so pieces hold on its steepest slopes (about 33°).
+- **Pieces only move when disturbed.** Small mountain pieces stay fixed until the collector pulls them, the player walks into them (touch reach 0.65 m, while fewer than 260 pieces are active), or what they rest on moves away. Waking cascades to everything resting on a moving, collected, cut or released piece, so nothing is left floating. Pieces that come to rest farther than 7 m from the player become fixed again where they lie. The collector can aim at and pull dormant pieces directly.
+- **Physics streaming.** Each fixed collider costs simulation time even at rest (measured with Rapier: 7,000 idle fixed bodies cost 2.3 ms per step). Small-piece clusters therefore hold colliders only within 16 m of a player (dropped beyond 22 m); nothing can touch a dormant piece farther away.
+- **Aim.** What the crosshair touches now wins over the aim cone, so a nearby small piece never steals the target from the part in front of the player.
+
+**Evidence:**
+
+- The current bake has 10,082 pieces: 100 large, 494 medium and 9,488 small. More than 70% of the medium and large parts have small pieces resting on them.
+- Unit test: four mountain areas and the foot spill were simulated as dynamic bodies, with medium and large parts fixed as in the game. No piece moved 5 cm in 1.5 s. With all 9,488 small pieces woken at once, 1 piece moved more than 5 cm (5.4 cm).
+- Measured in Electron:
+  - Approaching the foot woke nothing (18 active pieces, the starter pile).
+  - The collector pulled dormant iron pieces from the heap.
+  - Walking into a heap woke 36 pieces, which settled (2 awake after 3 s).
+  - Cutting an exposed large aluminum part produced 12 pieces, and the small pieces and medium parts on it fell.
+  - The economy loop still sells a bale for +40 C.
+  - Simulation p95 was 1.1–2.1 ms and p99 ≤ 2.4 ms. Draw calls were 73–105 and triangles about 1.0–1.1 M (small pieces beyond 45 m are not drawn and cast no shadows).
+
+**Open:** at this scale, small pieces (about 0.2–0.3 m) cover medium parts but only partly bury large ones (2–3.6 m), and much of the dark core still shows between heaps. Fuller burial needs either several times more small pieces (simulation, triangle and load-size budgets) or a different size mix. This is an owner decision.
