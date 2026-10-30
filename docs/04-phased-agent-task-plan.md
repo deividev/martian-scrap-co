@@ -391,7 +391,9 @@ Check: Recorded keyboard/controller walkthrough and worst-case fixture review.
 
 Requirements: PRD-002, PRD-005–009, PRD-022.
 
-Status: In progress
+Status: Done
+
+Outcome: 2026-10-30 — Owner approved the handling feel and the provisional budgets after a series of play sessions ([review record](decisions/MSC-020-handling-review.md)). Delivered during the review: early style pass (crew robot, scrap silhouettes, cart, rover, tools, Mars backdrop), English/Spanish localization, a continuous floor and colliders for all scrap and scenery, vacuum collector with right-click unload at the intake, mountain-foot starter scrap and breakable medium junk, collector upgrade tiers with a locked material selector (wheel only), large parts cut into small pieces of their material, an equippable hold-to-cut cutter with its own speed upgrades, one identifying color and silhouette per material and a HUD in the approved UI style. Budgets accepted as working limits: ≤ 300 awake bodies, simulation p95 ≤ 3 ms / p99 ≤ 5 ms on the reference PC, ≤ 300 active pieces per area, ≤ 150 draw calls, chunked late-join snapshots. **Before the roadmap continues past the brought-forward MSC-031–033, the owner requires follow-ups R1–R4 from the record:** better machine models, better cart, better scenery, and a giant scrap mountain made of real small/medium/large material pieces with real collision within these budgets.
 
 ## Phase 3 — Co-op authority and real Steam/native feasibility
 
