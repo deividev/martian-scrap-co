@@ -2,6 +2,7 @@ import './style.css';
 import { I18n } from './i18n/i18n';
 import { createPlatformAdapter } from './platform/platformAdapter';
 import { runBenchmarkScene } from './presentation/benchmarkScene';
+import { renderModelView } from './presentation/modelViewer';
 import { createTestYardScene } from './presentation/testYardScene';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game');
@@ -35,7 +36,16 @@ window.addEventListener('keydown', (event) => {
 
 const query = new URLSearchParams(window.location.search);
 const benchmark = query.get('benchmark');
-if (benchmark) {
+const modelName = query.get('model');
+if (modelName) {
+  // Model review viewer (art review only): one model, one named view, no gameplay, no HUD.
+  document.body.classList.add('model-review');
+  try {
+    renderModelView(canvas, modelName, query.get('view') ?? 'front', query.get('color') ?? 'orange');
+  } catch (error: unknown) {
+    canvas.dataset['sceneError'] = error instanceof Error ? error.message : String(error);
+  }
+} else if (benchmark) {
   // MSC-019 benchmark mode: numbers only, exposed for the evidence runner.
   const seconds = Math.min(120, Math.max(5, Number(query.get('seconds') ?? '15') || 15));
   runBenchmarkScene(canvas, benchmark, seconds)
@@ -52,6 +62,7 @@ if (benchmark) {
     i18n,
     feedback: document.querySelector<HTMLElement>('#target-feedback'),
     container: document.querySelector<HTMLElement>('#container-status'),
+    tip: document.querySelector<HTMLElement>('#yard-tip'),
   }).catch((error: unknown) => {
     canvas.dataset['sceneError'] = error instanceof Error ? error.message : String(error);
     console.error('Scene failed to start', error);

@@ -66,8 +66,8 @@ These are not minimum specifications or safe counts.
 
 | # | Feedback | Response |
 |---|---|---|
-| F1 | The 3D art is nowhere near the reference images. | Correct: the yard uses placeholder boxes. Final art is planned for the MSC-041–050 pilots after the slice (T2). Whether to bring a style pass forward is an open owner decision. |
-| F2 | Cutting was not discoverable. | The rover is to the left of the spawn; the small orange cubes are the joints. Discoverability (visible cutter, larger markers, on-screen guidance) to be improved. |
+| F1 | The 3D art is nowhere near the reference images. | Correct: the yard used placeholder boxes. **Owner chose to bring an early style pass forward (2026-10-30).** Done: procedural rounded crew robot from the approved character sheet (3 reviewed passes, [review](../../art/sculpt/robot/review.md)), material-specific scrap silhouettes (nuts, brackets, pipes, ribbed plates, stamped panels, coils, housings, foil, ceramic tiles), yellow cart, rover with tires, first-person magnet/cutter, peach sky, mesas, rocks, a huge colorful scrap mountain hiding a white station ring, dish antenna and colony domes. The MSC-041–050 pilots remain the formal art approval gate. |
+| F2 | Cutting was not discoverable. | Improved: joints are glowing, pulsing orange rings facing the player; the view switches to a cutter tool while a joint is targeted; contextual tips appear near the pile, the cart and the rover (in Spanish and English). |
 | F3 | "Collector" was unclear. | It means the magnetic collector (the magnet tool). UI now uses "Imán colector" in Spanish. |
 | F4 | All answers and the game must be understandable in Spanish. | **Approved: English and Spanish launch languages.** Implemented: every HUD/prompt string and content name in both languages, system-language default, L switches at any time, choice remembered per device. |
 

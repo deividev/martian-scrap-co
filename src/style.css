@@ -114,3 +114,36 @@ body {
     sans-serif;
   color: #f4ece1;
 }
+
+body.model-review #crosshair,
+body.model-review #input-hint,
+body.model-review #target-feedback,
+body.model-review #container-status,
+body.model-review #platform-status,
+body.model-review #language-status,
+body.model-review #yard-tip {
+  display: none;
+}
+
+#yard-tip {
+  position: fixed;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  max-width: min(720px, 90vw);
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: rgba(27, 31, 46, 0.86);
+  box-shadow: inset 0 0 0 2px #f08a3c;
+  color: #f4ece1;
+  font:
+    15px/1.4 system-ui,
+    sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+
+#yard-tip:empty {
+  display: none;
+}

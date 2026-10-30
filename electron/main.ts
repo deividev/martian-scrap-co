@@ -26,7 +26,15 @@ function benchmarkQuery(argv: readonly string[]): Record<string, string> {
   const seconds = Number(value('benchmark-seconds') ?? '15');
   return { benchmark: preset, seconds: String(Number.isInteger(seconds) ? Math.min(120, Math.max(5, seconds)) : 15) };
 }
-const startupQuery = benchmarkQuery(process.argv);
+/** Unpackaged-only art review flag: `--model-view=<model>:<view>[:<color>]` (lowercase words only). */
+function modelViewQuery(argv: readonly string[]): Record<string, string> {
+  if (app.isPackaged) return {};
+  const raw = argv.find((arg) => arg.startsWith('--model-view='))?.slice('--model-view='.length) ?? '';
+  const match = /^([a-z-]{1,32}):([a-z-]{1,32})(?::([a-z]{1,16}))?$/.exec(raw);
+  if (!match?.[1] || !match[2]) return {};
+  return { model: match[1], view: match[2], ...(match[3] ? { color: match[3] } : {}) };
+}
+const startupQuery = { ...benchmarkQuery(process.argv), ...modelViewQuery(process.argv) };
 
 // Production pages carry their own CSP meta tag (vite.config.ts); dev responses get this header.
 const DEV_CSP = [

@@ -1,25 +1,25 @@
 import {
-  AmbientLight,
   BoxGeometry,
-  Color,
-  DirectionalLight,
   Euler,
-  Fog,
-  Group,
   Mesh,
   MeshStandardMaterial,
   PerspectiveCamera,
+  PlaneGeometry,
+  RepeatWrapping,
   SRGBColorSpace,
   Scene,
   TextureLoader,
+  TorusGeometry,
   WebGLRenderer,
 } from 'three';
-import checkerUrl from '../assets/textures/smoke-checker.png';
+import hazardUrl from '../assets/textures/hazard-stripes.png';
+import { createRobotModel } from '../models/generated/createRobotModel';
+import { STYLE, createCartModel, createRoverFragmentModel, paint } from '../models/styledModels';
 import { FIRST_PASS_CONTENT } from '../content/firstPass';
 import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
 import { AssemblyState } from '../domain/assembly';
-import { EntityIdAllocator, transactionId } from '../domain/ids';
+import { EntityIdAllocator, transactionId, type EntityId } from '../domain/ids';
 import type { I18n, StringKey } from '../i18n/i18n';
 import { mergeFrames, type InputDevice } from '../input/actions';
 import { GamepadSource } from '../input/gamepadSource';
@@ -33,7 +33,6 @@ import { ClaimRegistry } from '../simulation/handling/claims';
 import { GripController, type PlaceResult } from '../simulation/handling/gripController';
 import { MediumPropSet } from '../simulation/handling/mediumProps';
 import { PHYSICS_CONVENTIONS } from '../simulation/physics/conventions';
-import type { PhysicsBodyHandle } from '../simulation/physics/physicsPort';
 import { runPhysicsProbe } from '../simulation/physics/probe';
 import { createRapierWorld } from '../simulation/physics/rapierWorld';
 import { PlayerController } from '../simulation/player/playerController';
@@ -48,15 +47,17 @@ import {
   createTestYardScrap,
   yardBodySpec,
 } from '../simulation/yard/testYard';
-import { createRobotProxy } from './robotProxy';
+import { createMarsEnvironment } from './environment';
+import { FirstPersonTool } from './firstPersonTool';
 import { PropView } from './propView';
-import { MATERIAL_COLORS, ScrapPileView } from './scrapPileView';
+import { ScrapPileView } from './scrapPileView';
 
 export interface TestYardHud {
   readonly hint: HTMLElement | null;
   readonly i18n: I18n;
   readonly feedback: HTMLElement | null;
   readonly container: HTMLElement | null;
+  readonly tip: HTMLElement | null;
 }
 
 const HINT_KEYS: Record<InputDevice, StringKey> = {
@@ -70,9 +71,19 @@ interface Notice {
   readonly params?: Readonly<Record<string, string | number>>;
 }
 
+/** Visual color per test-yard block (style pass): Mars ground, painted ramps/steps, dark walls. */
+function blockColor(name: string): string {
+  if (name.startsWith('ground')) return STYLE.marsGround;
+  if (name === 'ramp-50') return STYLE.steelDark;
+  if (name.startsWith('ramp')) return STYLE.paintYellow;
+  if (name.startsWith('step')) return STYLE.steel;
+  return STYLE.steelDark;
+}
+
 /**
- * First-person movement test yard (MSC-013): ramps, steps, a corner and a recovery pit, plus a few
- * physics crates and a robot proxy for scale. Debug data is exposed on the canvas dataset.
+ * First-person test yard: ramps, steps, a corner and a recovery pit, a scrap pile, medium props, a cart and a
+ * cuttable rover, dressed in the approved stylized Mars look with crew robots. Debug data is exposed on the
+ * canvas dataset.
  */
 export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYardHud): Promise<() => void> {
   const { hint, feedback: feedbackLabel, i18n } = hud;
@@ -85,15 +96,12 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
   const scene = new Scene();
-  scene.background = new Color('#e8a27c');
-  scene.fog = new Fog('#e8a27c', 30, 90);
-  scene.add(new AmbientLight('#ffffff', 0.65));
-  const sun = new DirectionalLight('#fff1dc', 1.6);
-  sun.position.set(6, 12, 4);
-  scene.add(sun);
+  createMarsEnvironment(scene, renderer);
 
-  const camera = new PerspectiveCamera(70, 1, 0.05, 200);
+  const camera = new PerspectiveCamera(70, 1, 0.05, 600);
   camera.rotation.order = 'YXZ';
+  scene.add(camera);
+  const tool = new FirstPersonTool(camera);
 
   const probeWorld = await createRapierWorld();
   canvas.dataset['physicsProbe'] = JSON.stringify(runPhysicsProbe(probeWorld));
@@ -103,37 +111,55 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   for (const block of TEST_YARD_BLOCKS) {
     world.addBox(yardBodySpec(block));
     const { x, y, z } = block.halfExtents;
-    const mesh = new Mesh(new BoxGeometry(x * 2, y * 2, z * 2), new MeshStandardMaterial({ color: block.color }));
+    const mesh = new Mesh(new BoxGeometry(x * 2, y * 2, z * 2), paint(blockColor(block.name), 0.85));
+    mesh.receiveShadow = true;
+    mesh.castShadow = !block.name.startsWith('ground');
     mesh.position.set(block.position.x, block.position.y, block.position.z);
     if (block.rotation) mesh.quaternion.set(block.rotation.x, block.rotation.y, block.rotation.z, block.rotation.w);
     scene.add(mesh);
   }
 
-  // Bundled texture proves relative asset loading in the packaged app (MSC-007).
-  const crateMaterial = new MeshStandardMaterial({ color: '#ffffff' });
-  new TextureLoader().load(checkerUrl, (texture) => {
+  // Hazard-stripe work zone at the base; the bundled texture also proves packaged asset loading (MSC-007).
+  const hazardMaterial = new MeshStandardMaterial({ color: '#ffffff', roughness: 0.9 });
+  new TextureLoader().load(hazardUrl, (texture) => {
     texture.colorSpace = SRGBColorSpace;
-    crateMaterial.map = texture;
-    crateMaterial.needsUpdate = true;
+    texture.wrapS = RepeatWrapping;
+    texture.wrapT = RepeatWrapping;
+    texture.repeat.set(10, 1);
+    hazardMaterial.map = texture;
+    hazardMaterial.needsUpdate = true;
     canvas.dataset['assetsLoaded'] = 'true';
   });
-  const crates: { handle: PhysicsBodyHandle; mesh: Mesh }[] = [0, 1, 2, 3].map((index) => {
-    const size = 0.5 + index * 0.1;
-    const handle = world.addBox({
-      kind: 'dynamic',
-      position: { x: 3 + index * 0.4, y: 1 + index * 0.8, z: 5 },
-      halfExtents: { x: size / 2, y: size / 2, z: size / 2 },
-      massKg: 8 * size,
-    });
-    const mesh = new Mesh(new BoxGeometry(size, size, size), crateMaterial);
-    scene.add(mesh);
-    return { handle, mesh };
-  });
+  for (const [x, z, length, rotated] of [
+    [0, 8.2, 10, false],
+    [-5, 4, 8, true],
+    [5, 4, 8, true],
+  ] as const) {
+    const strip = new Mesh(new PlaneGeometry(length, 0.35), hazardMaterial);
+    strip.rotation.set(-Math.PI / 2, 0, rotated ? Math.PI / 2 : 0);
+    strip.position.set(x, 0.01, z);
+    strip.receiveShadow = true;
+    scene.add(strip);
+  }
 
-  const proxy = createRobotProxy('#f2b134');
-  proxy.position.set(-3.5, 0.8, 1.5);
-  proxy.rotation.y = Math.PI / 5;
-  scene.add(proxy);
+  // Crew robots (same body, color variants; color is not a class) idling around the yard.
+  const crew = (
+    [
+      ['teal', -3.5, 1.5, 0.6, 'happy'],
+      ['yellow', 6.5, 4.5, -2.4, 'surprised'],
+      ['purple', -8.5, 6.5, 1.2, 'focused'],
+    ] as const
+  ).map(([color, x, z, yaw, expression], index) => {
+    const robot = createRobotModel(color);
+    robot.position.set(x, 0, z);
+    robot.rotation.y = yaw;
+    robot.userData.sculptRuntime.setExpression(expression);
+    robot.traverse((child) => {
+      child.castShadow = true;
+    });
+    scene.add(robot);
+    return { robot, phase: index * 1.7 };
+  });
 
   const player = new PlayerController(
     world,
@@ -156,18 +182,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   const claims = new ClaimRegistry();
   const grip = new GripController(world, props, claims, 'player-0');
   const cart = new Cart(world, props, claims, allocator.allocate(), { x: 2, y: 0.4, z: 5 });
-  const cartGroup = new Group();
-  const cartBed = new Mesh(
-    new BoxGeometry(CART_TUNING.halfExtents.x * 2, CART_TUNING.halfExtents.y * 2, CART_TUNING.halfExtents.z * 2),
-    new MeshStandardMaterial({ color: '#f08a3c', roughness: 0.6 }),
-  );
-  const cartHandle = new Mesh(
-    new BoxGeometry(0.08, 0.5, CART_TUNING.halfExtents.z * 1.6),
-    new MeshStandardMaterial({ color: '#2f3a4f' }),
-  );
-  cartHandle.position.set(0, 0.3, CART_TUNING.halfExtents.z + 0.05);
-  cartHandle.rotation.y = Math.PI / 2;
-  cartGroup.add(cartBed, cartHandle);
+  const cartGroup = createCartModel(CART_TUNING.halfExtents);
   scene.add(cartGroup);
   const LOAD_NOTICES: Record<Exclude<LoadResult, { ok: true }>['reason'], Notice | null> = {
     full: { key: 'cart.full', params: { max: CART_TUNING.maxLoadCount } },
@@ -186,21 +201,17 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   const fragmentMeshes = new Map(
     rover.state.anchoredFragments().map((fragmentId) => {
       const placement = TEST_YARD_ROVER_LAYOUT.fragments[fragmentId];
-      const material = TEST_YARD_ROVER.fragments.find((fragment) => fragment.id === fragmentId)?.materialId ?? '';
-      const h = placement?.halfExtents ?? { x: 0.1, y: 0.1, z: 0.1 };
-      const mesh = new Mesh(
-        new BoxGeometry(h.x * 2, h.y * 2, h.z * 2),
-        new MeshStandardMaterial({ color: MATERIAL_COLORS[material] ?? '#ff00ff', roughness: 0.55 }),
-      );
-      if (placement) mesh.position.set(placement.position.x, placement.position.y, placement.position.z);
-      scene.add(mesh);
-      return [fragmentId, mesh] as const;
+      const model = createRoverFragmentModel(fragmentId, placement?.halfExtents ?? { x: 0.1, y: 0.1, z: 0.1 });
+      if (placement) model.position.set(placement.position.x, placement.position.y, placement.position.z);
+      scene.add(model);
+      return [fragmentId, model] as const;
     }),
   );
-  const jointMarkerMaterial = new MeshStandardMaterial({ color: '#f08a3c', emissive: '#7a3410' });
+  // Joints read as glowing orange rings that face the player and pulse gently (cut discoverability).
+  const jointMaterial = new MeshStandardMaterial({ color: '#ff8a2a', emissive: '#ff6a00', emissiveIntensity: 0.9 });
   const jointMarkers = new Map(
     TEST_YARD_ROVER.joints.map((joint) => {
-      const marker = new Mesh(new BoxGeometry(0.09, 0.09, 0.09), jointMarkerMaterial);
+      const marker = new Mesh(new TorusGeometry(0.1, 0.028, 6, 18), jointMaterial);
       const position = TEST_YARD_ROVER_LAYOUT.joints[joint.id];
       if (position) marker.position.set(position.x, position.y, position.z);
       scene.add(marker);
@@ -259,6 +270,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     const aimView = player.view();
     const aim = { origin: aimView.eye, direction: forwardOf(aimView.yaw, aimView.pitch) };
     let prompt = '';
+    let toolMode: 'magnet' | 'cutter' | 'hands' = grip.held !== null ? 'hands' : 'magnet';
+    let highlightedProp: EntityId | null = null;
     if (frame.rotate !== 0) grip.rotate(frame.rotate);
     const pushing = cart.pusher() === 'player-0';
     if (pushing) {
@@ -289,10 +302,12 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       }
     } else if (rover.pickJoint(aim, player.characterHandle)) {
       feedback = { state: 'none' };
+      toolMode = 'cutter';
       const joint = rover.pickJoint(aim, player.characterHandle);
       if (joint?.available) {
         prompt = i18n.t('cut.ready', { joint: jointLabel(joint.jointId) });
         if (frame.interact) {
+          tool.use();
           cutCounter += 1;
           rover.cut(joint.jointId, transactionId(`txn-cut${cutCounter.toString(36)}`));
         }
@@ -323,10 +338,11 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         feedback = { state: 'none' };
         const target = props.get(best.candidate.id);
         prompt = i18n.t('grip.grab', { name: nameOf(target?.nameKeys, target?.displayName ?? '') });
+        highlightedProp = best.candidate.id;
         if (frame.interact) grip.tryGrab(best, aimView.yaw);
       } else {
         feedback = collector.evaluate(scrapPick);
-        if (frame.interact) collector.tryStartPull(feedback);
+        if (frame.interact && collector.tryStartPull(feedback)) tool.use();
       }
     }
 
@@ -348,19 +364,41 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     camera.position.set(view.eye.x, view.eye.y, view.eye.z);
     euler.set(view.pitch, view.yaw, 0);
     camera.quaternion.setFromEuler(euler);
-    for (const crate of crates) {
-      const p = world.bodyPosition(crate.handle);
-      const r = world.bodyRotation(crate.handle);
-      crate.mesh.position.set(p.x, p.y, p.z);
-      crate.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+    // Crew idle: gentle bob and head tilt.
+    for (const member of crew) {
+      const runtime = member.robot.userData.sculptRuntime;
+      const t = now / 1000 + member.phase;
+      runtime.pivots.hips.position.y = 0.36 + Math.sin(t * 2) * 0.012;
+      runtime.pivots.head.rotation.z = Math.sin(t * 0.9) * 0.08;
+      runtime.pivots.shoulderL.rotation.x = Math.sin(t * 1.3) * 0.1;
+    }
+    for (const marker of jointMarkers.values()) {
+      marker.lookAt(camera.position);
+      marker.scale.setScalar(1 + Math.sin(now / 250) * 0.12);
     }
     const cartPosition = world.bodyPosition(cart.body);
     const cartRotation = world.bodyRotation(cart.body);
     cartGroup.position.set(cartPosition.x, cartPosition.y, cartPosition.z);
     cartGroup.quaternion.set(cartRotation.x, cartRotation.y, cartRotation.z, cartRotation.w);
     propView.sync();
+    propView.highlight(highlightedProp);
+    tool.setMode(toolMode);
+    tool.update(dt, frame.move.x !== 0 || frame.move.y !== 0);
+    if (hud.tip) {
+      const near = (x: number, z: number, radius: number): boolean =>
+        Math.hypot(view.position.x - x, view.position.z - z) < radius;
+      const allCut = rover.state.availableJoints().length === 0;
+      hud.tip.textContent =
+        grip.held === null && near(-6, 4, 5) && !allCut
+          ? i18n.t('tip.cut')
+          : grip.held === null && near(0, 3, 4.5) && scrap.metrics().active > 0
+            ? i18n.t('tip.collect')
+            : near(2, 5, 3.5)
+              ? i18n.t('tip.cart')
+              : '';
+    }
     const anchored = new Set(rover.state.anchoredFragments());
-    for (const [fragmentId, mesh] of fragmentMeshes) mesh.visible = anchored.has(fragmentId);
+    for (const [fragmentId, model] of fragmentMeshes) model.visible = anchored.has(fragmentId);
     for (const [jointId, marker] of jointMarkers) marker.visible = rover.jointPosition(jointId) !== null;
     scrapView.sync();
     scrapView.highlight(feedback);

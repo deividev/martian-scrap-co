@@ -19,6 +19,19 @@ export const STRINGS = {
     es: 'Stick izq. moverse · Stick der. mirar · X usar o cortar · Y descargar · LB/RB rotar · A saltar · Menú pausa',
   },
 
+  'tip.collect': {
+    en: 'Tip: aim at the gray metal pieces and press E (X). The magnet only pulls iron.',
+    es: 'Consejo: apunta a las piezas grises de metal y pulsa E (X). El imán solo atrae el hierro.',
+  },
+  'tip.cut': {
+    en: 'Tip: aim at the glowing orange rings on the rover and press E (X) to cut.',
+    es: 'Consejo: apunta a los anillos naranjas del rover y pulsa E (X) para cortar.',
+  },
+  'tip.cart': {
+    en: 'Tip: hold an object over the cart and press E to load it. Aim at the cart and press E to push it.',
+    es: 'Consejo: sujeta un objeto sobre el carrito y pulsa E para cargarlo. Apunta al carrito y pulsa E para empujarlo.',
+  },
+
   'platform.browser': {
     en: 'Browser build · native features unavailable',
     es: 'Versión navegador · funciones nativas no disponibles',
