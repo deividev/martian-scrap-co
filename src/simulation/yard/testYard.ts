@@ -274,17 +274,26 @@ export function createTestYardBreakables(allocator: EntityIdAllocator): Breakabl
 
 /** Compactor next to the intake (MSC-032): body collider and the output pad bales drop onto. */
 export const TEST_YARD_COMPACTOR = Object.freeze({
-  position: { x: 7.4, y: 0, z: 9.4 },
-  halfExtents: { x: 0.8, y: 1.05, z: 0.7 },
-  pad: { x: 7.4, y: 0, z: 7.9 },
+  position: { x: -4.0, y: 0, z: 9.4 },
+  halfExtents: { x: 0.95, y: 1.2, z: 0.75 },
+  pad: { x: -4.0, y: 0, z: 7.85 },
   /** A prop closer than this to the pad center (horizontally) blocks the exit. */
   padRadius: 0.75,
 });
 
+/**
+ * Base line, in the order material flows (owner follow-up R1, gameplay concept sorting bay): compactor,
+ * sorting bay (one bay per material), intake hopper, sale machine. All face the yard (-z).
+ */
+export const TEST_YARD_SORTING_BAY = Object.freeze({
+  position: { x: -0.2, y: 0, z: 9.5 },
+  halfExtents: { x: 2.7, y: 0.9, z: 0.5 },
+});
+
 /** Sale machine (MSC-033): kiosk collider and how close a player with a bale must stand to sell. */
 export const TEST_YARD_SALE_TERMINAL = Object.freeze({
-  position: { x: 10.6, y: 0, z: 9.2 },
-  halfExtents: { x: 0.65, y: 0.95, z: 0.45 },
+  position: { x: 7.7, y: 0, z: 9.2 },
+  halfExtents: { x: 0.75, y: 1.1, z: 0.5 },
   reach: 2.6,
 });
 

@@ -11,21 +11,21 @@ import {
   TextureLoader,
   TorusGeometry,
   WebGLRenderer,
+  type Object3D,
 } from 'three';
 import hazardUrl from '../assets/textures/hazard-stripes.png';
 import { createRobotModel } from '../models/generated/createRobotModel';
 import {
-  SCRAP_COLORS,
-  STYLE,
   createBaleModel,
   createCartModel,
   createCompactorModel,
+  createIntakeHopperModel,
   createOutputPadModel,
   createSaleTerminalModel,
-  createIntakeHopperModel,
-  createRoverFragmentModel,
-  paint,
-} from '../models/styledModels';
+  createGratePlateModel,
+  createSortingBayModel,
+} from '../models/machineModels';
+import { SCRAP_COLORS, STYLE, createRoverFragmentModel, paint } from '../models/styledModels';
 import { FIRST_PASS_CONTENT } from '../content/firstPass';
 import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
@@ -55,6 +55,7 @@ import { createRapierWorld } from '../simulation/physics/rapierWorld';
 import { PlayerController } from '../simulation/player/playerController';
 import { ScrapField } from '../simulation/scrap/scrapField';
 import { addBackdropColliders, createBackdropLayout } from '../simulation/yard/backdrop';
+import { ScrapMountain, createScrapMountainLayout, type MountainPieceSpec } from '../simulation/yard/scrapMountain';
 import {
   TEST_YARD_BLOCKS,
   TEST_YARD_RECOVERY_ZONES,
@@ -64,6 +65,7 @@ import {
   TEST_YARD_INTAKE,
   TEST_YARD_COMPACTOR,
   TEST_YARD_SALE_TERMINAL,
+  TEST_YARD_SORTING_BAY,
   BALE_HALF_EXTENTS,
   createMountainFootScrap,
   createTestYardBreakables,
@@ -72,6 +74,8 @@ import {
   yardBodySpec,
 } from '../simulation/yard/testYard';
 import { createMarsEnvironment } from './environment';
+import { MountainView } from './mountainView';
+import { mergeStatic, mergeStaticGroup } from '../models/mergeStatic';
 import { FirstPersonTool } from './firstPersonTool';
 import { GameHud, type HudMaterialChip } from './hud';
 import { PropView } from './propView';
@@ -198,7 +202,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     robot.traverse((child) => {
       child.castShadow = true;
     });
-    scene.add(robot);
+    // Only the pivots the idle loop animates stay separate; the rest of the body is batched.
+    const { pivots: rig } = robot.userData.sculptRuntime;
+    const pivots = new Set<Object3D>([rig.hips, rig.head, rig.shoulderL]);
+    scene.add(mergeStatic(robot, (object) => pivots.has(object)));
     return { robot, phase: index * 1.7 };
   });
 
@@ -209,7 +216,24 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     TEST_YARD_RECOVERY_ZONES,
   );
   const allocator = new EntityIdAllocator();
-  const scrap = new ScrapField(world, [createTestYardScrap(allocator), ...createMountainFootScrap(allocator)]);
+  // Owner follow-up R4: the giant mountain is real pieces (large, medium and small) with real colliders.
+  const mountainLayout = createScrapMountainLayout(allocator, {
+    x: backdrop.station.position.x,
+    z: backdrop.station.position.z,
+    radius: backdrop.station.radius,
+  });
+  const scrap = new ScrapField(world, [
+    createTestYardScrap(allocator),
+    ...createMountainFootScrap(allocator),
+    ...mountainLayout.smallClusters,
+  ]);
+  const mountain = new ScrapMountain(world, mountainLayout.pieces);
+  const mountainView = new MountainView(
+    scene,
+    mountain,
+    scrap,
+    mountainLayout.smallClusters.flatMap((cluster) => cluster.pieces.map((piece) => piece.id)),
+  );
   scrap.activateCluster('test-yard-pile');
   const scrapView = new ScrapPileView(scene, scrap, world);
   const container = new PortableContainer();
@@ -257,9 +281,30 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   );
   // Every material has its own bin; ceramic never arrives by container but would be routed the same way.
   const intake = new BaseIntake();
+  // Static base models are batched into a few meshes (draw-call budget).
+  const baseStatics: Object3D[] = [];
   const hopper = createIntakeHopperModel();
   hopper.position.set(TEST_YARD_INTAKE.position.x, 0, TEST_YARD_INTAKE.position.z);
-  scene.add(hopper);
+  hopper.rotation.y = Math.PI;
+  // Sorting bay next to the hopper: one bay per material, its pile follows the bin count (MSC-031 visuals).
+  const bayMaterials = [...content.pack.materials.keys()];
+  const sortingBay = createSortingBayModel(bayMaterials);
+  sortingBay.position.set(TEST_YARD_SORTING_BAY.position.x, 0, TEST_YARD_SORTING_BAY.position.z);
+  sortingBay.rotation.y = Math.PI;
+  baseStatics.push(sortingBay);
+  // Grated work floor with yellow edges in front of the base line (concept sorting bay floor).
+  for (let x = -6.2; x <= 9.4; x += 1.4) {
+    if (Math.abs(x - TEST_YARD_COMPACTOR.pad.x) < 1.3) continue;
+    const plate = createGratePlateModel(1.36, 1.2);
+    plate.position.set(x, 0, 7.85);
+    baseStatics.push(plate);
+  }
+  world.addBox({
+    kind: 'fixed',
+    position: { ...TEST_YARD_SORTING_BAY.position, y: TEST_YARD_SORTING_BAY.halfExtents.y },
+    halfExtents: TEST_YARD_SORTING_BAY.halfExtents,
+  });
+  baseStatics.push(hopper);
   world.addBox({
     kind: 'fixed',
     position: { x: TEST_YARD_INTAKE.position.x, y: TEST_YARD_INTAKE.halfExtents.y, z: TEST_YARD_INTAKE.position.z },
@@ -271,10 +316,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   const compactorModel = createCompactorModel();
   compactorModel.position.set(TEST_YARD_COMPACTOR.position.x, 0, TEST_YARD_COMPACTOR.position.z);
   compactorModel.rotation.y = Math.PI;
-  scene.add(compactorModel);
+  scene.add(mergeStatic(compactorModel, (object) => object.name === 'press-head' || object.name === 'status-lamp'));
   const padModel = createOutputPadModel();
   padModel.position.set(TEST_YARD_COMPACTOR.pad.x, 0, TEST_YARD_COMPACTOR.pad.z);
-  scene.add(padModel);
+  baseStatics.push(padModel);
   const pressHead = compactorModel.getObjectByName('press-head');
   const statusLamp = compactorModel.getObjectByName('status-lamp') as Mesh | undefined;
   const lampMaterial = statusLamp ? (statusLamp.material as MeshStandardMaterial).clone() : null;
@@ -305,7 +350,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   const terminalModel = createSaleTerminalModel();
   terminalModel.position.set(TEST_YARD_SALE_TERMINAL.position.x, 0, TEST_YARD_SALE_TERMINAL.position.z);
   terminalModel.rotation.y = Math.PI;
-  scene.add(terminalModel);
+  baseStatics.push(terminalModel);
+  scene.add(mergeStaticGroup(baseStatics));
   world.addBox({
     kind: 'fixed',
     position: {
@@ -321,7 +367,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   let lastActivation = 0;
   const cart = new Cart(world, props, claims, allocator.allocate(), { x: 2, y: 0.4, z: 5 });
   const cartGroup = createCartModel(CART_TUNING.halfExtents);
-  scene.add(cartGroup);
+  scene.add(mergeStatic(cartGroup));
   const LOAD_NOTICES: Record<Exclude<LoadResult, { ok: true }>['reason'], Notice | null> = {
     full: { key: 'cart.full', params: { max: CART_TUNING.maxLoadCount } },
     'too-heavy': { key: 'cart.tooHeavy' },
@@ -330,7 +376,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     unknown: null,
   };
   const propView = new PropView(scene, props, world, (prop) =>
-    bales.has(prop.id) ? createBaleModel(prop.materialId, prop.halfExtents) : null,
+    bales.has(prop.id) ? mergeStatic(createBaleModel(prop.materialId, prop.halfExtents)) : null,
   );
   const rover = new AssemblyBody(
     world,
@@ -343,7 +389,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       const placement = TEST_YARD_ROVER_LAYOUT.fragments[fragmentId];
       const model = createRoverFragmentModel(fragmentId, placement?.halfExtents ?? { x: 0.1, y: 0.1, z: 0.1 });
       if (placement) model.position.set(placement.position.x, placement.position.y, placement.position.z);
-      scene.add(model);
+      scene.add(mergeStatic(model));
       return [fragmentId, model] as const;
     }),
   );
@@ -368,7 +414,40 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     return `${material?.symbol ?? '?'} ${materialName(id, material?.displayName ?? id)}`;
   };
   const jointLabel = (id: string): string => i18n.tKey(`joint.${id}`, id);
+  const mountainName = (piece: MountainPieceSpec): string =>
+    i18n.t(piece.size === 'large' ? 'mountain.large' : 'mountain.medium', {
+      material: materialName(piece.materialId, piece.materialId),
+    });
+  /** Metals are cut, everything else is broken open (same rule as the yard junk). */
+  const METALS = new Set(['ferrous', 'aluminum', 'copper']);
+  const releasedParts = new Map<EntityId, MountainPieceSpec>();
+  /** A medium part that left the pile becomes an ordinary breakable prop (and falls if it was on top). */
+  const partToProp = (piece: MountainPieceSpec) => {
+    releasedParts.set(piece.id, piece);
+    const prop = props.add(
+      {
+        id: piece.id,
+        materialId: piece.materialId,
+        displayName: 'Mountain part',
+        position: piece.position,
+        halfExtents: piece.halfExtents,
+        massKg: piece.massKg,
+      },
+      piece.rotation,
+    );
+    breakables.registerExisting(piece.id, cutYields([piece]), METALS.has(piece.materialId) ? 'cut' : 'break');
+    return prop;
+  };
+  /** Takes an exposed medium part out of the pile; parts resting on it are freed to fall. */
+  const releaseToProp = (id: EntityId) => {
+    const left = mountain.release(id);
+    if (!left) return null;
+    for (const freed of left.freed) partToProp(freed);
+    return partToProp(left.piece);
+  };
   const propLabel = (id: EntityId): string => {
+    const part = releasedParts.get(id);
+    if (part) return mountainName(part);
     const bale = bales.get(id);
     if (bale) {
       return i18n.t('bale.name', {
@@ -453,6 +532,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   window.addEventListener('resize', resize);
   resize();
 
+  const simSamples: number[] = [];
+  let lastPerf = 0;
   let device: InputDevice = 'none';
   let accumulator = 0;
   let previous = performance.now();
@@ -636,7 +717,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         world,
         player.characterHandle,
       );
-      const best = closer(cartPick, closer(propPick, scrapPick));
+      const mountainPick = pickTarget(aim, mountain.targetsNear(aim.origin, 4), world, player.characterHandle);
+      const best = closer(cartPick, closer(mountainPick, closer(propPick, scrapPick)));
       if (best && best === cartPick) {
         feedback = { state: 'none' };
         prompt = i18n.t('cart.idle', { loads: cart.loads.length, max: CART_TUNING.maxLoadCount });
@@ -644,6 +726,56 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         if (frame.secondary) {
           cart.unloadAll();
           secondaryUsed = true;
+        }
+      } else if (best && best === mountainPick) {
+        feedback = { state: 'none' };
+        const partId = best.candidate.id;
+        const piece = mountain.piece(partId);
+        if (piece) {
+          const name = mountainName(piece);
+          const metal = METALS.has(piece.materialId);
+          if (!mountain.exposed(partId)) {
+            prompt = i18n.t('mountain.buried', { name });
+          } else if (piece.size === 'large') {
+            // Large parts are cut where they lie into small pieces of their material.
+            cutTarget = {
+              key: `mountain:${partId}`,
+              prompt: i18n.t('cut.intoPieces', { name }),
+              name,
+              seconds: partCutSeconds(piece.massKg),
+              run: () => {
+                const left = mountain.remove(partId);
+                if (!left) return;
+                for (const freed of left.freed) partToProp(freed);
+                breakables.shatter(left.piece.position, cutYields([left.piece]), `cut-${partId}`);
+              },
+            };
+          } else if (cutterInHand) {
+            cutTarget = {
+              key: `mountain:${partId}`,
+              prompt: i18n.t(metal ? 'cut.intoPieces' : 'cut.breakOpen', { name }),
+              name,
+              seconds: partCutSeconds(piece.massKg),
+              run: () => {
+                if (releaseToProp(partId)) breakables.break(partId);
+              },
+            };
+          } else {
+            prompt = i18n.t(metal ? 'grip.grabOrCut' : 'grip.grabOrBreak', { name });
+            if (frame.interact) {
+              const prop = releaseToProp(partId);
+              if (prop) {
+                grip.tryGrab(
+                  {
+                    candidate: { id: partId, body: prop.body, position: piece.position },
+                    distance: best.distance,
+                    angle: best.angle,
+                  },
+                  aimView.yaw,
+                );
+              }
+            }
+          }
         }
       } else if (best && best === propPick) {
         feedback = { state: 'none' };
@@ -745,8 +877,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       for (const cluster of scrap.clusterCenters()) {
         if (cluster.remaining === 0) continue;
         const distance = Math.hypot(aimView.position.x - cluster.x, aimView.position.z - cluster.z);
-        if (distance < 16) scrap.activateCluster(cluster.id);
-        else if (distance > 22 && !collector.pulling.some((id) => scrap.piece(id) && scrap.bodyOf(id))) {
+        // Mountain pile cells wake closer than the starter clusters to stay inside the active-piece budget.
+        const [wake, sleep] = cluster.id.startsWith('pile-') ? [12, 16] : [16, 22];
+        if (distance < wake) scrap.activateCluster(cluster.id);
+        else if (distance > sleep && !collector.pulling.some((id) => scrap.piece(id) && scrap.bodyOf(id))) {
           scrap.deactivateCluster(cluster.id);
         }
       }
@@ -772,7 +906,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     }
     const press = compactor.state;
     if (pressHead) {
-      pressHead.position.y = press.kind === 'processing' ? 1.55 - Math.sin(press.progress * Math.PI) * 0.55 : 1.55;
+      pressHead.position.y = press.kind === 'processing' ? 1.62 - Math.sin(press.progress * Math.PI) * 0.4 : 1.62;
+    }
+    for (const material of bayMaterials) {
+      sortingBay.userData.bay.setFill(material, intake.binCount(material) / intake.binCapacity);
     }
     lampMaterial?.emissive.set(
       press.kind === 'idle' ? STYLE.heliofoil : press.kind === 'blocked' ? '#ff3b2f' : STYLE.paintOrange,
@@ -780,6 +917,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
 
     // Fixed-step simulation with bounded catch-up.
     accumulator = Math.min(accumulator + dt, step * 5);
+    const simStart = performance.now();
     while (accumulator >= step) {
       player.fixedUpdate(frame.move, step);
       const eye = player.view().eye;
@@ -791,6 +929,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       props.recoverFallen();
       accumulator -= step;
     }
+    simSamples.push(performance.now() - simStart);
+    if (simSamples.length > 600) simSamples.shift();
 
     const view = player.view();
     camera.position.set(view.eye.x, view.eye.y, view.eye.z);
@@ -838,6 +978,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     for (const [jointId, marker] of jointMarkers) marker.visible = rover.jointPosition(jointId) !== null;
     scrapView.sync();
     scrapView.highlight(feedback);
+    mountainView.sync();
     if (feedbackLabel) {
       let scrapText = '';
       if (feedback.state !== 'none') {
@@ -975,6 +1116,67 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     });
     canvas.dataset['awakeBodies'] = String(world.awakeBodyCount());
     renderer.render(scene, camera);
+    if (now - lastPerf > 1000) {
+      lastPerf = now;
+      const sorted = [...simSamples].sort((a, b) => a - b);
+      const at = (q: number): number => Number((sorted[Math.floor((sorted.length - 1) * q)] ?? 0).toFixed(2));
+      canvas.dataset['perf'] = JSON.stringify({
+        simP50: at(0.5),
+        simP95: at(0.95),
+        simP99: at(0.99),
+        drawCalls: renderer.info.render.calls,
+        triangles: renderer.info.render.triangles,
+        awake: world.awakeBodyCount(),
+        activePieces: scrap.metrics().active,
+        solidDormant: scrap.metrics().solidDormant,
+        mountainParts: mountain.pieces().length,
+      });
+      // Debug aid for scripted checks: nearest exposed mountain parts around the player.
+      const near = mountain
+        .targetsNear(view.eye, 8)
+        .map((candidate) => mountain.piece(candidate.id))
+        .filter((piece): piece is MountainPieceSpec => piece !== undefined && mountain.exposed(piece.id));
+      const nearest = (size: MountainPieceSpec['size']) =>
+        near
+          .filter((piece) => piece.size === size)
+          .sort(
+            (a, b) =>
+              Math.hypot(a.position.x - view.eye.x, a.position.z - view.eye.z) -
+              Math.hypot(b.position.x - view.eye.x, b.position.z - view.eye.z),
+          )[0]?.position ?? null;
+      if (!canvas.dataset['meshBreakdown']) {
+        // Debug aid: visible draw items per top-level object, to keep the draw-call budget honest.
+        const counts = new Map<string, number>();
+        for (const top of scene.children) {
+          let n = 0;
+          top.traverseVisible((object) => {
+            if ((object as Mesh).isMesh) n += 1;
+          });
+          const key = top.name || top.type;
+          if (n > 0) counts.set(key, (counts.get(key) ?? 0) + n);
+        }
+        canvas.dataset['meshBreakdown'] = JSON.stringify(Object.fromEntries(counts));
+      }
+      const closestLarge = mountain
+        .targetsNear(view.eye, 10)
+        .map((candidate) => mountain.piece(candidate.id))
+        .filter((piece): piece is MountainPieceSpec => piece?.size === 'large')
+        .sort(
+          (a, b) =>
+            Math.hypot(a.position.x - view.eye.x, a.position.z - view.eye.z) -
+            Math.hypot(b.position.x - view.eye.x, b.position.z - view.eye.z),
+        )[0];
+      canvas.dataset['mountainNear'] = JSON.stringify({
+        large: nearest('large'),
+        medium: nearest('medium'),
+        closestLarge: closestLarge
+          ? {
+              position: closestLarge.position,
+              blockers: mountain.blockers(closestLarge.id).map((id) => mountain.piece(id)?.position),
+            }
+          : null,
+      });
+    }
   });
 
   return () => {

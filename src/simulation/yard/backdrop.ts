@@ -45,6 +45,9 @@ export interface BackdropLayout {
     readonly height: number;
   }[];
   readonly station: { readonly position: Vec3; readonly radius: number };
+  /** Shipping containers around the base (owner follow-up R3); stacked ones sit at y = 2.4. */
+  readonly containers: readonly { readonly position: Vec3; readonly yaw: number; readonly color: string }[];
+  readonly floodlights: readonly Vec3[];
   readonly colonies: readonly { readonly position: Vec3; readonly radius: number }[];
 }
 
@@ -75,7 +78,29 @@ export function createBackdropLayout(seed = 42): BackdropLayout {
     position: { x: 70 + index * 9, y: 0, z: -120 + random() * 10 },
     radius: 4 + random() * 4,
   }));
-  return { rocks, mesas, station: { position: { x: -6, y: -2.5, z: -46 }, radius: 9 }, colonies };
+  const containers = (
+    [
+      [-5, 0, 13, 0, '#d9493a'],
+      [-5, 2.4, 13, 0.08, '#3d6fc4'],
+      [3, 0, 14, 0, '#f2b21c'],
+      [10, 0, 13, -0.2, '#e7e1d6'],
+      [14.5, 0, 7, Math.PI / 2, '#3d6fc4'],
+      [14.5, 2.4, 7, Math.PI / 2, '#d9493a'],
+      [-12, 0, 0.5, Math.PI / 2 + 0.2, '#f2b21c'],
+    ] as const
+  ).map(([x, y, z, yaw, color]) => ({ position: { x, y, z }, yaw, color }));
+  const floodlights = [
+    { x: -6, y: 0, z: 8.6 },
+    { x: 9.6, y: 0, z: 8.6 },
+  ];
+  return {
+    rocks,
+    mesas,
+    station: { position: { x: -6, y: -2.5, z: -46 }, radius: 9 },
+    colonies,
+    containers,
+    floodlights,
+  };
 }
 
 /** Adds every backdrop collider: ground, mountain heightfield, rocks, mesas, station, domes, boundary. */
@@ -96,8 +121,24 @@ export function addBackdropColliders(physics: PhysicsWorldPort, layout: Backdrop
   for (const rock of layout.rocks) {
     physics.addBox({
       kind: 'fixed',
-      position: { x: rock.position.x, y: rock.scale * 0.35, z: rock.position.z },
-      halfExtents: { x: rock.scale * 0.8, y: rock.scale * 0.6, z: rock.scale * 0.8 },
+      position: { x: rock.position.x, y: rock.scale * 0.7, z: rock.position.z },
+      halfExtents: { x: rock.scale * 0.75, y: rock.scale * 0.75, z: rock.scale * 0.75 },
+    });
+  }
+  for (const container of layout.containers) {
+    const half = container.yaw / 2;
+    physics.addBox({
+      kind: 'fixed',
+      position: { x: container.position.x, y: container.position.y + 1.2, z: container.position.z },
+      halfExtents: { x: 3, y: 1.2, z: 1.2 },
+      rotation: { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) },
+    });
+  }
+  for (const light of layout.floodlights) {
+    physics.addBox({
+      kind: 'fixed',
+      position: { x: light.x, y: 2.6, z: light.z },
+      halfExtents: { x: 0.25, y: 2.6, z: 0.25 },
     });
   }
   for (const mesa of layout.mesas) {

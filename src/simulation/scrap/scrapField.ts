@@ -3,7 +3,8 @@ import type { PhysicsBodyHandle, PhysicsWorldPort, Quat, Vec3 } from '../physics
 
 /**
  * Lifecycle of an interactable scrap piece (architecture §3):
- * - `dormant`: identity and pose are known, no physics body (cheap, saved).
+ * - `dormant`: identity and pose are known, no dynamic body (cheap, saved). Pieces of a `solid` cluster keep a
+ *   fixed collider while dormant so they are still real obstacles (scrap mountain, owner follow-up R4).
  * - `active`: has a physics body because its cluster is being worked.
  * - `removed`: collected, sold or consumed. Terminal; the id is never reused or re-created.
  * Decorative aggregate mass is not a piece at all: it is a per-cluster visual count.
@@ -28,6 +29,8 @@ export interface ScrapClusterSpec {
   readonly pieces: readonly ScrapPieceSpec[];
   /** Visual-only instances that make the mountain look dense; never simulated. */
   readonly decorativeInstances: number;
+  /** Dormant pieces keep a fixed collider (they never stop being solid); default false. */
+  readonly solid?: boolean;
 }
 
 /** Persistent form: no physics handles, only durable identity, state and pose. */
@@ -35,6 +38,7 @@ export interface ScrapFieldSnapshot {
   readonly clusters: readonly {
     readonly id: string;
     readonly decorativeInstances: number;
+    readonly solid?: boolean;
     readonly pieces: readonly ScrapPiece[];
   }[];
 }
@@ -45,6 +49,8 @@ export interface ScrapFieldMetrics {
   readonly removed: number;
   readonly decorativeInstances: number;
   readonly physicsBodies: number;
+  /** Fixed colliders held by dormant pieces of solid clusters (never awake). */
+  readonly solidDormant: number;
   readonly awakeBodies: number;
 }
 
@@ -53,6 +59,7 @@ const IDENTITY: Quat = { x: 0, y: 0, z: 0, w: 1 };
 interface ClusterRecord {
   readonly id: string;
   readonly pieceIds: readonly EntityId[];
+  readonly solid: boolean;
   decorativeInstances: number;
 }
 
@@ -62,6 +69,9 @@ export class ScrapField {
   readonly #clusters = new Map<string, ClusterRecord>();
   /** Transient mapping for active pieces only; rebuilt on activation, never saved. */
   readonly #bodies = new Map<EntityId, PhysicsBodyHandle>();
+  /** Fixed colliders of dormant pieces in solid clusters; transient like `#bodies`. */
+  readonly #solidBodies = new Map<EntityId, PhysicsBodyHandle>();
+  readonly #clusterOf = new Map<EntityId, string>();
 
   constructor(physics: PhysicsWorldPort, source: readonly ScrapClusterSpec[] | ScrapFieldSnapshot) {
     this.#physics = physics;
@@ -93,8 +103,21 @@ export class ScrapField {
         rotation: saved?.rotation ?? IDENTITY,
       });
       pieceIds.push(piece.id);
+      this.#clusterOf.set(piece.id, cluster.id);
     }
-    this.#clusters.set(cluster.id, { id: cluster.id, pieceIds, decorativeInstances: cluster.decorativeInstances });
+    const solid = cluster.solid === true;
+    this.#clusters.set(cluster.id, {
+      id: cluster.id,
+      pieceIds,
+      solid,
+      decorativeInstances: cluster.decorativeInstances,
+    });
+    if (solid) for (const id of pieceIds) this.#makeSolid(id);
+  }
+
+  /** The cluster a piece belongs to. */
+  clusterOf(id: EntityId): string | undefined {
+    return this.#clusterOf.get(id);
   }
 
   /** Cluster ids with the average position of their remaining pieces (for distance-based activation). */
@@ -133,6 +156,7 @@ export class ScrapField {
     for (const id of this.#cluster(clusterId).pieceIds) {
       const piece = this.#pieces.get(id);
       if (piece?.state !== 'dormant') continue;
+      this.#dropSolid(id);
       const handle = this.#physics.addBox({
         kind: 'dynamic',
         position: piece.position,
@@ -162,6 +186,7 @@ export class ScrapField {
       });
       this.#physics.removeBody(handle);
       this.#bodies.delete(id);
+      if (this.#clusters.get(clusterId)?.solid) this.#makeSolid(id);
       freed += 1;
     }
     return freed;
@@ -177,8 +202,10 @@ export class ScrapField {
       this.#physics.removeBody(handle);
       this.#bodies.delete(id);
     }
+    this.#dropSolid(id);
     this.#pieces.set(id, { ...piece, state: 'removed' });
-    const cluster = [...this.#clusters.values()].find((record) => record.pieceIds.includes(id));
+    const clusterId = this.#clusterOf.get(id);
+    const cluster = clusterId === undefined ? undefined : this.#clusters.get(clusterId);
     // A fully cleared cluster also loses its decorative mass, so the cleared area stays cleared.
     if (cluster?.pieceIds.every((pieceId) => this.#pieces.get(pieceId)?.state === 'removed')) {
       cluster.decorativeInstances = 0;
@@ -203,6 +230,7 @@ export class ScrapField {
       removed,
       decorativeInstances,
       physicsBodies: this.#bodies.size,
+      solidDormant: this.#solidBodies.size,
       awakeBodies: this.#physics.awakeBodyCount(),
     };
   }
@@ -213,6 +241,7 @@ export class ScrapField {
       clusters: [...this.#clusters.values()].map((cluster) => ({
         id: cluster.id,
         decorativeInstances: cluster.decorativeInstances,
+        ...(cluster.solid ? { solid: true } : {}),
         pieces: cluster.pieceIds.map((id) => {
           const piece = this.#pieces.get(id);
           if (!piece) throw new Error(`Missing piece ${id}`);
@@ -227,6 +256,27 @@ export class ScrapField {
         }),
       })),
     };
+  }
+
+  #makeSolid(id: EntityId): void {
+    const piece = this.#pieces.get(id);
+    if (piece?.state !== 'dormant' || this.#solidBodies.has(id)) return;
+    this.#solidBodies.set(
+      id,
+      this.#physics.addBox({
+        kind: 'fixed',
+        position: piece.position,
+        halfExtents: piece.halfExtents,
+        rotation: piece.rotation,
+      }),
+    );
+  }
+
+  #dropSolid(id: EntityId): void {
+    const handle = this.#solidBodies.get(id);
+    if (handle === undefined) return;
+    this.#physics.removeBody(handle);
+    this.#solidBodies.delete(id);
   }
 
   #cluster(clusterId: string): ClusterRecord {

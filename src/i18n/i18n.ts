@@ -171,6 +171,12 @@ export const STRINGS = {
     en: 'Carry the bale to the sale machine and press use',
     es: 'Lleva la paca a la máquina de venta y pulsa usar',
   },
+  'mountain.medium': { en: 'Medium {material} part', es: 'Pieza mediana de {material}' },
+  'mountain.large': { en: 'Large {material} part', es: 'Pieza grande de {material}' },
+  'mountain.buried': {
+    en: '{name}: other parts rest on it, clear them first',
+    es: '{name}: tiene piezas encima, retíralas primero',
+  },
   'bale.name': { en: '{material} bale ({count})', es: 'Paca de {material} ({count})' },
   'intake.empty': { en: 'empty', es: 'vacía' },
   'unload.done': {

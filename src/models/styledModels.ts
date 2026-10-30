@@ -57,9 +57,17 @@ export function paint(color: string, roughness = 0.6, metalness = 0.05, emissive
   return material;
 }
 
-const rounded = (w: number, h: number, d: number, r: number): BufferGeometry => new RoundedBoxGeometry(w, h, d, 2, r);
+export const rounded = (w: number, h: number, d: number, r: number): BufferGeometry =>
+  new RoundedBoxGeometry(w, h, d, 2, r);
 
-function part(geometry: BufferGeometry, material: MeshStandardMaterial, parent: Object3D, x = 0, y = 0, z = 0): Mesh {
+export function part(
+  geometry: BufferGeometry,
+  material: MeshStandardMaterial,
+  parent: Object3D,
+  x = 0,
+  y = 0,
+  z = 0,
+): Mesh {
   const mesh = new Mesh(geometry, material);
   mesh.position.set(x, y, z);
   mesh.castShadow = true;
@@ -207,6 +215,21 @@ const SCRAP_SHAPES: Readonly<Record<string, readonly (() => BufferGeometry)[]>> 
   'regolith-ceramic': [ceramicTile],
 };
 
+/** Centers a geometry and scales its bounding box to 1 × 1 × 1 so it can be fitted to any collider box. */
+function normalizeUnit(geometry: BufferGeometry): BufferGeometry {
+  geometry.computeBoundingBox();
+  const box = geometry.boundingBox;
+  if (box) {
+    const sx = box.max.x - box.min.x || 1;
+    const sy = box.max.y - box.min.y || 1;
+    const sz = box.max.z - box.min.z || 1;
+    geometry.translate(-(box.min.x + box.max.x) / 2, -(box.min.y + box.max.y) / 2, -(box.min.z + box.max.z) / 2);
+    geometry.scale(1 / sx, 1 / sy, 1 / sz);
+  }
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 const scrapGeometryCache = new Map<string, BufferGeometry>();
 /** Unit-sized (≈1 m) geometry for a material and variant index; scale it to the collider box. */
 export function scrapGeometry(materialId: string, variant: number): BufferGeometry {
@@ -215,20 +238,114 @@ export function scrapGeometry(materialId: string, variant: number): BufferGeomet
   const key = `${materialId}:${index}`;
   let geometry = scrapGeometryCache.get(key);
   if (!geometry) {
-    geometry = (shapes[index] ?? hexNut)();
-    geometry.computeBoundingBox();
-    const box = geometry.boundingBox;
-    if (box) {
-      const sx = box.max.x - box.min.x || 1;
-      const sy = box.max.y - box.min.y || 1;
-      const sz = box.max.z - box.min.z || 1;
-      geometry.translate(-(box.min.x + box.max.x) / 2, -(box.min.y + box.max.y) / 2, -(box.min.z + box.max.z) / 2);
-      geometry.scale(1 / sx, 1 / sy, 1 / sz);
-    }
-    geometry.computeVertexNormals();
+    geometry = normalizeUnit((shapes[index] ?? hexNut)());
     scrapGeometryCache.set(key, geometry);
   }
   return geometry;
+}
+
+// Large mountain parts (owner follow-up R4): bigger silhouettes per material, same color identity.
+
+function iBeam(): BufferGeometry {
+  const shape = new Shape();
+  shape.moveTo(-0.5, -0.5);
+  shape.lineTo(0.5, -0.5);
+  shape.lineTo(0.5, -0.32);
+  shape.lineTo(0.12, -0.32);
+  shape.lineTo(0.12, 0.32);
+  shape.lineTo(0.5, 0.32);
+  shape.lineTo(0.5, 0.5);
+  shape.lineTo(-0.5, 0.5);
+  shape.lineTo(-0.5, 0.32);
+  shape.lineTo(-0.12, 0.32);
+  shape.lineTo(-0.12, -0.32);
+  shape.lineTo(-0.5, -0.32);
+  shape.closePath();
+  const geometry = new ExtrudeGeometry(shape, { depth: 2.4, bevelEnabled: false });
+  geometry.rotateY(Math.PI / 2);
+  return geometry;
+}
+
+function engineBlock(): BufferGeometry {
+  const parts = [new RoundedBoxGeometry(1.6, 0.8, 1, 2, 0.08).toNonIndexed()];
+  for (const x of [-0.5, 0, 0.5]) {
+    parts.push(new CylinderGeometry(0.2, 0.2, 0.35, 10).toNonIndexed().translate(x, 0.55, 0));
+  }
+  parts.push(new BoxGeometry(1.7, 0.12, 0.3).toNonIndexed().translate(0, -0.2, 0.55));
+  return mergeGeometries(parts);
+}
+
+function panelStack(): BufferGeometry {
+  const sheets = [0, 1, 2].map((i) =>
+    new RoundedBoxGeometry(1.6, 0.14, 1.1, 1, 0.04).toNonIndexed().translate(i * 0.08, i * 0.16, -i * 0.06),
+  );
+  return mergeGeometries([...sheets, stampedPanel().scale(0.6, 0.3, 0.6).translate(0.1, 0.48, 0)]);
+}
+
+function spool(): BufferGeometry {
+  const core = new CylinderGeometry(0.42, 0.42, 1, 14).toNonIndexed();
+  const flanges = [-0.5, 0.5].map((y) => new CylinderGeometry(0.6, 0.6, 0.1, 16).toNonIndexed().translate(0, y, 0));
+  const wraps = [-0.25, 0, 0.25].map((y) => {
+    const ring = new TorusGeometry(0.44, 0.07, 6, 16).toNonIndexed();
+    ring.rotateX(Math.PI / 2);
+    return ring.translate(0, y, 0);
+  });
+  const merged = mergeGeometries([core, ...flanges, ...wraps]);
+  merged.rotateZ(Math.PI / 2);
+  return merged;
+}
+
+function crate(): BufferGeometry {
+  const body = new RoundedBoxGeometry(1.4, 1, 1, 2, 0.1).toNonIndexed();
+  const edges = [
+    new BoxGeometry(1.46, 0.12, 0.12).toNonIndexed().translate(0, 0.46, 0.46),
+    new BoxGeometry(1.46, 0.12, 0.12).toNonIndexed().translate(0, -0.46, 0.46),
+    new BoxGeometry(0.12, 1.02, 0.12).toNonIndexed().translate(0.66, 0, 0.46),
+    new BoxGeometry(0.12, 1.02, 0.12).toNonIndexed().translate(-0.66, 0, 0.46),
+  ];
+  return mergeGeometries([body, ...edges, ...edges.map((edge) => edge.clone().translate(0, 0, -0.92))]);
+}
+
+function solarPanel(): BufferGeometry {
+  const parts = [new BoxGeometry(1.8, 0.1, 1.2).toNonIndexed()];
+  for (let i = 0; i < 4; i += 1) {
+    for (let j = 0; j < 3; j += 1) {
+      parts.push(new BoxGeometry(0.38, 0.06, 0.34).toNonIndexed().translate(-0.66 + i * 0.44, 0.07, -0.4 + j * 0.4));
+    }
+  }
+  parts.push(new BoxGeometry(0.12, 0.5, 0.12).toNonIndexed().translate(0, -0.3, 0));
+  return mergeGeometries(parts);
+}
+
+function shieldStack(): BufferGeometry {
+  return mergeGeometries([ceramicTile().translate(0, 0, 0), ceramicTile().translate(0.12, 0.62, -0.08)]);
+}
+
+const LARGE_SHAPES: Readonly<Record<string, readonly (() => BufferGeometry)[]>> = {
+  ferrous: [iBeam, engineBlock, () => ribbedPlate(5)],
+  aluminum: [panelStack, stampedPanel],
+  copper: [spool, coil],
+  polymer: [crate, housing],
+  heliofoil: [solarPanel, foilSheet],
+  'regolith-ceramic': [shieldStack, ceramicTile],
+};
+
+/** Unit geometry for a large mountain part of a material. */
+export function largeScrapGeometry(materialId: string, variant: number): BufferGeometry {
+  const shapes = LARGE_SHAPES[materialId] ?? LARGE_SHAPES['ferrous'] ?? [];
+  const index = Math.abs(variant) % Math.max(1, shapes.length);
+  const key = `large:${materialId}:${index}`;
+  let geometry = scrapGeometryCache.get(key);
+  if (!geometry) {
+    geometry = normalizeUnit((shapes[index] ?? crate)());
+    scrapGeometryCache.set(key, geometry);
+  }
+  return geometry;
+}
+
+/** How many silhouettes a material has per size, for instancing. */
+export function scrapVariantCount(materialId: string, size: 'small' | 'medium' | 'large'): number {
+  return (size === 'large' ? LARGE_SHAPES : SCRAP_SHAPES)[materialId]?.length ?? 1;
 }
 
 /**
@@ -293,43 +410,6 @@ export function createCutterToolModel(): Group {
   head.rotation.x = Math.PI / 2;
   part(new SphereGeometry(0.03, 8, 6), paint('#ff9a3c', 0.3, 0, '#ff6a00'), tool, 0, 0, -0.3);
   return tool;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Cart: yellow hauling cart with a slatted bed, dark wheels and push handle (gameplay concept).
-
-export function createCartModel(half: { x: number; y: number; z: number }): Group {
-  const cart = new Group();
-  cart.name = 'cart';
-  const yellow = paint(STYLE.paintYellow, 0.55);
-  const dark = paint(STYLE.dark, 0.75);
-  const w = half.x * 2;
-  const d = half.z * 2;
-  part(rounded(w, 0.08, d, 0.02), dark, cart, 0, -half.y + 0.12, 0);
-  part(rounded(w, half.y * 1.4, 0.07, 0.02), yellow, cart, 0, 0.02, -half.z + 0.035);
-  part(rounded(w, half.y * 1.4, 0.07, 0.02), yellow, cart, 0, 0.02, half.z - 0.035);
-  part(rounded(0.07, half.y * 1.4, d, 0.02), yellow, cart, -half.x + 0.035, 0.02, 0);
-  part(rounded(0.07, half.y * 1.4, d, 0.02), yellow, cart, half.x - 0.035, 0.02, 0);
-  for (const x of [-w * 0.25, w * 0.25]) part(rounded(0.04, half.y * 1.2, 0.08, 0.01), dark, cart, x, 0.04, half.z);
-  for (const x of [-1, 1]) {
-    for (const z of [-1, 1]) {
-      const wheel = part(
-        new CylinderGeometry(0.12, 0.12, 0.08, 10),
-        dark,
-        cart,
-        x * (half.x - 0.12),
-        -half.y,
-        z * (half.z - 0.08),
-      );
-      wheel.rotation.z = Math.PI / 2;
-    }
-  }
-  const handle = part(new CylinderGeometry(0.025, 0.025, w * 0.8, 8), dark, cart, 0, half.y + 0.25, half.z + 0.18);
-  handle.rotation.z = Math.PI / 2;
-  for (const x of [-1, 1])
-    part(new CylinderGeometry(0.02, 0.02, 0.4, 6), dark, cart, x * w * 0.38, half.y + 0.08, half.z + 0.1).rotation.x =
-      -0.5;
-  return cart;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -460,145 +540,8 @@ export function createColonyDome(radius: number): Group {
   return dome;
 }
 
-/** Base intake hopper (gameplay concept sorting bay): dark frame, yellow funnel, orange rim and arrow. */
-export function createIntakeHopperModel(): Group {
-  const hopper = new Group();
-  hopper.name = 'intake-hopper';
-  const dark = paint(STYLE.dark, 0.8);
-  const yellow = paint(STYLE.paintYellow, 0.55);
-  part(rounded(1.8, 0.9, 1.8, 0.08), paint(STYLE.steelDark, 0.6, 0.2), hopper, 0, 0.45, 0);
-  const funnel = part(new CylinderGeometry(1.35, 0.7, 0.9, 4, 1, true), yellow, hopper, 0, 1.35, 0);
-  funnel.rotation.y = Math.PI / 4;
-  (funnel.material as MeshStandardMaterial).side = 2;
-  const rim = part(new TorusGeometry(1.0, 0.07, 4, 4), paint(STYLE.paintOrange, 0.5), hopper, 0, 1.8, 0);
-  rim.rotation.set(Math.PI / 2, 0, Math.PI / 4);
-  for (const x of [-0.85, 0.85]) {
-    for (const z of [-0.85, 0.85]) part(rounded(0.16, 1.8, 0.16, 0.03), dark, hopper, x, 0.9, z);
-  }
-  const arrow = new Shape();
-  arrow.moveTo(-0.18, 0.2);
-  arrow.lineTo(0.18, 0.2);
-  arrow.lineTo(0.18, 0);
-  arrow.lineTo(0.32, 0);
-  arrow.lineTo(0, -0.3);
-  arrow.lineTo(-0.32, 0);
-  arrow.lineTo(-0.18, 0);
-  arrow.closePath();
-  part(new ExtrudeGeometry(arrow, { depth: 0.04, bevelEnabled: false }), yellow, hopper, 0, 0.55, 0.91);
-  return hopper;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Base machines (MSC-032/033): compactor fed by the intake, bales per material, and the sale machine.
-
-/** Compactor: dark steel body, yellow frame and press head (named `press-head`), teal status lamp. */
-export function createCompactorModel(): Group {
-  const machine = new Group();
-  machine.name = 'compactor';
-  const yellow = paint(STYLE.paintYellow, 0.55);
-  const dark = paint(STYLE.dark, 0.8);
-  const steel = paint(STYLE.steel, 0.55, 0.3);
-  part(rounded(1.6, 1.2, 1.4, 0.08), steel, machine, 0, 0.6, 0);
-  for (const x of [-0.75, 0.75]) part(rounded(0.14, 2.1, 0.14, 0.03), yellow, machine, x, 1.05, -0.2);
-  part(rounded(1.64, 0.16, 0.3, 0.04), yellow, machine, 0, 2.05, -0.2);
-  const head = part(rounded(1.2, 0.35, 0.9, 0.06), yellow, machine, 0, 1.55, -0.1);
-  head.name = 'press-head';
-  part(rounded(0.24, 0.5, 0.24, 0.04), steel, machine, 0, 1.85, -0.1);
-  for (let i = 0; i < 4; i += 1) {
-    const stripe = part(
-      rounded(0.12, 0.5, 0.02, 0.01),
-      paint(STYLE.paintOrange, 0.5),
-      machine,
-      -0.45 + i * 0.3,
-      0.6,
-      0.71,
-    );
-    stripe.rotation.z = 0.5;
-  }
-  part(rounded(0.9, 0.5, 0.06, 0.04), dark, machine, 0, 0.35, 0.72);
-  const lamp = part(
-    new SphereGeometry(0.09, 10, 8),
-    paint('#7ff0e2', 0.3, 0, STYLE.heliofoil),
-    machine,
-    0.6,
-    1.35,
-    0.68,
-  );
-  lamp.name = 'status-lamp';
-  // Feed chute on the machine's right (+x): it reaches the intake when the front faces the yard.
-  const chute = part(new CylinderGeometry(0.22, 0.28, 1.2, 8), dark, machine, 1.1, 1.2, 0);
-  chute.rotation.z = -1.1;
-  return machine;
-}
-
-/** Output pad the compactor drops bales onto: dark plate with a yellow border. */
-export function createOutputPadModel(): Group {
-  const pad = new Group();
-  pad.name = 'output-pad';
-  part(rounded(1.2, 0.06, 1.0, 0.02), paint(STYLE.paintYellow, 0.6), pad, 0, 0.03, 0);
-  part(rounded(1.0, 0.07, 0.8, 0.02), paint(STYLE.dark, 0.85), pad, 0, 0.04, 0);
-  return pad;
-}
-
-/**
- * One-material bale (PRD material table): pressed block in the material color with dark straps; copper is a
- * coil roll and polymer a rounded bundle. Sized to the collider half extents.
- */
-export function createBaleModel(materialId: string, half: { x: number; y: number; z: number }): Group {
-  const bale = new Group();
-  bale.name = `bale-${materialId}`;
-  const body = scrapMaterial(materialId).clone();
-  const strap = paint(STYLE.dark, 0.8);
-  if (materialId === 'copper') {
-    const roll = part(new CylinderGeometry(half.y, half.y, half.x * 2, 14), body, bale);
-    roll.rotation.z = Math.PI / 2;
-    part(new CylinderGeometry(half.y * 0.35, half.y * 0.35, half.x * 2.02, 10), strap, bale).rotation.z = Math.PI / 2;
-  } else {
-    const radius = materialId === 'polymer' ? Math.min(half.x, half.y) * 0.45 : 0.03;
-    part(rounded(half.x * 2, half.y * 2, half.z * 2, radius), body, bale);
-  }
-  for (const x of [-half.x * 0.5, half.x * 0.5]) {
-    part(rounded(0.05, half.y * 2.04, half.z * 2.04, 0.01), strap, bale, x, 0, 0);
-  }
-  part(rounded(half.x * 0.6, half.y * 0.5, 0.02, 0.01), paint(STYLE.stationWhite, 0.6), bale, 0, 0, half.z + 0.012);
-  return bale;
-}
-
-/** Sale machine: navy kiosk with a glowing teal screen, coin badge, yellow bale tray and orange button. */
-export function createSaleTerminalModel(): Group {
-  const kiosk = new Group();
-  kiosk.name = 'sale-terminal';
-  const navy = paint('#26304a', 0.6, 0.15);
-  part(rounded(1.3, 1.9, 0.9, 0.1), navy, kiosk, 0, 0.95, 0);
-  part(rounded(0.95, 0.6, 0.06, 0.05), paint('#7ff0e2', 0.3, 0, STYLE.heliofoil), kiosk, 0, 1.4, 0.46);
-  const coin = part(
-    new CylinderGeometry(0.16, 0.16, 0.05, 16),
-    paint(STYLE.paintYellow, 0.4, 0.5),
-    kiosk,
-    0,
-    2.05,
-    0.2,
-  );
-  coin.rotation.x = Math.PI / 2;
-  part(rounded(1.1, 0.12, 0.7, 0.03), paint(STYLE.paintYellow, 0.55), kiosk, 0, 0.62, 0.7);
-  part(rounded(0.9, 0.3, 0.06, 0.03), paint(STYLE.dark, 0.85), kiosk, 0, 0.8, 0.46);
-  part(new SphereGeometry(0.07, 10, 8), paint(STYLE.paintOrange, 0.4, 0, '#ff6a00'), kiosk, 0.45, 1.0, 0.47);
-  return kiosk;
-}
-
 /** Named models for the review viewer. */
-export const STYLED_MODEL_NAMES = [
-  'magnet-tool',
-  'cutter-tool',
-  'cart',
-  'scrap-set',
-  'rover',
-  'station-dome',
-  'intake-hopper',
-  'compactor',
-  'sale-terminal',
-  'bale-set',
-] as const;
+export const STYLED_MODEL_NAMES = ['magnet-tool', 'cutter-tool', 'scrap-set', 'rover', 'station-dome'] as const;
 export type StyledModelName = (typeof STYLED_MODEL_NAMES)[number];
 
 export function createStyledModel(name: StyledModelName): Object3D {
@@ -607,25 +550,8 @@ export function createStyledModel(name: StyledModelName): Object3D {
       return createMagnetToolModel();
     case 'cutter-tool':
       return createCutterToolModel();
-    case 'cart':
-      return createCartModel({ x: 0.6, y: 0.25, z: 0.45 });
     case 'station-dome':
       return createStationDome(3);
-    case 'intake-hopper':
-      return createIntakeHopperModel();
-    case 'compactor':
-      return createCompactorModel();
-    case 'sale-terminal':
-      return createSaleTerminalModel();
-    case 'bale-set': {
-      const group = new Group();
-      Object.keys(SCRAP_COLORS).forEach((id, index) => {
-        const bale = createBaleModel(id, { x: 0.3, y: 0.3, z: 0.3 });
-        bale.position.set((index - 2.5) * 0.8, 0.3, 0);
-        group.add(bale);
-      });
-      return group;
-    }
     case 'rover': {
       const group = new Group();
       const layout: Record<string, { p: [number, number, number]; h: [number, number, number] }> = {
