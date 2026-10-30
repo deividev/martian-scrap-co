@@ -281,6 +281,13 @@ export const TEST_YARD_COMPACTOR = Object.freeze({
   padRadius: 0.75,
 });
 
+/** Sale machine (MSC-033): kiosk collider and how close a player with a bale must stand to sell. */
+export const TEST_YARD_SALE_TERMINAL = Object.freeze({
+  position: { x: 10.6, y: 0, z: 9.2 },
+  halfExtents: { x: 0.65, y: 0.95, z: 0.45 },
+  reach: 2.6,
+});
+
 /** Half extents of a bale prop (MSC-032); placeholder size readable in first person. */
 export const BALE_HALF_EXTENTS = Object.freeze({ x: 0.32, y: 0.3, z: 0.3 });
 

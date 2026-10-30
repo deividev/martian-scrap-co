@@ -10,6 +10,8 @@ const ICONS = {
   cutter:
     '<svg viewBox="0 0 24 24"><circle cx="15" cy="9" r="6" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="15" cy="9" r="1.8" fill="currentColor"/><path d="M11 13 4 20" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/></svg>',
   box: '<svg viewBox="0 0 24 24"><path d="M3 8h18v12H3z" fill="#f2b21c"/><path d="M3 8l3-4h12l3 4z" fill="#ffd25c"/><path d="M8 11v6M12 11v6M16 11v6" stroke="#2b2e35" stroke-width="1.6"/></svg>',
+  coin: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#f2b21c"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="#c98a08" stroke-width="2"/></svg>',
+  job: '<svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2" fill="#f4ece1"/><rect x="9" y="2" width="6" height="4" rx="1" fill="#2b2e35"/><path d="M8 10h8M8 14h8M8 18h5" stroke="#2b2e35" stroke-width="1.8"/></svg>',
   robot:
     '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="5" fill="#f07a1e"/><rect x="6" y="8" width="12" height="8" rx="3" fill="#20242f"/><circle cx="9.5" cy="12" r="1.6" fill="#f4ece1"/><circle cx="14.5" cy="12" r="1.6" fill="#f4ece1"/><path d="M12 2v3" stroke="#f2b21c" stroke-width="2"/></svg>',
   lock: '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>',
@@ -73,6 +75,13 @@ export interface HudState {
   };
   readonly tools: readonly HudToolSlot[];
   readonly base: HudBase | null;
+  readonly credits: {
+    readonly label: string;
+    readonly balance: number;
+    /** Most recent sale, shown briefly as a "+N C" pop. */
+    readonly gain: number | null;
+  };
+  readonly job: { readonly label: string; readonly text: string };
   /** Panel for the tool in hand: the collector filter or the cutter. */
   readonly inHand:
     | {
@@ -114,11 +123,28 @@ export class GameHud {
   readonly #tools: HTMLElement;
   readonly #hand: HTMLElement;
   readonly #base: HTMLElement;
+  readonly #creditsLabel: HTMLElement;
+  readonly #creditsValue: HTMLElement;
+  readonly #creditsGain: HTMLElement;
+  readonly #jobLabel: HTMLElement;
+  readonly #jobText: HTMLElement;
   #lastKey = '';
 
   constructor(root: HTMLElement) {
     this.#root = root;
     root.classList.add('hud');
+
+    const creditsPanel = element('section', 'hud-panel hud-credits', root);
+    creditsPanel.append(icon('coin', 'hud-icon hud-icon-lg'));
+    const creditsText = element('div', 'hud-stack', creditsPanel);
+    this.#creditsLabel = element('span', 'hud-label', creditsText);
+    this.#creditsValue = element('span', 'hud-value', creditsText);
+    this.#creditsGain = element('span', 'hud-gain', creditsPanel);
+    const jobPanel = element('section', 'hud-panel hud-job', root);
+    jobPanel.append(icon('job', 'hud-icon hud-icon-md'));
+    const jobText = element('div', 'hud-stack', jobPanel);
+    this.#jobLabel = element('span', 'hud-label', jobText);
+    this.#jobText = element('span', 'hud-detail', jobText);
 
     this.#containerPanel = element('section', 'hud-panel hud-container', root);
     this.#containerPanel.append(icon('box', 'hud-icon hud-icon-lg'));
@@ -145,6 +171,12 @@ export class GameHud {
     const key = JSON.stringify(state);
     if (key === this.#lastKey) return;
     this.#lastKey = key;
+
+    this.#creditsLabel.textContent = state.credits.label;
+    this.#creditsValue.textContent = `${state.credits.balance.toLocaleString()} C`;
+    this.#creditsGain.textContent = state.credits.gain === null ? '' : `+${state.credits.gain} C`;
+    this.#jobLabel.textContent = state.job.label;
+    this.#jobText.textContent = state.job.text;
 
     const { count, capacity, color } = state.container;
     const full = count >= capacity;

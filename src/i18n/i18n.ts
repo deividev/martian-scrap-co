@@ -138,6 +138,39 @@ export const STRINGS = {
     en: 'A {material} bale is ready on the compactor pad.',
     es: 'Hay una paca de {material} lista en la plataforma de la compactadora.',
   },
+  'sale.preview': {
+    en: 'Sale machine: use to sell {bale} for {credits} C',
+    es: 'Máquina de venta: usar para vender {bale} por {credits} C',
+  },
+  'sale.needBale': {
+    en: 'Sale machine: bring a bale from the compactor to sell it',
+    es: 'Máquina de venta: trae una paca de la compactadora para venderla',
+  },
+  'sale.done': { en: 'Sold {bale}: +{credits} C for the crew.', es: 'Vendida {bale}: +{credits} C para el equipo.' },
+  'sale.failed': { en: 'That bale can no longer be sold.', es: 'Esa paca ya no se puede vender.' },
+  'hud.credits': { en: 'Team credits', es: 'Créditos del equipo' },
+  'hud.job': { en: 'Current job', es: 'Trabajo actual' },
+  'job.vacuum': {
+    en: 'Vacuum small {material} pieces with the collector (hold left click)',
+    es: 'Aspira piezas pequeñas de {material} con el colector (mantén clic izquierdo)',
+  },
+  'job.unload': {
+    en: 'Unload the container at the base intake (right click)',
+    es: 'Descarga el contenedor en la tolva de la base (clic derecho)',
+  },
+  'job.fillBin': {
+    en: 'Bring {missing} more {material} pieces to complete a bale',
+    es: 'Trae {missing} piezas más de {material} para completar una paca',
+  },
+  'job.pressing': { en: 'The compactor is pressing a bale…', es: 'La compactadora está prensando una paca…' },
+  'job.takeBale': {
+    en: 'Pick up the bale from the compactor pad (left click)',
+    es: 'Recoge la paca de la plataforma de la compactadora (clic izquierdo)',
+  },
+  'job.sellBale': {
+    en: 'Carry the bale to the sale machine and press use',
+    es: 'Lleva la paca a la máquina de venta y pulsa usar',
+  },
   'bale.name': { en: '{material} bale ({count})', es: 'Paca de {material} ({count})' },
   'intake.empty': { en: 'empty', es: 'vacía' },
   'unload.done': {

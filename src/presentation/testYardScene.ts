@@ -21,6 +21,7 @@ import {
   createCartModel,
   createCompactorModel,
   createOutputPadModel,
+  createSaleTerminalModel,
   createIntakeHopperModel,
   createRoverFragmentModel,
   paint,
@@ -30,6 +31,7 @@ import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
 import { BaseIntake } from '../domain/intake';
 import { COMPACTOR_TUNING, Compactor, type Bale } from '../domain/compactor';
+import { SaleTerminal, SharedCredits } from '../domain/economy';
 import { AssemblyState } from '../domain/assembly';
 import { EntityIdAllocator, contentId, transactionId, type ContentId, type EntityId } from '../domain/ids';
 import { ToolLoadout } from '../domain/toolLoadout';
@@ -61,6 +63,7 @@ import {
   TEST_YARD_SPAWN,
   TEST_YARD_INTAKE,
   TEST_YARD_COMPACTOR,
+  TEST_YARD_SALE_TERMINAL,
   BALE_HALF_EXTENTS,
   createMountainFootScrap,
   createTestYardBreakables,
@@ -267,6 +270,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   const compactor = new Compactor(intake, [...content.pack.materials.keys()], () => allocator.allocate());
   const compactorModel = createCompactorModel();
   compactorModel.position.set(TEST_YARD_COMPACTOR.position.x, 0, TEST_YARD_COMPACTOR.position.z);
+  compactorModel.rotation.y = Math.PI;
   scene.add(compactorModel);
   const padModel = createOutputPadModel();
   padModel.position.set(TEST_YARD_COMPACTOR.pad.x, 0, TEST_YARD_COMPACTOR.pad.z);
@@ -292,6 +296,27 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         p.y < 1.5
       );
     });
+  // MSC-033: the sale machine turns a bale into shared credits almost at once (host-owned ledger).
+  const sharedCredits = new SharedCredits();
+  const saleTerminal = new SaleTerminal(
+    sharedCredits,
+    (material) => content.pack.materials.get(material)?.saleValuePerUnit,
+  );
+  const terminalModel = createSaleTerminalModel();
+  terminalModel.position.set(TEST_YARD_SALE_TERMINAL.position.x, 0, TEST_YARD_SALE_TERMINAL.position.z);
+  terminalModel.rotation.y = Math.PI;
+  scene.add(terminalModel);
+  world.addBox({
+    kind: 'fixed',
+    position: {
+      x: TEST_YARD_SALE_TERMINAL.position.x,
+      y: TEST_YARD_SALE_TERMINAL.halfExtents.y,
+      z: TEST_YARD_SALE_TERMINAL.position.z,
+    },
+    halfExtents: TEST_YARD_SALE_TERMINAL.halfExtents,
+  });
+  let saleCounter = 0;
+  let lastGain: { credits: number; until: number } | null = null;
   let wasSucking = false;
   let lastActivation = 0;
   const cart = new Cart(world, props, claims, allocator.allocate(), { x: 2, y: 0.4, z: 5 });
@@ -353,6 +378,29 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     }
     const prop = props.get(id);
     return nameOf(prop?.nameKeys, prop?.displayName ?? '');
+  };
+  const nearTerminal = (view: { position: { x: number; z: number }; yaw: number }): boolean => {
+    const dx = TEST_YARD_SALE_TERMINAL.position.x - view.position.x;
+    const dz = TEST_YARD_SALE_TERMINAL.position.z - view.position.z;
+    if (Math.hypot(dx, dz) > TEST_YARD_SALE_TERMINAL.reach) return false;
+    // Roughly facing the machine (within 50°).
+    const facing = -Math.sin(view.yaw) * dx + -Math.cos(view.yaw) * dz;
+    return facing / Math.max(Math.hypot(dx, dz), 0.001) > Math.cos((50 * Math.PI) / 180);
+  };
+  const jobText = (): string => {
+    const heldBale = grip.held !== null && bales.has(grip.held);
+    if (heldBale) return i18n.t('job.sellBale');
+    if (bales.size > 0) return i18n.t('job.takeBale');
+    if (compactor.state.kind !== 'idle') return i18n.t('job.pressing');
+    if (container.count > 0) return i18n.t('job.unload');
+    const fullest = intake.batches().sort((a, b) => b.count - a.count)[0];
+    if (fullest) {
+      return i18n.t('job.fillBin', {
+        missing: Math.max(1, COMPACTOR_TUNING.balePieces - fullest.count),
+        material: materialName(fullest.materialId, fullest.materialId),
+      });
+    }
+    return i18n.t('job.vacuum', { material: selectedName() });
   };
   const symbolOf = (id: ContentId): string => content.pack.materials.get(id)?.symbol ?? '?';
   const compactorLine = (): { label: string; progress: number | null } => {
@@ -488,7 +536,29 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       const overBed = heldProp ? cart.isOverBed(world.bodyPosition(heldProp.body)) : false;
       const heldName = propLabel(heldId);
       prompt = i18n.t(overBed ? 'grip.holdingOverCart' : 'grip.holding', { name: heldName });
-      if (frame.interact && overBed) {
+      const heldBale = bales.get(heldId);
+      const saleQuote = heldBale && nearTerminal(aimView) ? saleTerminal.quote(heldBale) : null;
+      if (heldBale && saleQuote) {
+        prompt = i18n.t('sale.preview', { bale: heldName, credits: saleQuote.credits });
+      }
+      if (frame.interact && heldBale && saleQuote) {
+        saleCounter += 1;
+        const sale = saleTerminal.sell(heldBale, transactionId(`txn-sale${saleCounter.toString(36)}`), () => {
+          if (grip.held !== heldId || !props.get(heldId)) return false;
+          grip.forceRelease();
+          props.remove(heldId);
+          bales.delete(heldId);
+          return true;
+        });
+        if (sale.ok) {
+          tool.use();
+          lastGain = { credits: sale.quote.credits, until: now + 2500 };
+          notice = { key: 'sale.done', params: { bale: heldName, credits: sale.quote.credits } };
+        } else {
+          notice = { key: 'sale.failed' };
+        }
+        noticeUntil = now + 2500;
+      } else if (frame.interact && overBed) {
         grip.forceRelease();
         const loaded = cart.load(heldId);
         if (!loaded.ok && LOAD_NOTICES[loaded.reason]) {
@@ -665,6 +735,9 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         prompt = kept > 0 ? i18n.t('intake.previewKept', { list, kept }) : i18n.t('intake.preview', { list });
       }
     }
+    if (!prompt && grip.held === null && feedback.state === 'none' && nearTerminal(aimView)) {
+      prompt = i18n.t('sale.needBale');
+    }
 
     // Wake clusters near the player and let distant ones sleep (MSC-012 activation).
     if (now - lastActivation > 500) {
@@ -794,6 +867,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     canvas.dataset['collected'] = String(container.count);
     canvas.dataset['held'] = grip.held ?? '';
     canvas.dataset['intake'] = String(intake.count);
+    canvas.dataset['credits'] = String(sharedCredits.balance);
     canvas.dataset['compactor'] = JSON.stringify({ state: compactor.state.kind, bales: [...bales.keys()] });
     canvas.dataset['bins'] = JSON.stringify(Object.fromEntries(intake.batches().map((b) => [b.materialId, b.count])));
     canvas.dataset['selector'] = JSON.stringify({
@@ -828,6 +902,12 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
           level: i18n.t('hud.level'),
         },
         crew: { present: 1, max: 4 },
+        credits: {
+          label: i18n.t('hud.credits'),
+          balance: sharedCredits.balance,
+          gain: lastGain && now < lastGain.until ? lastGain.credits : null,
+        },
+        job: { label: i18n.t('hud.job'), text: jobText() },
         base: nearBase
           ? {
               title: i18n.t('hud.base'),

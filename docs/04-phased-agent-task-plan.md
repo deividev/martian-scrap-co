@@ -601,7 +601,9 @@ Check: Race two sales, disconnect/rejoin and replay event IDs.
 
 Requirements: PRD-007, PRD-010, PRD-019.
 
-Status: Planned
+Status: In progress
+
+Outcome: 2026-10-30 — Brought forward by the owner as local single-player work ahead of the MSC-030 gate. `SharedCredits` is the host-owned crew balance; `SaleTerminal` quotes a bale (sale value per piece from the content pack × pieces, placeholder prices) and commits a sale in one step: payment happens only if the bale was actually removed from the world, a bale is paid at most once, and resubmitting the same transaction id returns the first result without paying again. The test yard has a sale machine beside the compactor: holding a bale and facing it shows "vender … por 40 C", use sells it almost instantly, and the HUD gained the approved-style team credits panel with a "+N C" pop and a current-job panel that guides the loop (vacuum → unload → pressing → take the bale → sell → bring N more pieces). Checks: 4 sale tests (preview and payment on removal, duplicate submission pays once, two racing sales of one bale pay once, missing bale or unpriced material pays nothing); in Electron the full loop ran: 16 iron pieces vacuumed and unloaded, one 10-piece bale pressed, grabbed from the pad, sold for 40 C at the machine (a second press paid nothing), the job panel moved on to "trae 4 piezas más"; `npm run check` 7/7. **Pending:** disconnect/rejoin and replayed network event ids need the co-op transport (MSC-021–030).
 
 ### MSC-034 — Build shared upgrade purchase slice
 

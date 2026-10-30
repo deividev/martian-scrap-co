@@ -14,8 +14,8 @@ body {
 
 #platform-status {
   position: fixed;
-  left: 12px;
-  top: 8px;
+  right: 16px;
+  top: 116px;
   margin: 0;
   font:
     12px/1.4 system-ui,
@@ -419,4 +419,31 @@ body.model-review #yard-tip {
 
 .hud-machine {
   font-size: 13px;
+}
+
+.hud-credits {
+  left: 16px;
+  top: 16px;
+  min-width: 220px;
+}
+
+.hud-gain {
+  color: var(--hud-progress);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.hud-gain:empty {
+  display: none;
+}
+
+.hud-job {
+  left: 16px;
+  top: 96px;
+  max-width: 360px;
+}
+
+.hud-icon-md {
+  width: 32px;
+  height: 32px;
 }

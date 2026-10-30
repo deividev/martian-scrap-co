@@ -525,8 +525,9 @@ export function createCompactorModel(): Group {
     0.68,
   );
   lamp.name = 'status-lamp';
-  const chute = part(new CylinderGeometry(0.22, 0.28, 1.2, 8), dark, machine, -1.1, 1.2, 0);
-  chute.rotation.z = 1.1;
+  // Feed chute on the machine's right (+x): it reaches the intake when the front faces the yard.
+  const chute = part(new CylinderGeometry(0.22, 0.28, 1.2, 8), dark, machine, 1.1, 1.2, 0);
+  chute.rotation.z = -1.1;
   return machine;
 }
 
