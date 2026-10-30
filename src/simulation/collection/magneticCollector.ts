@@ -2,9 +2,9 @@ import type { ContentPack } from '../../content/schema';
 import type { ContainerItem } from '../../domain/container';
 import { contentId, type ContentId, type EntityId } from '../../domain/ids';
 import { checkCompatibility, type MaterialDefinition, type ToolDefinition } from '../../domain/materials';
-import type { PhysicsWorldPort, Vec3 } from '../physics/physicsPort';
+import type { CharacterHandle, PhysicsBodyHandle, PhysicsWorldPort, Vec3 } from '../physics/physicsPort';
 import type { ScrapField } from '../scrap/scrapField';
-import { TARGETING, type TargetPick } from './targeting';
+import { TARGETING, type AimRay, type TargetPick } from './targeting';
 
 export type TargetFeedback =
   | { readonly state: 'none' }
@@ -31,12 +31,21 @@ export interface CollectionSink {
   canAccept(id: EntityId): boolean;
   /** Called exactly once per captured piece, in the same step it leaves the world. */
   accept(item: ContainerItem): void;
+  /** Free capacity, so suction never pulls more than fits. */
+  remaining?(): number;
 }
 
 export type PullOutcome =
   | { readonly kind: 'none' }
   | { readonly kind: 'collected'; readonly id: EntityId }
   | { readonly kind: 'dropped'; readonly id: EntityId; readonly reason: 'out-of-range' | 'sink-full' | 'gone' };
+
+/** Vacuum suction: wider than the single-target aim cone (first-pass values, MSC-020 feel review). */
+export const VACUUM_TUNING = Object.freeze({
+  reachMeters: 4,
+  coneDegrees: 22,
+  maxConcurrent: 8,
+});
 
 export const COLLECTOR_TUNING = Object.freeze({
   pullSpeed: 6,
@@ -57,7 +66,7 @@ export class MagneticCollector {
   readonly #physics: PhysicsWorldPort;
   readonly #tool: ToolDefinition;
   readonly #sink: CollectionSink;
-  #pulling: EntityId | null = null;
+  readonly #pulling = new Set<EntityId>();
 
   constructor(
     pack: ContentPack,
@@ -75,8 +84,8 @@ export class MagneticCollector {
     this.#sink = sink;
   }
 
-  get pulling(): EntityId | null {
-    return this.#pulling;
+  get pulling(): readonly EntityId[] {
+    return [...this.#pulling];
   }
 
   evaluate(pick: TargetPick | null): TargetFeedback {
@@ -101,34 +110,81 @@ export class MagneticCollector {
 
   /** Starts pulling a compatible target. Returns false (and changes nothing) otherwise. */
   tryStartPull(feedback: TargetFeedback): boolean {
-    if (feedback.state !== 'compatible' || this.#pulling !== null) return false;
-    this.#pulling = feedback.id;
+    if (feedback.state !== 'compatible' || this.#pulling.has(feedback.id) || this.#freeSlots() <= 0) return false;
+    this.#pulling.add(feedback.id);
     return true;
   }
 
-  cancelPull(): void {
-    this.#pulling = null;
+  /**
+   * Vacuum suction (owner feedback 2026-10-30): while the use action is held, every compatible piece in a
+   * wide cone with line of sight is pulled at once, up to the concurrent limit and the container's free
+   * space. Returns how many pieces started being pulled this call.
+   */
+  suck(aim: AimRay, self?: CharacterHandle): number {
+    const cosLimit = Math.cos((VACUUM_TUNING.coneDegrees * Math.PI) / 180);
+    const candidates: { id: EntityId; body: PhysicsBodyHandle; angle: number }[] = [];
+    for (const target of this.#field.activeTargets()) {
+      if (this.#pulling.has(target.id)) continue;
+      const piece = this.#field.piece(target.id);
+      const material = piece ? this.#pack.materials.get(piece.materialId) : undefined;
+      if (!material || !checkCompatibility(this.#tool, material, 'small').compatible) continue;
+      const d = {
+        x: target.position.x - aim.origin.x,
+        y: target.position.y - aim.origin.y,
+        z: target.position.z - aim.origin.z,
+      };
+      const distance = Math.hypot(d.x, d.y, d.z);
+      if (distance === 0 || distance > VACUUM_TUNING.reachMeters) continue;
+      const cos = (d.x * aim.direction.x + d.y * aim.direction.y + d.z * aim.direction.z) / distance;
+      if (cos < cosLimit) continue;
+      candidates.push({ id: target.id, body: target.body, angle: Math.acos(Math.min(1, cos)) });
+    }
+    candidates.sort((a, b) => a.angle - b.angle);
+    let added = 0;
+    for (const candidate of candidates) {
+      if (this.#freeSlots() <= 0) break;
+      const position = this.#physics.bodyPosition(candidate.body);
+      const d = { x: position.x - aim.origin.x, y: position.y - aim.origin.y, z: position.z - aim.origin.z };
+      const hit = this.#physics.castRay(aim.origin, d, Math.hypot(d.x, d.y, d.z) + 0.5, self);
+      if (hit?.body !== candidate.body) continue;
+      this.#pulling.add(candidate.id);
+      added += 1;
+    }
+    return added;
   }
 
-  /** Moves the pulled piece toward the collector; transfers ownership atomically on arrival. */
-  fixedUpdate(collector: Vec3): PullOutcome {
-    const id = this.#pulling;
-    if (id === null) return { kind: 'none' };
+  /** Stops all suction; pulled pieces simply fall where they are. */
+  cancelPull(): void {
+    this.#pulling.clear();
+  }
+
+  /** Moves every pulled piece toward the collector; each transfers ownership atomically on arrival. */
+  fixedUpdate(collector: Vec3): PullOutcome[] {
+    const outcomes: PullOutcome[] = [];
+    for (const id of [...this.#pulling]) {
+      const outcome = this.#step(id, collector);
+      if (outcome.kind !== 'none') {
+        this.#pulling.delete(id);
+        outcomes.push(outcome);
+      }
+    }
+    return outcomes;
+  }
+
+  #freeSlots(): number {
+    const space = this.#sink.remaining ? this.#sink.remaining() - this.#pulling.size : Number.POSITIVE_INFINITY;
+    return Math.min(VACUUM_TUNING.maxConcurrent - this.#pulling.size, space);
+  }
+
+  #step(id: EntityId, collector: Vec3): PullOutcome {
     const piece = this.#field.piece(id);
     const body = this.#field.bodyOf(id);
-    if (piece?.state !== 'active' || body === undefined) {
-      this.#pulling = null;
-      return { kind: 'dropped', id, reason: 'gone' };
-    }
+    if (piece?.state !== 'active' || body === undefined) return { kind: 'dropped', id, reason: 'gone' };
     const position = this.#physics.bodyPosition(body);
     const delta = { x: collector.x - position.x, y: collector.y - position.y, z: collector.z - position.z };
     const distance = Math.hypot(delta.x, delta.y, delta.z);
-    if (distance > COLLECTOR_TUNING.dropDistance) {
-      this.#pulling = null;
-      return { kind: 'dropped', id, reason: 'out-of-range' };
-    }
+    if (distance > COLLECTOR_TUNING.dropDistance) return { kind: 'dropped', id, reason: 'out-of-range' };
     if (distance <= COLLECTOR_TUNING.captureDistance) {
-      this.#pulling = null;
       // Full at arrival: the piece stays in the world (never deleted), it just stops being pulled.
       if (!this.#sink.canAccept(id)) return { kind: 'dropped', id, reason: 'sink-full' };
       if (!this.#field.removePiece(id)) return { kind: 'dropped', id, reason: 'gone' };

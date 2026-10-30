@@ -9,7 +9,7 @@ export const KEYBOARD_BINDINGS = Object.freeze({
   right: ['KeyD', 'ArrowRight'],
   jump: ['Space'],
   interact: ['KeyE', 'Mouse0'],
-  secondary: ['KeyF'],
+  secondary: ['KeyF', 'Mouse2'],
   pause: ['Escape', 'KeyP'],
   rotateRight: ['KeyR'],
   rotateLeft: ['KeyQ'],
@@ -71,6 +71,7 @@ export class KeyboardMouseSource {
       look: { yaw: this.#lookYaw, pitch: this.#lookPitch },
       jump: this.#pressed.has('jump'),
       interact: this.#pressed.has('interact'),
+      interactHeld: any(KEYBOARD_BINDINGS.interact),
       secondary: this.#pressed.has('secondary'),
       pause: this.#pressed.has('pause'),
       rotate: this.#pressed.has('rotateRight') ? 1 : this.#pressed.has('rotateLeft') ? -1 : 0,
@@ -93,17 +94,23 @@ export class KeyboardMouseSource {
     const mouseMove = (event: MouseEvent): void =>
       this.handleMouseMove(event.movementX, event.movementY, isPointerLocked());
     const mouseDown = (event: MouseEvent): void => {
-      if (event.button === 0 && isPointerLocked()) this.handleKeyDown('Mouse0');
+      if (!isPointerLocked()) return;
+      if (event.button === 0) this.handleKeyDown('Mouse0');
+      if (event.button === 2) this.handleKeyDown('Mouse2');
     };
     const mouseUp = (event: MouseEvent): void => {
       if (event.button === 0) this.handleKeyUp('Mouse0');
+      if (event.button === 2) this.handleKeyUp('Mouse2');
     };
+    // Right click is a game action (unload), never the browser context menu.
+    const contextMenu = (event: MouseEvent): void => event.preventDefault();
     const blur = (): void => this.releaseAll();
     target.addEventListener('keydown', keyDown);
     target.addEventListener('keyup', keyUp);
     target.addEventListener('mousemove', mouseMove);
     target.addEventListener('mousedown', mouseDown);
     target.addEventListener('mouseup', mouseUp);
+    target.addEventListener('contextmenu', contextMenu);
     target.addEventListener('blur', blur);
     return () => {
       target.removeEventListener('keydown', keyDown);
@@ -111,6 +118,7 @@ export class KeyboardMouseSource {
       target.removeEventListener('mousemove', mouseMove);
       target.removeEventListener('mousedown', mouseDown);
       target.removeEventListener('mouseup', mouseUp);
+      target.removeEventListener('contextmenu', contextMenu);
       target.removeEventListener('blur', blur);
     };
   }

@@ -11,6 +11,7 @@ export const GAMEPAD_BINDINGS = Object.freeze({
   pause: 9, // Start / Menu
   rotateLeft: 4, // LB
   rotateRight: 5, // RB
+  vacuum: 7, // RT (held)
 });
 
 /** The subset of the Gamepad API this source reads; lets tests pass plain objects. */
@@ -68,6 +69,7 @@ export class GamepadSource {
       },
       jump: edge(GAMEPAD_BINDINGS.jump),
       interact: edge(GAMEPAD_BINDINGS.interact),
+      interactHeld: pressedNow.has(GAMEPAD_BINDINGS.interact) || pressedNow.has(GAMEPAD_BINDINGS.vacuum),
       secondary: edge(GAMEPAD_BINDINGS.secondary),
       pause: edge(GAMEPAD_BINDINGS.pause),
       rotate: edge(GAMEPAD_BINDINGS.rotateRight) ? 1 : edge(GAMEPAD_BINDINGS.rotateLeft) ? -1 : 0,

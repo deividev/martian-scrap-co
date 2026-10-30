@@ -58,6 +58,7 @@ async function setup(
   for (let i = 0; i < 90; i += 1) world.step();
   const container = new PortableContainer(capacity);
   const sink = {
+    remaining: () => container.capacity - container.count,
     canAccept: (id: EntityId) => container.canAccept(id),
     accept: (item: Parameters<PortableContainer['add']>[0]) => void container.add(item),
   };
@@ -140,13 +141,14 @@ describe('pull and ownership transfer', () => {
     expect(collector.tryStartPull(feedback)).toBe(false);
     const collected: EntityId[] = [];
     for (let i = 0; i < 120; i += 1) {
-      const outcome = collector.fixedUpdate(EYE);
-      if (outcome.kind === 'collected') collected.push(outcome.id);
+      for (const outcome of collector.fixedUpdate(EYE)) {
+        if (outcome.kind === 'collected') collected.push(outcome.id);
+      }
       world.step();
     }
     expect(collected).toEqual([ids[0]]);
     expect(field.piece(ids[0] as EntityId)?.state).toBe('removed');
-    expect(collector.pulling).toBeNull();
+    expect(collector.pulling).toEqual([]);
     // Retrying on the removed piece does nothing.
     expect(collector.evaluate(null)).toEqual({ state: 'none' });
   });
@@ -165,12 +167,10 @@ describe('pull and ownership transfer', () => {
     collector.tryStartPull(
       collector.evaluate(pickTarget(aimAt({ x: 0, y: 0.12, z: -2 }), field.activeTargets(), world)),
     );
-    expect(collector.fixedUpdate({ x: 0, y: 1.4, z: 30 })).toEqual({
-      kind: 'dropped',
-      id: ids[0],
-      reason: 'out-of-range',
-    });
-    expect(collector.pulling).toBeNull();
+    expect(collector.fixedUpdate({ x: 0, y: 1.4, z: 30 })).toEqual([
+      { kind: 'dropped', id: ids[0], reason: 'out-of-range' },
+    ]);
+    expect(collector.pulling).toEqual([]);
     expect(field.piece(ids[0] as EntityId)?.state).toBe('active');
   });
 });
@@ -194,8 +194,7 @@ describe('collector and portable container', () => {
     container.add({ id: 'ent-zz' as EntityId, materialId: contentId('ferrous'), massKg: 1 });
     const outcomes = [];
     for (let i = 0; i < 120; i += 1) {
-      const outcome = collector.fixedUpdate(EYE);
-      if (outcome.kind !== 'none') outcomes.push(outcome);
+      outcomes.push(...collector.fixedUpdate(EYE));
       world.step();
     }
     expect(outcomes).toEqual([{ kind: 'dropped', id: ids[0], reason: 'sink-full' }]);
@@ -223,5 +222,49 @@ describe('collector and portable container', () => {
     expect(container.batches()).toEqual([{ materialId: 'ferrous', count: 2, massKg: 2 }]);
     for (const id of ids) expect(field.piece(id)?.state).toBe('removed');
     expect(field.metrics().removed).toBe(container.count);
+  });
+});
+
+describe('vacuum suction', () => {
+  const pile = [
+    { material: 'ferrous', position: { x: -0.4, y: 0.12, z: -2.2 } },
+    { material: 'ferrous', position: { x: 0, y: 0.12, z: -2.4 } },
+    { material: 'ferrous', position: { x: 0.4, y: 0.12, z: -2.2 } },
+    { material: 'copper', position: { x: 0.2, y: 0.12, z: -2 } },
+    { material: 'ferrous', position: { x: 0, y: 0.12, z: -9 } },
+  ];
+
+  it('pulls every compatible piece in the cone at once and leaves the rest', async () => {
+    const { world, field, ids, container, collector } = await setup(pile);
+    const aim = aimAt({ x: 0, y: 0.12, z: -2.3 });
+    expect(collector.suck(aim)).toBe(3);
+    for (let i = 0; i < 120; i += 1) {
+      collector.suck(aim);
+      collector.fixedUpdate(EYE);
+      world.step();
+    }
+    expect(container.count).toBe(3);
+    expect(field.piece(ids[3] as EntityId)?.state).toBe('active'); // copper is not magnetic
+    expect(field.piece(ids[4] as EntityId)?.state).toBe('active'); // out of reach
+  });
+
+  it('never pulls more than the container can still take', async () => {
+    const { world, container, collector } = await setup(pile, [], 2);
+    const aim = aimAt({ x: 0, y: 0.12, z: -2.3 });
+    expect(collector.suck(aim)).toBe(2);
+    for (let i = 0; i < 120; i += 1) {
+      collector.suck(aim);
+      collector.fixedUpdate(EYE);
+      world.step();
+    }
+    expect(container.count).toBe(2);
+    expect(collector.pulling).toEqual([]);
+  });
+
+  it('stops pulling when the button is released', async () => {
+    const { collector } = await setup(pile);
+    collector.suck(aimAt({ x: 0, y: 0.12, z: -2.3 }));
+    collector.cancelPull();
+    expect(collector.pulling).toEqual([]);
   });
 });

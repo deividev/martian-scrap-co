@@ -443,8 +443,44 @@ export function createColonyDome(radius: number): Group {
   return dome;
 }
 
+/** Base intake hopper (gameplay concept sorting bay): dark frame, yellow funnel, orange rim and arrow. */
+export function createIntakeHopperModel(): Group {
+  const hopper = new Group();
+  hopper.name = 'intake-hopper';
+  const dark = paint(STYLE.dark, 0.8);
+  const yellow = paint(STYLE.paintYellow, 0.55);
+  part(rounded(1.8, 0.9, 1.8, 0.08), paint(STYLE.steelDark, 0.6, 0.2), hopper, 0, 0.45, 0);
+  const funnel = part(new CylinderGeometry(1.35, 0.7, 0.9, 4, 1, true), yellow, hopper, 0, 1.35, 0);
+  funnel.rotation.y = Math.PI / 4;
+  (funnel.material as MeshStandardMaterial).side = 2;
+  const rim = part(new TorusGeometry(1.0, 0.07, 4, 4), paint(STYLE.paintOrange, 0.5), hopper, 0, 1.8, 0);
+  rim.rotation.set(Math.PI / 2, 0, Math.PI / 4);
+  for (const x of [-0.85, 0.85]) {
+    for (const z of [-0.85, 0.85]) part(rounded(0.16, 1.8, 0.16, 0.03), dark, hopper, x, 0.9, z);
+  }
+  const arrow = new Shape();
+  arrow.moveTo(-0.18, 0.2);
+  arrow.lineTo(0.18, 0.2);
+  arrow.lineTo(0.18, 0);
+  arrow.lineTo(0.32, 0);
+  arrow.lineTo(0, -0.3);
+  arrow.lineTo(-0.32, 0);
+  arrow.lineTo(-0.18, 0);
+  arrow.closePath();
+  part(new ExtrudeGeometry(arrow, { depth: 0.04, bevelEnabled: false }), yellow, hopper, 0, 0.55, 0.91);
+  return hopper;
+}
+
 /** Named models for the review viewer. */
-export const STYLED_MODEL_NAMES = ['magnet-tool', 'cutter-tool', 'cart', 'scrap-set', 'rover', 'station-dome'] as const;
+export const STYLED_MODEL_NAMES = [
+  'magnet-tool',
+  'cutter-tool',
+  'cart',
+  'scrap-set',
+  'rover',
+  'station-dome',
+  'intake-hopper',
+] as const;
 export type StyledModelName = (typeof STYLED_MODEL_NAMES)[number];
 
 export function createStyledModel(name: StyledModelName): Object3D {
@@ -457,6 +493,8 @@ export function createStyledModel(name: StyledModelName): Object3D {
       return createCartModel({ x: 0.6, y: 0.25, z: 0.45 });
     case 'station-dome':
       return createStationDome(3);
+    case 'intake-hopper':
+      return createIntakeHopperModel();
     case 'rover': {
       const group = new Group();
       const layout: Record<string, { p: [number, number, number]; h: [number, number, number] }> = {

@@ -68,25 +68,50 @@ export class ScrapField {
     const clusters = Array.isArray(source)
       ? (source as readonly ScrapClusterSpec[])
       : (source as ScrapFieldSnapshot).clusters;
-    for (const cluster of clusters) {
-      if (this.#clusters.has(cluster.id)) throw new Error(`Duplicate cluster ${cluster.id}`);
-      if (!Number.isInteger(cluster.decorativeInstances) || cluster.decorativeInstances < 0) {
-        throw new RangeError(`Invalid decorative count in ${cluster.id}`);
-      }
-      const pieceIds: EntityId[] = [];
-      for (const piece of cluster.pieces) {
-        if (this.#pieces.has(piece.id)) throw new Error(`Duplicate scrap piece ${piece.id}`);
-        // Restored snapshots keep their state; fresh specs start dormant. Active is never persisted.
-        const saved = 'state' in piece ? (piece as ScrapPiece) : null;
-        this.#pieces.set(piece.id, {
-          ...piece,
-          state: saved?.state === 'removed' ? 'removed' : 'dormant',
-          rotation: saved?.rotation ?? IDENTITY,
-        });
-        pieceIds.push(piece.id);
-      }
-      this.#clusters.set(cluster.id, { id: cluster.id, pieceIds, decorativeInstances: cluster.decorativeInstances });
+    for (const cluster of clusters) this.addCluster(cluster);
+  }
+
+  /**
+   * Adds a cluster (initial yard content, a restored save, or pieces released by breaking a medium
+   * object). Duplicate cluster or piece ids are rejected, so identities are never reused.
+   */
+  addCluster(cluster: ScrapClusterSpec | ScrapFieldSnapshot['clusters'][number]): void {
+    if (this.#clusters.has(cluster.id)) throw new Error(`Duplicate cluster ${cluster.id}`);
+    if (!Number.isInteger(cluster.decorativeInstances) || cluster.decorativeInstances < 0) {
+      throw new RangeError(`Invalid decorative count in ${cluster.id}`);
     }
+    for (const piece of cluster.pieces) {
+      if (this.#pieces.has(piece.id)) throw new Error(`Duplicate scrap piece ${piece.id}`);
+    }
+    const pieceIds: EntityId[] = [];
+    for (const piece of cluster.pieces) {
+      // Restored snapshots keep their state; fresh specs start dormant. Active is never persisted.
+      const saved = 'state' in piece ? piece : null;
+      this.#pieces.set(piece.id, {
+        ...piece,
+        state: saved?.state === 'removed' ? 'removed' : 'dormant',
+        rotation: saved?.rotation ?? IDENTITY,
+      });
+      pieceIds.push(piece.id);
+    }
+    this.#clusters.set(cluster.id, { id: cluster.id, pieceIds, decorativeInstances: cluster.decorativeInstances });
+  }
+
+  /** Cluster ids with the average position of their remaining pieces (for distance-based activation). */
+  clusterCenters(): { id: string; x: number; z: number; remaining: number }[] {
+    return [...this.#clusters.values()].map((cluster) => {
+      let x = 0;
+      let z = 0;
+      let remaining = 0;
+      for (const id of cluster.pieceIds) {
+        const piece = this.#pieces.get(id);
+        if (!piece || piece.state === 'removed') continue;
+        x += piece.position.x;
+        z += piece.position.z;
+        remaining += 1;
+      }
+      return { id: cluster.id, x: remaining ? x / remaining : 0, z: remaining ? z / remaining : 0, remaining };
+    });
   }
 
   piece(id: EntityId): ScrapPiece | undefined {

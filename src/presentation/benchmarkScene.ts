@@ -204,7 +204,7 @@ export async function runBenchmarkScene(
         y: 1.3,
         z: Math.sin(clusterAngle) * radius + Math.sin(angle) * 1.8,
       };
-      if (entry.collector.pulling === null) {
+      if (entry.collector.pulling.length === 0) {
         let best: { id: EntityId; distance: number } | null = null;
         for (const target of yard.scrap.activeTargets()) {
           if (yard.scrap.piece(target.id)?.materialId !== 'ferrous') continue;

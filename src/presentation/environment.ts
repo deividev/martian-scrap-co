@@ -21,6 +21,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import { mulberry32 } from '../simulation/benchmark/denseYardFixture';
+import { SCRAP_MOUNTAIN, mountainHeight, type BackdropLayout } from '../simulation/yard/backdrop';
 import {
   SCRAP_COLORS,
   STYLE,
@@ -37,7 +38,7 @@ import {
  * rocks and mesas, a huge mixed scrap mountain behind the yard hiding a white station ring, a dish antenna
  * and distant colony domes. Decorative only: nothing here has physics.
  */
-export function createMarsEnvironment(scene: Scene, renderer: WebGLRenderer): DirectionalLight {
+export function createMarsEnvironment(scene: Scene, renderer: WebGLRenderer, layout: BackdropLayout): DirectionalLight {
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
@@ -94,28 +95,24 @@ export function createMarsEnvironment(scene: Scene, renderer: WebGLRenderer): Di
 
   const random = mulberry32(42);
 
-  // Rocks scattered around the yard edge and far mesas on the horizon.
-  for (let i = 0; i < 60; i += 1) {
-    const angle = random() * Math.PI * 2;
-    const distance = 26 + random() * 60;
-    const rock = createRock(i, 0.4 + random() * 1.6);
-    rock.position.set(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
-    rock.rotation.y = random() * Math.PI;
+  // Rocks and far mesas come from the shared backdrop layout, so each one also has a collider.
+  for (const entry of layout.rocks) {
+    const rock = createRock(entry.seed, entry.scale);
+    rock.position.set(entry.position.x, 0, entry.position.z);
+    rock.rotation.y = entry.yaw;
     scene.add(rock);
   }
-  for (let i = 0; i < 14; i += 1) {
-    const angle = (i / 14) * Math.PI * 2 + random() * 0.2;
-    const distance = 150 + random() * 60;
+  for (const entry of layout.mesas) {
     const mesa = new Mesh(
-      new CylinderGeometry(8 + random() * 14, 14 + random() * 16, 12 + random() * 18, 7),
+      new CylinderGeometry(entry.radiusTop, entry.radiusBottom, entry.height, 7),
       paint(STYLE.marsDark, 1),
     );
-    mesa.position.set(Math.cos(angle) * distance, 6, Math.sin(angle) * distance);
+    mesa.position.set(entry.position.x, entry.position.y, entry.position.z);
     scene.add(mesa);
   }
 
-  // The scrap mountain behind the yard: instanced styled scrap per material, piled into a mound.
-  const mountainCenter = new Vector3(0, 0, -42);
+  // The scrap mountain: instanced styled scrap resting on the mountain collider surface.
+  const { center } = SCRAP_MOUNTAIN;
   const matrix = new Matrix4();
   const rotation = new Quaternion();
   const axis = new Vector3();
@@ -126,20 +123,15 @@ export function createMarsEnvironment(scene: Scene, renderer: WebGLRenderer): Di
       const mound = new InstancedMesh(scrapGeometry(materialId, variant), scrapMaterial(materialId), count);
       for (let i = 0; i < count; i += 1) {
         const angle = random() * Math.PI * 2;
-        const radius = Math.sqrt(random()) * 34;
-        const height = Math.max(0, 16 * (1 - radius / 34) ** 1.4) * (0.7 + random() * 0.3);
+        const radius = Math.sqrt(random()) * 0.98;
+        const x = center.x + Math.cos(angle) * radius * SCRAP_MOUNTAIN.radiusX;
+        const z = center.z + Math.sin(angle) * radius * SCRAP_MOUNTAIN.radiusZ;
+        const surface = mountainHeight(x, z);
+        const height = surface * (SCRAP_MOUNTAIN.colliderScale + random() * (1 - SCRAP_MOUNTAIN.colliderScale));
         const size = 0.6 + random() * 1.8;
         axis.set(random() - 0.5, random() - 0.5, random() - 0.5).normalize();
         rotation.setFromAxisAngle(axis, random() * Math.PI);
-        matrix.compose(
-          new Vector3(
-            mountainCenter.x + Math.cos(angle) * radius * 1.4,
-            height,
-            mountainCenter.z + Math.sin(angle) * radius * 0.8,
-          ),
-          rotation,
-          new Vector3(size, size * (0.5 + random() * 0.6), size),
-        );
+        matrix.compose(new Vector3(x, height, z), rotation, new Vector3(size, size * (0.5 + random() * 0.6), size));
         mound.setMatrixAt(i, matrix);
       }
       mound.castShadow = true;
@@ -147,30 +139,28 @@ export function createMarsEnvironment(scene: Scene, renderer: WebGLRenderer): Di
       scene.add(mound);
     }
   }
-  // Painted crates and housings mixed into the pile edge for the colorful concept look.
+  // Painted crates and housings sitting on the mountain surface for the colorful concept look.
   const crateColors = [STYLE.paintRed, STYLE.paintBlue, STYLE.paintYellow, STYLE.stationWhite];
   for (let i = 0; i < 40; i += 1) {
     const angle = random() * Math.PI - Math.PI;
-    const radius = 20 + random() * 18;
+    const radius = 0.4 + random() * 0.5;
+    const x = center.x + Math.cos(angle) * radius * SCRAP_MOUNTAIN.radiusX;
+    const z = center.z + Math.sin(angle) * radius * SCRAP_MOUNTAIN.radiusZ;
     const crate = new Mesh(
       scrapGeometry('polymer', 0),
       paint(crateColors[i % crateColors.length] ?? STYLE.paintRed, 0.6),
     );
     const size = 1.2 + random() * 1.6;
     crate.scale.set(size * 1.4, size, size);
-    crate.position.set(
-      mountainCenter.x + Math.cos(angle) * radius * 1.3,
-      size * 0.4 + random() * 3,
-      mountainCenter.z + 14 + Math.sin(angle) * 6,
-    );
-    crate.rotation.set(random() * 0.6, random() * Math.PI, random() * 0.6);
+    crate.position.set(x, mountainHeight(x, z) * SCRAP_MOUNTAIN.colliderScale + size * 0.3, z);
+    crate.rotation.set(random() * 0.4, random() * Math.PI, random() * 0.4);
     crate.castShadow = true;
     scene.add(crate);
   }
 
   // Half-buried station ring peeking out of the mountain (the campaign reveal).
-  const station = createStationDome(9);
-  station.position.set(-6, -2.5, -46);
+  const station = createStationDome(layout.station.radius);
+  station.position.set(layout.station.position.x, layout.station.position.y, layout.station.position.z);
   station.rotation.y = 0.3;
   scene.add(station);
 
@@ -182,9 +172,9 @@ export function createMarsEnvironment(scene: Scene, renderer: WebGLRenderer): Di
   dish.position.set(16, 16.5, -48);
   dish.rotation.set(-1.0, 0.4, 0);
   scene.add(dish);
-  for (let i = 0; i < 5; i += 1) {
-    const colony = createColonyDome(4 + random() * 4);
-    colony.position.set(70 + i * 9, 0, -120 + random() * 10);
+  for (const entry of layout.colonies) {
+    const colony = createColonyDome(entry.radius);
+    colony.position.set(entry.position.x, entry.position.y, entry.position.z);
     scene.add(colony);
   }
   const tower = new Mesh(new CylinderGeometry(1.2, 1.6, 18, 10), new MeshBasicMaterial({ color: '#f1ddd0' }));

@@ -11,17 +11,17 @@ export const STRINGS = {
     es: 'Haz clic para jugar · WASD o stick izquierdo para moverte',
   },
   'hint.keyboard': {
-    en: 'WASD move · Mouse look · E / click use or cut · F unload · Q/R rotate · Space jump · Esc release mouse',
-    es: 'WASD moverse · Ratón mirar · E / clic usar o cortar · F descargar · Q/R rotar · Espacio saltar · Esc soltar ratón',
+    en: 'WASD move · Hold left click / E vacuum or use · Right click / F unload or break · Q/R rotate · Space jump · Esc release mouse',
+    es: 'WASD moverse · Mantén clic izq. / E aspirar o usar · Clic der. / F descargar o romper · Q/R rotar · Espacio saltar · Esc soltar ratón',
   },
   'hint.gamepad': {
-    en: 'Left stick move · Right stick look · X use or cut · Y unload · LB/RB rotate · A jump · Menu pause',
-    es: 'Stick izq. moverse · Stick der. mirar · X usar o cortar · Y descargar · LB/RB rotar · A saltar · Menú pausa',
+    en: 'Left stick move · Right stick look · Hold RT / X vacuum or use · Y unload or break · LB/RB rotate · A jump · Menu pause',
+    es: 'Stick izq. moverse · Stick der. mirar · Mantén RT / X aspirar o usar · Y descargar o romper · LB/RB rotar · A saltar · Menú pausa',
   },
 
   'tip.collect': {
-    en: 'Tip: aim at the gray metal pieces and press E (X). The magnet only pulls iron.',
-    es: 'Consejo: apunta a las piezas grises de metal y pulsa E (X). El imán solo atrae el hierro.',
+    en: 'Tip: hold left click (RT) to vacuum the gray iron pieces, then unload them with right click at the base intake.',
+    es: 'Consejo: mantén clic izquierdo (RT) para aspirar las piezas grises de hierro y descárgalas con clic derecho en la tolva de la base.',
   },
   'tip.cut': {
     en: 'Tip: aim at the glowing orange rings on the rover and press E (X) to cut.',
@@ -56,6 +56,25 @@ export const STRINGS = {
   },
 
   'grip.grab': { en: '{name}: grab', es: '{name}: agarrar' },
+  'grip.grabOrBreak': {
+    en: '{name}: use to grab · right click to break',
+    es: '{name}: usar para agarrar · clic derecho para romper',
+  },
+  'intake.prompt': {
+    en: 'Base intake: right click / F / Y to unload the container',
+    es: 'Tolva de la base: clic derecho / F / Y para descargar el contenedor',
+  },
+  'intake.contents': { en: 'Intake: {list}', es: 'Tolva: {list}' },
+  'intake.empty': { en: 'empty', es: 'vacía' },
+  'unload.done': {
+    en: 'Unloaded {count} pieces into the intake, ready to compact.',
+    es: 'Descargadas {count} piezas en la tolva, listas para compactar.',
+  },
+  'unload.empty': { en: 'The container is empty.', es: 'El contenedor está vacío.' },
+  'unload.needIntake': {
+    en: 'Go to the base intake to unload what you collected.',
+    es: 'Ve a la tolva de la base para descargar lo que has aspirado.',
+  },
   'grip.holding': { en: 'Holding {name} · place', es: 'Sujetando {name} · colocar' },
   'grip.holdingOverCart': { en: 'Holding {name} · load into cart', es: 'Sujetando {name} · cargar en el carrito' },
   'place.blocked': {
@@ -99,6 +118,11 @@ export const STRINGS = {
   'prop.aluminumPanel': { en: 'Aluminum panel', es: 'Panel de aluminio' },
   'prop.polymerHousing': { en: 'Polymer housing', es: 'Carcasa de polímero' },
   'prop.copperSpoolBox': { en: 'Copper spool box', es: 'Caja de bobina de cobre' },
+  'prop.oldMachine': { en: 'Old machine housing', es: 'Carcasa de máquina vieja' },
+  'prop.cableBox': { en: 'Cable junction box', es: 'Caja de empalmes de cables' },
+  'prop.brokenSolar': { en: 'Broken solar panel', es: 'Panel solar roto' },
+  'prop.heatShield': { en: 'Heat shield block', es: 'Bloque de escudo térmico' },
+  'prop.roverDoor': { en: 'Rover door', es: 'Puerta de rover' },
 
   'fragment.roverFrame': { en: 'Rover frame', es: 'Chasis del rover' },
   'fragment.coverPanel': { en: 'Cover panel', es: 'Tapa' },

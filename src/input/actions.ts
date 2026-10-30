@@ -13,6 +13,8 @@ export interface ActionFrame {
   /** Edge-triggered: true only on the frame the action was pressed. */
   readonly jump: boolean;
   readonly interact: boolean;
+  /** True every frame the use action is held (vacuum suction). */
+  readonly interactHeld: boolean;
   /** Context action, e.g. unload a cart. */
   readonly secondary: boolean;
   readonly pause: boolean;
@@ -26,6 +28,7 @@ export const EMPTY_FRAME: ActionFrame = Object.freeze({
   look: Object.freeze({ yaw: 0, pitch: 0 }),
   jump: false,
   interact: false,
+  interactHeld: false,
   secondary: false,
   pause: false,
   rotate: 0,
@@ -62,6 +65,7 @@ export function mergeFrames(primary: ActionFrame, secondary: ActionFrame): Actio
       secondary.look.pitch !== 0 ||
       secondary.jump ||
       secondary.interact ||
+      secondary.interactHeld ||
       secondary.secondary ||
       secondary.pause ||
       secondary.rotate !== 0);
@@ -70,6 +74,7 @@ export function mergeFrames(primary: ActionFrame, secondary: ActionFrame): Actio
     look: { yaw: primary.look.yaw + secondary.look.yaw, pitch: primary.look.pitch + secondary.look.pitch },
     jump: primary.jump || secondary.jump,
     interact: primary.interact || secondary.interact,
+    interactHeld: primary.interactHeld || secondary.interactHeld,
     secondary: primary.secondary || secondary.secondary,
     pause: primary.pause || secondary.pause,
     rotate: primary.rotate !== 0 ? primary.rotate : secondary.rotate,

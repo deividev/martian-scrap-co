@@ -14,10 +14,17 @@ import {
 } from 'three';
 import hazardUrl from '../assets/textures/hazard-stripes.png';
 import { createRobotModel } from '../models/generated/createRobotModel';
-import { STYLE, createCartModel, createRoverFragmentModel, paint } from '../models/styledModels';
+import {
+  STYLE,
+  createCartModel,
+  createIntakeHopperModel,
+  createRoverFragmentModel,
+  paint,
+} from '../models/styledModels';
 import { FIRST_PASS_CONTENT } from '../content/firstPass';
 import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
+import { BaseIntake } from '../domain/intake';
 import { AssemblyState } from '../domain/assembly';
 import { EntityIdAllocator, transactionId, type EntityId } from '../domain/ids';
 import type { I18n, StringKey } from '../i18n/i18n';
@@ -28,6 +35,7 @@ import { KeyboardMouseSource } from '../input/keyboardMouseSource';
 import { MagneticCollector, type TargetFeedback } from '../simulation/collection/magneticCollector';
 import { pickTarget, type TargetPick } from '../simulation/collection/targeting';
 import { AssemblyBody } from '../simulation/handling/assemblyBody';
+import { Breakables } from '../simulation/handling/breakables';
 import { CART_TUNING, Cart, type LoadResult } from '../simulation/handling/cart';
 import { ClaimRegistry } from '../simulation/handling/claims';
 import { GripController, type PlaceResult } from '../simulation/handling/gripController';
@@ -37,12 +45,16 @@ import { runPhysicsProbe } from '../simulation/physics/probe';
 import { createRapierWorld } from '../simulation/physics/rapierWorld';
 import { PlayerController } from '../simulation/player/playerController';
 import { ScrapField } from '../simulation/scrap/scrapField';
+import { addBackdropColliders, createBackdropLayout } from '../simulation/yard/backdrop';
 import {
   TEST_YARD_BLOCKS,
   TEST_YARD_RECOVERY_ZONES,
   TEST_YARD_ROVER,
   TEST_YARD_ROVER_LAYOUT,
   TEST_YARD_SPAWN,
+  TEST_YARD_INTAKE,
+  createMountainFootScrap,
+  createTestYardBreakables,
   createTestYardProps,
   createTestYardScrap,
   yardBodySpec,
@@ -96,7 +108,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
   const scene = new Scene();
-  createMarsEnvironment(scene, renderer);
+  const backdrop = createBackdropLayout();
+  createMarsEnvironment(scene, renderer, backdrop);
 
   const camera = new PerspectiveCamera(70, 1, 0.05, 600);
   camera.rotation.order = 'YXZ';
@@ -108,6 +121,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   probeWorld.dispose();
 
   const world = await createRapierWorld();
+  addBackdropColliders(world, backdrop);
   for (const block of TEST_YARD_BLOCKS) {
     world.addBox(yardBodySpec(block));
     const { x, y, z } = block.halfExtents;
@@ -154,6 +168,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     robot.position.set(x, 0, z);
     robot.rotation.y = yaw;
     robot.userData.sculptRuntime.setExpression(expression);
+    world.addBox({ kind: 'fixed', position: { x, y: 0.8, z }, halfExtents: { x: 0.45, y: 0.8, z: 0.35 } });
     robot.traverse((child) => {
       child.castShadow = true;
     });
@@ -168,11 +183,12 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     TEST_YARD_RECOVERY_ZONES,
   );
   const allocator = new EntityIdAllocator();
-  const scrap = new ScrapField(world, [createTestYardScrap(allocator)]);
+  const scrap = new ScrapField(world, [createTestYardScrap(allocator), ...createMountainFootScrap(allocator)]);
   scrap.activateCluster('test-yard-pile');
   const scrapView = new ScrapPileView(scene, scrap, world);
   const container = new PortableContainer();
   const collector = new MagneticCollector(content.pack, scrap, world, {
+    remaining: () => container.capacity - container.count,
     canAccept: (id) => container.canAccept(id),
     accept: (item) => void container.add(item),
   });
@@ -181,6 +197,25 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   const props = new MediumPropSet(world, createTestYardProps(allocator));
   const claims = new ClaimRegistry();
   const grip = new GripController(world, props, claims, 'player-0');
+  const breakables = new Breakables(
+    props,
+    scrap,
+    world,
+    claims,
+    () => allocator.allocate(),
+    createTestYardBreakables(allocator),
+  );
+  const intake = new BaseIntake();
+  const hopper = createIntakeHopperModel();
+  hopper.position.set(TEST_YARD_INTAKE.position.x, 0, TEST_YARD_INTAKE.position.z);
+  scene.add(hopper);
+  world.addBox({
+    kind: 'fixed',
+    position: { x: TEST_YARD_INTAKE.position.x, y: TEST_YARD_INTAKE.halfExtents.y, z: TEST_YARD_INTAKE.position.z },
+    halfExtents: TEST_YARD_INTAKE.halfExtents,
+  });
+  let wasSucking = false;
+  let lastActivation = 0;
   const cart = new Cart(world, props, claims, allocator.allocate(), { x: 2, y: 0.4, z: 5 });
   const cartGroup = createCartModel(CART_TUNING.halfExtents);
   scene.add(cartGroup);
@@ -272,13 +307,17 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     let prompt = '';
     let toolMode: 'magnet' | 'cutter' | 'hands' = grip.held !== null ? 'hands' : 'magnet';
     let highlightedProp: EntityId | null = null;
+    let secondaryUsed = false;
     if (frame.rotate !== 0) grip.rotate(frame.rotate);
     const pushing = cart.pusher() === 'player-0';
     if (pushing) {
       feedback = { state: 'none' };
       prompt = i18n.t('cart.pushing', { loads: cart.loads.length, max: CART_TUNING.maxLoadCount });
       if (frame.interact) cart.stopPush('player-0');
-      if (frame.secondary) cart.unloadAll();
+      if (frame.secondary) {
+        cart.unloadAll();
+        secondaryUsed = true;
+      }
     } else if (grip.held !== null) {
       feedback = { state: 'none' };
       const heldId = grip.held;
@@ -333,16 +372,58 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         feedback = { state: 'none' };
         prompt = i18n.t('cart.idle', { loads: cart.loads.length, max: CART_TUNING.maxLoadCount });
         if (frame.interact) cart.startPush('player-0');
-        if (frame.secondary) cart.unloadAll();
+        if (frame.secondary) {
+          cart.unloadAll();
+          secondaryUsed = true;
+        }
       } else if (best && best === propPick) {
         feedback = { state: 'none' };
         const target = props.get(best.candidate.id);
-        prompt = i18n.t('grip.grab', { name: nameOf(target?.nameKeys, target?.displayName ?? '') });
+        const targetName = nameOf(target?.nameKeys, target?.displayName ?? '');
+        const breakable = breakables.isBreakable(best.candidate.id);
+        prompt = i18n.t(breakable ? 'grip.grabOrBreak' : 'grip.grab', { name: targetName });
         highlightedProp = best.candidate.id;
+        if (breakable) toolMode = 'cutter';
         if (frame.interact) grip.tryGrab(best, aimView.yaw);
+        else if (frame.secondary && breakable) {
+          secondaryUsed = true;
+          if (breakables.break(best.candidate.id).ok) tool.use();
+        }
       } else {
         feedback = collector.evaluate(scrapPick);
-        if (frame.interact && collector.tryStartPull(feedback)) tool.use();
+        if (frame.interactHeld) {
+          collector.suck(aim, player.characterHandle);
+          tool.use();
+        }
+      }
+    }
+    if (wasSucking && !frame.interactHeld) collector.cancelPull();
+    wasSucking = frame.interactHeld;
+
+    const nearIntake =
+      Math.hypot(aimView.position.x - TEST_YARD_INTAKE.position.x, aimView.position.z - TEST_YARD_INTAKE.position.z) <
+      TEST_YARD_INTAKE.reach;
+    if (frame.secondary && !secondaryUsed && grip.held === null) {
+      if (nearIntake && container.count > 0) {
+        const result = intake.receive(container.unloadAll());
+        notice = { key: 'unload.done', params: { count: result.accepted } };
+      } else {
+        notice = { key: container.count === 0 ? 'unload.empty' : 'unload.needIntake' };
+      }
+      noticeUntil = now + 2000;
+    }
+    if (nearIntake && !prompt && feedback.state === 'none') prompt = i18n.t('intake.prompt');
+
+    // Wake clusters near the player and let distant ones sleep (MSC-012 activation).
+    if (now - lastActivation > 500) {
+      lastActivation = now;
+      for (const cluster of scrap.clusterCenters()) {
+        if (cluster.remaining === 0) continue;
+        const distance = Math.hypot(aimView.position.x - cluster.x, aimView.position.z - cluster.z);
+        if (distance < 16) scrap.activateCluster(cluster.id);
+        else if (distance > 22 && !collector.pulling.some((id) => scrap.piece(id) && scrap.bodyOf(id))) {
+          scrap.deactivateCluster(cluster.id);
+        }
       }
     }
 
@@ -389,13 +470,15 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         Math.hypot(view.position.x - x, view.position.z - z) < radius;
       const allCut = rover.state.availableJoints().length === 0;
       hud.tip.textContent =
-        grip.held === null && near(-6, 4, 5) && !allCut
-          ? i18n.t('tip.cut')
-          : grip.held === null && near(0, 3, 4.5) && scrap.metrics().active > 0
-            ? i18n.t('tip.collect')
-            : near(2, 5, 3.5)
-              ? i18n.t('tip.cart')
-              : '';
+        grip.held === null && container.count > 0 && near(TEST_YARD_INTAKE.position.x, TEST_YARD_INTAKE.position.z, 5)
+          ? i18n.t('intake.prompt')
+          : grip.held === null && near(-6, 4, 5) && !allCut
+            ? i18n.t('tip.cut')
+            : grip.held === null && near(0, 3, 4.5) && scrap.metrics().active > 0
+              ? i18n.t('tip.collect')
+              : near(2, 5, 3.5)
+                ? i18n.t('tip.cart')
+                : '';
     }
     const anchored = new Set(rover.state.anchoredFragments());
     for (const [fragmentId, model] of fragmentMeshes) model.visible = anchored.has(fragmentId);
@@ -421,6 +504,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     }
     canvas.dataset['collected'] = String(container.count);
     canvas.dataset['held'] = grip.held ?? '';
+    canvas.dataset['intake'] = String(intake.count);
+    canvas.dataset['activePieces'] = String(scrap.metrics().active);
     canvas.dataset['rover'] = JSON.stringify({
       cut: TEST_YARD_ROVER.joints.filter((j) => rover.state.isCut(j.id)).map((j) => j.id),
       chunks: rover.state.chunks().length,
@@ -428,7 +513,12 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     canvas.dataset['cart'] = JSON.stringify({ loads: cart.loads.length, pushing, recoveries: cart.recoveries });
     if (hud.container) {
       const status = i18n.t('container.status', { count: container.count, capacity: container.capacity });
-      hud.container.textContent = container.isFull ? `${status} · ${i18n.t('container.full')}` : status;
+      const contents = intake
+        .batches()
+        .map((batch) => `${content.pack.materials.get(batch.materialId)?.symbol ?? '?'} ${batch.count}`)
+        .join(' · ');
+      const hopperText = i18n.t('intake.contents', { list: contents || i18n.t('intake.empty') });
+      hud.container.textContent = `${container.isFull ? `${status} · ${i18n.t('container.full')}` : status} | ${hopperText}`;
       hud.container.dataset['full'] = String(container.isFull);
     }
     canvas.dataset['player'] = JSON.stringify({

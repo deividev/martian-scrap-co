@@ -5,6 +5,7 @@ import type {
   CharacterHandle,
   CharacterMoveResult,
   CharacterSpec,
+  HeightfieldSpec,
   PhysicsBodyHandle,
   PhysicsWorldPort,
   Quat,
@@ -79,6 +80,31 @@ export async function createRapierWorld(options: RapierWorldOptions = {}): Promi
         colliderDesc.setMass(spec.massKg);
       }
       world.createCollider(colliderDesc, body);
+      return body.handle as PhysicsBodyHandle;
+    },
+
+    addHeightfield(spec: HeightfieldSpec): PhysicsBodyHandle {
+      assertFiniteVec('center', spec.center);
+      if (!(spec.sizeX > 0 && spec.sizeZ > 0) || spec.rows < 1 || spec.cols < 1 || spec.rows > 512 || spec.cols > 512) {
+        throw new RangeError('invalid heightfield size');
+      }
+      // Rapier heights: (rows + 1) x (cols + 1) samples in column-major order; rows run along Z, columns along X.
+      const heights = new Float32Array((spec.rows + 1) * (spec.cols + 1));
+      for (let col = 0; col <= spec.cols; col += 1) {
+        for (let row = 0; row <= spec.rows; row += 1) {
+          const x = spec.center.x - spec.sizeX / 2 + (col / spec.cols) * spec.sizeX;
+          const z = spec.center.z - spec.sizeZ / 2 + (row / spec.rows) * spec.sizeZ;
+          const value = spec.height(x, z);
+          heights[col * (spec.rows + 1) + row] = Number.isFinite(value) ? value : 0;
+        }
+      }
+      const body = world.createRigidBody(
+        RAPIER.RigidBodyDesc.fixed().setTranslation(spec.center.x, spec.center.y, spec.center.z),
+      );
+      world.createCollider(
+        RAPIER.ColliderDesc.heightfield(spec.rows, spec.cols, heights, { x: spec.sizeX, y: 1, z: spec.sizeZ }),
+        body,
+      );
       return body.handle as PhysicsBodyHandle;
     },
 

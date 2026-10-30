@@ -110,3 +110,21 @@ describe('rotate action', () => {
     expect(source.poll(1 / 60).rotate).toBe(0);
   });
 });
+
+describe('held use and right click', () => {
+  it('reports the use action as held every frame and right click as the secondary action', () => {
+    const keyboard = new KeyboardMouseSource(DEFAULT_INPUT_SETTINGS);
+    keyboard.handleKeyDown('Mouse0');
+    expect(keyboard.poll()).toMatchObject({ interact: true, interactHeld: true });
+    expect(keyboard.poll()).toMatchObject({ interact: false, interactHeld: true });
+    keyboard.handleKeyUp('Mouse0');
+    expect(keyboard.poll().interactHeld).toBe(false);
+    keyboard.handleKeyDown('Mouse2');
+    expect(keyboard.poll().secondary).toBe(true);
+  });
+
+  it('treats RT as a held vacuum trigger on the controller', () => {
+    const source = new GamepadSource(DEFAULT_INPUT_SETTINGS, () => [pad([0, 0, 0, 0], [7])]);
+    expect(source.poll(1 / 60)).toMatchObject({ interactHeld: true, interact: false, device: 'gamepad' });
+  });
+});

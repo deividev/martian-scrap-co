@@ -7,6 +7,7 @@ import { PHYSICS_CONVENTIONS } from '../../src/simulation/physics/conventions';
 import type { PhysicsWorldPort, Vec3 } from '../../src/simulation/physics/physicsPort';
 import { createRapierWorld } from '../../src/simulation/physics/rapierWorld';
 import { PLAYER_TUNING, PlayerController } from '../../src/simulation/player/playerController';
+import { addBackdropColliders, createBackdropLayout } from '../../src/simulation/yard/backdrop';
 import { TEST_YARD_BLOCKS, TEST_YARD_RECOVERY_ZONES, yardBodySpec } from '../../src/simulation/yard/testYard';
 
 const DT = PHYSICS_CONVENTIONS.fixedStepSeconds;
@@ -18,6 +19,7 @@ afterEach(() => {
 async function yard(spawn: Vec3): Promise<{ world: PhysicsWorldPort; player: PlayerController }> {
   const world = await createRapierWorld();
   worlds.push(world);
+  addBackdropColliders(world, createBackdropLayout());
   for (const block of TEST_YARD_BLOCKS) world.addBox(yardBodySpec(block));
   const player = new PlayerController(world, spawn, PHYSICS_CONVENTIONS.marsGravity, TEST_YARD_RECOVERY_ZONES);
   // Settle onto the ground.
@@ -89,14 +91,19 @@ describe('PlayerController on the test yard', () => {
     expect(z).toBeGreaterThan(10.5);
   });
 
-  it('recovers to the last safe ground after falling into the pit', async () => {
-    const { world, player } = await yard({ x: 8, y: 1.5, z: 3 });
-    player.applyLook({ ...EMPTY_FRAME, look: { yaw: Math.PI, pitch: 0 } }); // face +Z toward the pit
+  it('recovers to the last safe ground after falling off a ledge (safety net)', async () => {
+    // The yard has no holes; this builds a small floating platform only to exercise the safety net.
+    const world = await createRapierWorld();
+    worlds.push(world);
+    world.addBox({ kind: 'fixed', position: { x: 0, y: -0.5, z: 0 }, halfExtents: { x: 3, y: 0.5, z: 3 } });
+    const player = new PlayerController(world, { x: 0, y: 1.5, z: 0 }, PHYSICS_CONVENTIONS.marsGravity);
+    walk(world, player, EMPTY_FRAME, 1);
     walk(world, player, forward, 1.5);
-    walk(world, player, EMPTY_FRAME, 4);
+    walk(world, player, EMPTY_FRAME, 5);
     const view = player.view();
     expect(view.recoveries).toBeGreaterThanOrEqual(1);
     expect(view.position.y).toBeGreaterThan(-1);
+    expect(Math.abs(view.position.z)).toBeLessThan(3);
   });
 
   it('clamps camera pitch and ignores non-finite look input', async () => {

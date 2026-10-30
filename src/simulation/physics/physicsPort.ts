@@ -28,6 +28,17 @@ export interface BoxBodySpec {
   readonly restitution?: number;
 }
 
+/** Fixed terrain surface sampled from a height function over a rectangle (e.g. the scrap mountain). */
+export interface HeightfieldSpec {
+  readonly center: Vec3;
+  readonly sizeX: number;
+  readonly sizeZ: number;
+  readonly rows: number;
+  readonly cols: number;
+  /** World-space height above `center.y` at a world (x, z) position. */
+  readonly height: (x: number, z: number) => number;
+}
+
 export interface Quat {
   readonly x: number;
   readonly y: number;
@@ -69,6 +80,7 @@ export interface PhysicsWorldPort {
   /** Fixed simulation step in seconds. */
   readonly fixedStepSeconds: number;
   addBox(spec: BoxBodySpec): PhysicsBodyHandle;
+  addHeightfield(spec: HeightfieldSpec): PhysicsBodyHandle;
   removeBody(handle: PhysicsBodyHandle): void;
   /** Advances exactly one fixed step. */
   step(): void;
