@@ -116,5 +116,10 @@ Raised by the owner with the approval (2026-10-30). They must be done before MSC
 
 **In-app evidence (Electron, reference PC):** a medium aluminum part was grabbed and placed; a large iron part with medium parts on top was cut in a held 4 s cut into 12 iron pieces and the parts on top fell as props; a buried part shows "tiene piezas encima, retíralas primero". Simulation stayed at p95 0.8–1.2 ms, p99 ≤ 1.8 ms, 0 awake bodies at rest (19 briefly after a cut), active pieces 236–293 at the mountain foot (≤ 300).
 
-**Budget not met:** draw calls fell from about 1,100 to 186–233 (static batching with baked vertex colors, instanced scrap and mountain, small pieces without shadows), still above the accepted ≤ 150. Remaining cost: the three crew robots (36), base and scenery batches (36), mountain/scrap instancing (about 40), plus the shadow pass. Triangles are about 1.0 M. Per the project rule this needs an owner decision before scale-up: keep reducing (robot atlas/merging, fewer silhouettes per material, shadow distance) or revise the test-yard budget.
+**Draw-call budget:** the first R1–R4 pass reached 186–233 draw calls (from about 1,100), above the accepted ≤ 150. The owner chose to keep reducing rather than raise the budget (2026-10-30). Second pass:
+
+- Static batching now bakes each plain material's color, roughness/metalness and emissive light into vertex attributes (flat-shaded parts get face normals), so a batched subtree is one mesh per face side instead of one per finish. Crew robots went from 12 to 4 meshes each, the compactor from 10 to 4, the held tools and rover fragments to one each.
+- Every scrap silhouette of a material (small/medium shapes and large parts) shares one multi-draw `BatchedMesh` with per-piece culling: one batch per material for the mountain and one for active scrap, instead of one instanced mesh per material and shape.
+
+Measured in Electron on the test yard: **99 draw calls at spawn, 82 at the mountain** after cutting a large part (293 active pieces), triangles about 0.62–0.79 M, simulation p95 1.2–1.3 ms, p99 ≤ 2.2 ms. The look is unchanged in side-by-side captures, and the economy loop (bale grab, sale +40 C, no double payment), the mountain cut and the spawn view were re-run. Within the ≤ 150 budget; no shadow-distance change was needed.
 

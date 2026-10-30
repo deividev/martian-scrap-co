@@ -1,4 +1,5 @@
 import { Group, type PerspectiveCamera } from 'three';
+import { mergeStatic } from '../models/mergeStatic';
 import { createCutterToolModel, createMagnetToolModel } from '../models/styledModels';
 
 export type ToolMode = 'magnet' | 'cutter' | 'hands';
@@ -9,8 +10,9 @@ export type ToolMode = 'magnet' | 'cutter' | 'hands';
  */
 export class FirstPersonTool {
   readonly #holder = new Group();
-  readonly #magnet = createMagnetToolModel();
-  readonly #cutter = createCutterToolModel();
+  // Each tool is drawn as one batched mesh (draw-call budget).
+  readonly #magnet = mergeStatic(createMagnetToolModel());
+  readonly #cutter = mergeStatic(createCutterToolModel());
   #phase = 0;
   #kick = 0;
 

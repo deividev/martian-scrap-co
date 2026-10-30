@@ -1,5 +1,6 @@
 import { Mesh, type MeshStandardMaterial, type Object3D, type Scene } from 'three';
 import type { EntityId } from '../domain/ids';
+import { cloneMaterial } from '../models/mergeStatic';
 import { scrapGeometry, scrapMaterial, setScrapHighlight } from '../models/styledModels';
 import type { MediumProp, MediumPropSet } from '../simulation/handling/mediumProps';
 import type { PhysicsWorldPort } from '../simulation/physics/physicsPort';
@@ -76,7 +77,7 @@ export class PropView {
       custom.userData['custom'] = true;
       custom.traverse((child) => {
         if (!(child instanceof Mesh)) return;
-        child.material = (child.material as MeshStandardMaterial).clone();
+        child.material = cloneMaterial(child.material as MeshStandardMaterial);
         child.userData['ownMaterial'] = true;
         child.castShadow = true;
         child.receiveShadow = true;
