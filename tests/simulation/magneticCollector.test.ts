@@ -59,6 +59,7 @@ async function setup(
   const container = new PortableContainer(capacity);
   const sink = {
     remaining: () => container.capacity - container.count,
+    isEmpty: () => container.count === 0,
     canAccept: (id: EntityId) => container.canAccept(id),
     accept: (item: Parameters<PortableContainer['add']>[0]) => void container.add(item),
   };
@@ -73,7 +74,7 @@ function aimAt(target: Vec3, from: Vec3 = EYE): AimRay {
 }
 
 describe('magnetic collector compatibility', () => {
-  it.each(MATERIALS)('%s: only ferrous is attracted; others stay intact with a reason', async (material) => {
+  it.each(MATERIALS)('%s: the base collector takes only iron; others stay intact with a reason', async (material) => {
     const { world, field, ids, collector } = await setup([{ material, position: { x: 0, y: 0.12, z: -2 } }]);
     const pick = pickTarget(aimAt({ x: 0, y: 0.12, z: -2 }), field.activeTargets(), world);
     const feedback = collector.evaluate(pick);
@@ -85,7 +86,7 @@ describe('magnetic collector compatibility', () => {
     } else {
       expect(feedback.state).toBe('incompatible');
       if (feedback.state !== 'incompatible') return;
-      expect(feedback.reason).toBe('not-magnetic');
+      expect(feedback.reason).toBe(material === 'regolith-ceramic' ? 'not-collectable' : 'needs-upgrade');
       expect(feedback.collectableBy).toEqual(['hands', 'grabber']);
       expect(collector.tryStartPull(feedback)).toBe(false);
       for (let i = 0; i < 60; i += 1) {
@@ -266,5 +267,56 @@ describe('vacuum suction', () => {
     collector.suck(aimAt({ x: 0, y: 0.12, z: -2.3 }));
     collector.cancelPull();
     expect(collector.pulling).toEqual([]);
+  });
+});
+
+describe('collector upgrades and material selector', () => {
+  const mixed = [
+    { material: 'ferrous', position: { x: -0.4, y: 0.12, z: -2.2 } },
+    { material: 'copper', position: { x: 0, y: 0.12, z: -2.4 } },
+    { material: 'aluminum', position: { x: 0.4, y: 0.12, z: -2.2 } },
+    { material: 'regolith-ceramic', position: { x: 0.2, y: 0.12, z: -2 } },
+  ];
+  const run = (world: PhysicsWorldPort, collector: MagneticCollector, aim: AimRay): void => {
+    for (let i = 0; i < 150; i += 1) {
+      collector.suck(aim);
+      collector.fixedUpdate(EYE);
+      world.step();
+    }
+  };
+
+  it('unlocks aluminum and copper at level 2 but still takes only the selected material', async () => {
+    const { world, field, ids, container, collector } = await setup(mixed);
+    expect(collector.selector.upgrade()).toEqual(['aluminum', 'copper']);
+    expect(collector.selector.select(contentId('copper'))).toEqual({ ok: true, selected: 'copper' });
+    const pick = pickTarget(aimAt({ x: -0.4, y: 0.12, z: -2.2 }), field.activeTargets(), world);
+    const feedback = collector.evaluate(pick);
+    expect(feedback).toMatchObject({ state: 'incompatible', reason: 'not-selected' });
+    run(world, collector, aimAt({ x: 0, y: 0.12, z: -2.3 }));
+    expect(container.batches()).toEqual([{ materialId: 'copper', count: 1, massKg: 1 }]);
+    expect(field.piece(ids[0] as EntityId)?.state).toBe('active');
+    expect(field.piece(ids[3] as EntityId)?.state).toBe('active');
+  });
+
+  it('locks the selection until the container is unloaded', async () => {
+    const { world, container, collector } = await setup(mixed);
+    collector.selector.upgrade();
+    run(world, collector, aimAt({ x: 0, y: 0.12, z: -2.3 }));
+    expect(container.count).toBe(1);
+    expect(collector.selector.locked).toBe(true);
+    expect(collector.selector.select(contentId('aluminum'))).toEqual({ ok: false, reason: 'locked' });
+    expect(collector.selector.cycle(1)).toEqual({ ok: false, reason: 'locked' });
+    container.unloadAll();
+    expect(collector.selector.select(contentId('aluminum'))).toEqual({ ok: true, selected: 'aluminum' });
+  });
+
+  it('never takes regolith ceramic, even at the top level', async () => {
+    const { field, world, collector } = await setup(mixed);
+    collector.selector.upgrade();
+    collector.selector.upgrade();
+    expect(collector.selector.upgrade()).toEqual([]);
+    expect(collector.selector.select(contentId('regolith-ceramic'))).toEqual({ ok: false, reason: 'unavailable' });
+    const pick = pickTarget(aimAt({ x: 0.2, y: 0.12, z: -2 }), field.activeTargets(), world);
+    expect(collector.evaluate(pick)).toMatchObject({ state: 'incompatible', reason: 'not-collectable' });
   });
 });

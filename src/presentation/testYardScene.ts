@@ -35,7 +35,7 @@ import { KeyboardMouseSource } from '../input/keyboardMouseSource';
 import { MagneticCollector, type TargetFeedback } from '../simulation/collection/magneticCollector';
 import { pickTarget, type TargetPick } from '../simulation/collection/targeting';
 import { AssemblyBody } from '../simulation/handling/assemblyBody';
-import { Breakables } from '../simulation/handling/breakables';
+import { Breakables, cutYields } from '../simulation/handling/breakables';
 import { CART_TUNING, Cart, type LoadResult } from '../simulation/handling/cart';
 import { ClaimRegistry } from '../simulation/handling/claims';
 import { GripController, type PlaceResult } from '../simulation/handling/gripController';
@@ -189,6 +189,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   const container = new PortableContainer();
   const collector = new MagneticCollector(content.pack, scrap, world, {
     remaining: () => container.capacity - container.count,
+    isEmpty: () => container.count === 0,
     canAccept: (id) => container.canAccept(id),
     accept: (item) => void container.add(item),
   });
@@ -254,6 +255,14 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     }),
   );
   let cutCounter = 0;
+  const cutAnchors = new Set<string>();
+  const fragmentParts = (ids: readonly string[]) =>
+    TEST_YARD_ROVER.fragments.filter((fragment) => ids.includes(fragment.id));
+  const selectedName = (): string => {
+    const id = collector.selector.selected;
+    const material = content.pack.materials.get(id);
+    return `${material?.symbol ?? '?'} ${materialName(id, material?.displayName ?? id)}`;
+  };
   const jointLabel = (id: string): string => i18n.tKey(`joint.${id}`, id);
   const PLACE_NOTICES: Record<Exclude<PlaceResult, { ok: true }>['reason'], Notice | null> = {
     'not-holding': null,
@@ -309,6 +318,32 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     let highlightedProp: EntityId | null = null;
     let secondaryUsed = false;
     if (frame.rotate !== 0) grip.rotate(frame.rotate);
+    if (frame.cycleMaterial !== 0) {
+      if (collector.selector.available().length === 1) notice = { key: 'selector.onlyOne' };
+      else {
+        const selected = collector.selector.cycle(frame.cycleMaterial);
+        notice = selected.ok
+          ? { key: 'selector.selected', params: { material: selectedName() } }
+          : { key: 'selector.locked' };
+      }
+      noticeUntil = now + 2000;
+    }
+    if (frame.upgrade) {
+      const unlocked = collector.selector.upgrade();
+      notice =
+        unlocked.length === 0
+          ? { key: 'selector.maxTier' }
+          : {
+              key: 'selector.upgraded',
+              params: {
+                tier: collector.selector.tier + 1,
+                list: unlocked
+                  .map((id) => materialName(id, content.pack.materials.get(id)?.displayName ?? id))
+                  .join(i18n.t('list.and')),
+              },
+            };
+      noticeUntil = now + 3000;
+    }
     const pushing = cart.pusher() === 'player-0';
     if (pushing) {
       feedback = { state: 'none' };
@@ -348,7 +383,15 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         if (frame.interact) {
           tool.use();
           cutCounter += 1;
-          rover.cut(joint.jointId, transactionId(`txn-cut${cutCounter.toString(36)}`));
+          const cut = rover.cut(joint.jointId, transactionId(`txn-cut${cutCounter.toString(36)}`));
+          if (cut.ok) {
+            for (const retired of cut.retired) breakables.forget(retired);
+            for (const created of cut.created) {
+              if (props.get(created.entityId) && !breakables.isBreakable(created.entityId)) {
+                breakables.registerExisting(created.entityId, cutYields(fragmentParts(created.fragments)));
+              }
+            }
+          }
         }
       } else if (joint) {
         const blockers = TEST_YARD_ROVER.joints
@@ -356,6 +399,28 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
           ?.requires?.filter((id) => !rover.state.isCut(id))
           .map(jointLabel);
         prompt = i18n.t('cut.blocked', { joints: blockers?.join(i18n.t('list.and')) ?? '' });
+      }
+    } else if (rover.aimsAtIsolatedAnchor(aim, player.characterHandle)) {
+      // The bare frame is a large part: the magnet ignores it until it is cut into small pieces.
+      feedback = { state: 'none' };
+      toolMode = 'cutter';
+      const anchor = rover.isolatedAnchor();
+      const name = anchor
+        ? i18n.tKey(TEST_YARD_ROVER_LAYOUT.fragmentNameKeys?.[anchor.fragmentId] ?? '', anchor.fragmentId)
+        : '';
+      prompt = i18n.t('cut.intoPieces', { name });
+      if (frame.interact || frame.secondary) {
+        secondaryUsed = true;
+        const removed = rover.removeIsolatedAnchor();
+        if (removed) {
+          cutAnchors.add(removed.fragmentId);
+          breakables.shatter(
+            removed.position,
+            cutYields(fragmentParts([removed.fragmentId])),
+            `cut-${removed.fragmentId}`,
+          );
+          tool.use();
+        }
       }
     } else {
       const loose = props.targets().filter((target) => !cart.loads.includes(target.id));
@@ -381,7 +446,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         const target = props.get(best.candidate.id);
         const targetName = nameOf(target?.nameKeys, target?.displayName ?? '');
         const breakable = breakables.isBreakable(best.candidate.id);
-        prompt = i18n.t(breakable ? 'grip.grabOrBreak' : 'grip.grab', { name: targetName });
+        const method = breakables.method(best.candidate.id);
+        prompt = i18n.t(!breakable ? 'grip.grab' : method === 'cut' ? 'grip.grabOrCut' : 'grip.grabOrBreak', {
+          name: targetName,
+        });
         highlightedProp = best.candidate.id;
         if (breakable) toolMode = 'cutter';
         if (frame.interact) grip.tryGrab(best, aimView.yaw);
@@ -391,12 +459,11 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         }
       } else {
         feedback = collector.evaluate(scrapPick);
-        if (frame.interactHeld) {
-          collector.suck(aim, player.characterHandle);
-          tool.use();
-        }
+        if (frame.interactHeld) tool.use();
       }
     }
+    // Holding use vacuums whatever the aim prefers (a prop or the cart nearby), unless something is held.
+    if (frame.interactHeld && !pushing && grip.held === null) collector.suck(aim, player.characterHandle);
     if (wasSucking && !frame.interactHeld) collector.cancelPull();
     wasSucking = frame.interactHeld;
 
@@ -481,7 +548,9 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
                 : '';
     }
     const anchored = new Set(rover.state.anchoredFragments());
-    for (const [fragmentId, model] of fragmentMeshes) model.visible = anchored.has(fragmentId);
+    for (const [fragmentId, model] of fragmentMeshes) {
+      model.visible = anchored.has(fragmentId) && !cutAnchors.has(fragmentId);
+    }
     for (const [jointId, marker] of jointMarkers) marker.visible = rover.jointPosition(jointId) !== null;
     scrapView.sync();
     scrapView.highlight(feedback);
@@ -493,9 +562,18 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         if (feedback.state === 'compatible') scrapText = i18n.t('collect.ready', { symbol, material });
         else if (feedback.state === 'blocked') scrapText = i18n.t('collect.containerFull', { symbol });
         else if (feedback.reason === 'too-big') scrapText = i18n.t('collect.tooBig', { symbol });
-        else {
+        else if (feedback.reason === 'needs-upgrade') {
+          const tier = (collector.selector.tierOf(feedback.material.id) ?? 0) + 1;
+          scrapText = i18n.t('collect.needsUpgrade', { symbol, material, tier });
+        } else if (feedback.reason === 'not-selected') {
+          scrapText = i18n.t(collector.selector.locked ? 'collect.notSelectedLocked' : 'collect.notSelected', {
+            symbol,
+            material,
+            selected: selectedName(),
+          });
+        } else {
           const tools = feedback.collectableBy.map((id) => i18n.tKey(`tool.${id}`, id)).join(', ');
-          scrapText = i18n.t('collect.notMagnetic', { symbol, material, tools });
+          scrapText = i18n.t('collect.notCollectable', { symbol, material, tools });
         }
       }
       const showingNotice = notice !== null && now < noticeUntil;
@@ -505,6 +583,11 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     canvas.dataset['collected'] = String(container.count);
     canvas.dataset['held'] = grip.held ?? '';
     canvas.dataset['intake'] = String(intake.count);
+    canvas.dataset['selector'] = JSON.stringify({
+      tier: collector.selector.tier,
+      selected: collector.selector.selected,
+      locked: collector.selector.locked,
+    });
     canvas.dataset['activePieces'] = String(scrap.metrics().active);
     canvas.dataset['rover'] = JSON.stringify({
       cut: TEST_YARD_ROVER.joints.filter((j) => rover.state.isCut(j.id)).map((j) => j.id),
@@ -518,13 +601,21 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         .map((batch) => `${content.pack.materials.get(batch.materialId)?.symbol ?? '?'} ${batch.count}`)
         .join(' · ');
       const hopperText = i18n.t('intake.contents', { list: contents || i18n.t('intake.empty') });
-      hud.container.textContent = `${container.isFull ? `${status} · ${i18n.t('container.full')}` : status} | ${hopperText}`;
+      const selector = i18n.t(collector.selector.locked ? 'selector.statusLocked' : 'selector.status', {
+        tier: collector.selector.tier + 1,
+        material: selectedName(),
+      });
+      const fill = container.isFull ? `${status} · ${i18n.t('container.full')}` : status;
+      hud.container.textContent = `${selector} | ${fill} | ${hopperText}`;
       hud.container.dataset['full'] = String(container.isFull);
     }
     canvas.dataset['player'] = JSON.stringify({
       x: Number(view.position.x.toFixed(2)),
       y: Number(view.position.y.toFixed(2)),
       z: Number(view.position.z.toFixed(2)),
+      eyeY: Number(view.eye.y.toFixed(2)),
+      yaw: Number(view.yaw.toFixed(4)),
+      pitch: Number(view.pitch.toFixed(4)),
       grounded: view.grounded,
       recoveries: view.recoveries,
       device,

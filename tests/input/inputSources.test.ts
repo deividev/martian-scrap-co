@@ -128,3 +128,32 @@ describe('held use and right click', () => {
     expect(source.poll(1 / 60)).toMatchObject({ interactHeld: true, interact: false, device: 'gamepad' });
   });
 });
+
+describe('collector material selector input', () => {
+  it('maps C/Z and the mouse wheel to material steps and U to the test upgrade', () => {
+    const keyboard = new KeyboardMouseSource(DEFAULT_INPUT_SETTINGS);
+    keyboard.handleKeyDown('KeyC');
+    expect(keyboard.poll().cycleMaterial).toBe(1);
+    expect(keyboard.poll().cycleMaterial).toBe(0);
+    keyboard.handleKeyDown('KeyZ');
+    expect(keyboard.poll().cycleMaterial).toBe(-1);
+    keyboard.handleWheel(120, false);
+    expect(keyboard.poll().cycleMaterial).toBe(0);
+    keyboard.handleWheel(120, true);
+    expect(keyboard.poll().cycleMaterial).toBe(1);
+    keyboard.handleWheel(-120, true);
+    expect(keyboard.poll().cycleMaterial).toBe(-1);
+    keyboard.handleKeyDown('KeyU');
+    expect(keyboard.poll().upgrade).toBe(true);
+  });
+
+  it('maps the D-pad to material steps and the test upgrade', () => {
+    expect(new GamepadSource(DEFAULT_INPUT_SETTINGS, () => [pad([0, 0, 0, 0], [15])]).poll(1 / 60).cycleMaterial).toBe(
+      1,
+    );
+    expect(new GamepadSource(DEFAULT_INPUT_SETTINGS, () => [pad([0, 0, 0, 0], [14])]).poll(1 / 60).cycleMaterial).toBe(
+      -1,
+    );
+    expect(new GamepadSource(DEFAULT_INPUT_SETTINGS, () => [pad([0, 0, 0, 0], [12])]).poll(1 / 60).upgrade).toBe(true);
+  });
+});

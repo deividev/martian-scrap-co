@@ -50,6 +50,7 @@ Rules kept: minutes are four-player group elapsed time, not person-hours and not
 **Decision (2026-10-29):** Approved H1, H2 and H3 as the **provisional first-pass set**, with one revision:
 
 - **Polymer:** the proposed suction-compatible collector is removed. Polymer is collected by hand, cart or grip tool. This keeps the tool catalog at six families; a suction tool may only return as a separately approved upgrade.
+- **Update (2026-10-30, MSC-020 review):** the owner approved suction as **level 3 of the same collector** (polymer and heliofoil), not a separate tool; the catalog stays at six families. See the [MSC-020 record](MSC-020-handling-review.md).
 
 Everything else stays provisional as listed. Optional content still contributes zero to the six-hour target.
 

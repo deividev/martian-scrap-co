@@ -49,6 +49,7 @@ describe('first-pass content', () => {
       reason: 'material-not-collectable-by-tool',
     });
     expect(checkCompatibility(magnet, aluminum, 'large')).toEqual({ compatible: false, reason: 'scale-not-handled' });
+    expect(magnet.upgradeTiers).toEqual([['ferrous'], ['aluminum', 'copper'], ['polymer', 'heliofoil']]);
   });
 });
 
@@ -106,6 +107,18 @@ describe('content rejection', () => {
     const data = pack();
     data.materials[0] = { ...data.materials[0], collectableBy: ['hands', 'cart'] };
     expect(errorsOf(data).join()).toMatch(/cannot collect small pieces/);
+  });
+
+  it('rejects collector tiers with unknown, repeated or unlisted base materials', () => {
+    const unknown = pack();
+    unknown.tools[1] = { ...unknown.tools[1], upgradeTiers: [['ferrous'], ['unobtainium']] };
+    expect(errorsOf(unknown)).toContain('tool magnetic-collector: unknown tier material unobtainium');
+    const repeated = pack();
+    repeated.tools[1] = { ...repeated.tools[1], upgradeTiers: [['ferrous'], ['copper', 'ferrous']] };
+    expect(errorsOf(repeated)).toContain('tool magnetic-collector: material ferrous appears in two tiers');
+    const base = pack();
+    base.tools[1] = { ...base.tools[1], upgradeTiers: [['copper']] };
+    expect(errorsOf(base)).toContain('tool magnetic-collector: base tier material copper does not list the tool');
   });
 
   it('rejects an unsupported schema version', () => {

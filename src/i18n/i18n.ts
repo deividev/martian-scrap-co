@@ -11,12 +11,12 @@ export const STRINGS = {
     es: 'Haz clic para jugar · WASD o stick izquierdo para moverte',
   },
   'hint.keyboard': {
-    en: 'WASD move · Hold left click / E vacuum or use · Right click / F unload or break · Q/R rotate · Space jump · Esc release mouse',
-    es: 'WASD moverse · Mantén clic izq. / E aspirar o usar · Clic der. / F descargar o romper · Q/R rotar · Espacio saltar · Esc soltar ratón',
+    en: 'WASD move · Hold left click / E vacuum or use · Right click / F unload, break or cut · Wheel or Z/C material · U upgrade (test) · Q/R rotate · Space jump · Esc release mouse',
+    es: 'WASD moverse · Mantén clic izq. / E aspirar o usar · Clic der. / F descargar, romper o trocear · Rueda o Z/C material · U mejorar (prueba) · Q/R rotar · Espacio saltar · Esc soltar ratón',
   },
   'hint.gamepad': {
-    en: 'Left stick move · Right stick look · Hold RT / X vacuum or use · Y unload or break · LB/RB rotate · A jump · Menu pause',
-    es: 'Stick izq. moverse · Stick der. mirar · Mantén RT / X aspirar o usar · Y descargar o romper · LB/RB rotar · A saltar · Menú pausa',
+    en: 'Left stick move · Right stick look · Hold RT / X vacuum or use · Y unload, break or cut · D-pad left/right material · D-pad up upgrade (test) · LB/RB rotate · A jump · Menu pause',
+    es: 'Stick izq. moverse · Stick der. mirar · Mantén RT / X aspirar o usar · Y descargar, romper o trocear · Cruceta izq./der. material · Cruceta arriba mejorar (prueba) · LB/RB rotar · A saltar · Menú pausa',
   },
 
   'tip.collect': {
@@ -45,10 +45,41 @@ export const STRINGS = {
   'container.full': { en: 'FULL', es: 'LLENO' },
 
   'collect.ready': { en: '{symbol} {material}: collect', es: '{symbol} {material}: recoger' },
-  'collect.notMagnetic': {
-    en: "{symbol} {material} isn't magnetic. Collect with: {tools}.",
-    es: '{symbol} {material} no es magnético. Recógelo con: {tools}.',
+  'collect.notCollectable': {
+    en: '{symbol} {material}: the collector never takes it. Collect with: {tools}.',
+    es: '{symbol} {material}: el colector no lo recoge nunca. Recógelo con: {tools}.',
   },
+  'collect.needsUpgrade': {
+    en: '{symbol} {material}: needs collector level {tier}.',
+    es: '{symbol} {material}: necesita el colector de nivel {tier}.',
+  },
+  'collect.notSelected': {
+    en: '{symbol} {material}: not selected (now {selected}). Switch with the wheel or Z/C.',
+    es: '{symbol} {material}: no seleccionado (ahora {selected}). Cámbialo con la rueda o Z/C.',
+  },
+  'collect.notSelectedLocked': {
+    en: '{symbol} {material}: the container holds {selected}. Unload it at the intake to switch.',
+    es: '{symbol} {material}: el contenedor lleva {selected}. Descárgalo en la tolva para cambiar.',
+  },
+  'selector.status': { en: 'Collector L{tier}: {material}', es: 'Colector Nv{tier}: {material}' },
+  'selector.statusLocked': {
+    en: 'Collector L{tier}: {material} (locked)',
+    es: 'Colector Nv{tier}: {material} (bloqueado)',
+  },
+  'selector.selected': { en: 'Collector set to {material}.', es: 'Colector ajustado a {material}.' },
+  'selector.locked': {
+    en: 'Unload the container at the intake before switching material.',
+    es: 'Descarga el contenedor en la tolva antes de cambiar de material.',
+  },
+  'selector.onlyOne': {
+    en: 'Only iron for now: upgrade the collector to unlock more materials.',
+    es: 'De momento solo hierro: mejora el colector para desbloquear más materiales.',
+  },
+  'selector.upgraded': {
+    en: 'Collector upgraded to level {tier}: now also takes {list}.',
+    es: 'Colector mejorado a nivel {tier}: ahora también recoge {list}.',
+  },
+  'selector.maxTier': { en: 'The collector is already at its top level.', es: 'El colector ya está al nivel máximo.' },
   'collect.tooBig': { en: '{symbol} Too big for the magnet.', es: '{symbol} Demasiado grande para el imán.' },
   'collect.containerFull': {
     en: '{symbol} Container full. Unload at the base intake.',
@@ -56,6 +87,10 @@ export const STRINGS = {
   },
 
   'grip.grab': { en: '{name}: grab', es: '{name}: agarrar' },
+  'grip.grabOrCut': {
+    en: '{name}: use to grab · right click to cut into small pieces',
+    es: '{name}: usar para agarrar · clic derecho para cortar en trozos pequeños',
+  },
   'grip.grabOrBreak': {
     en: '{name}: use to grab · right click to break',
     es: '{name}: usar para agarrar · clic derecho para romper',
@@ -99,6 +134,10 @@ export const STRINGS = {
   'cart.claimed': { en: 'Someone else is holding that.', es: 'Otra persona lo está sujetando.' },
 
   'cut.ready': { en: 'Cut: {joint}', es: 'Cortar: {joint}' },
+  'cut.intoPieces': {
+    en: '{name}: click or right click to cut into small pieces',
+    es: '{name}: clic o clic derecho para cortar en trozos pequeños',
+  },
   'cut.blocked': { en: 'Blocked: cut {joints} first', es: 'Bloqueado: corta primero {joints}' },
   'list.and': { en: ' and ', es: ' y ' },
 

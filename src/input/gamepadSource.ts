@@ -12,6 +12,9 @@ export const GAMEPAD_BINDINGS = Object.freeze({
   rotateLeft: 4, // LB
   rotateRight: 5, // RB
   vacuum: 7, // RT (held)
+  upgrade: 12, // D-pad up (test-yard stand-in for the store)
+  previousMaterial: 14, // D-pad left
+  nextMaterial: 15, // D-pad right
 });
 
 /** The subset of the Gamepad API this source reads; lets tests pass plain objects. */
@@ -73,6 +76,8 @@ export class GamepadSource {
       secondary: edge(GAMEPAD_BINDINGS.secondary),
       pause: edge(GAMEPAD_BINDINGS.pause),
       rotate: edge(GAMEPAD_BINDINGS.rotateRight) ? 1 : edge(GAMEPAD_BINDINGS.rotateLeft) ? -1 : 0,
+      cycleMaterial: edge(GAMEPAD_BINDINGS.nextMaterial) ? 1 : edge(GAMEPAD_BINDINGS.previousMaterial) ? -1 : 0,
+      upgrade: edge(GAMEPAD_BINDINGS.upgrade),
       device: 'gamepad',
     };
     this.#previous = pressedNow;

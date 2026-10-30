@@ -10,7 +10,15 @@ export const FIRST_PASS_CONTENT = {
   schemaVersion: 1,
   tools: [
     { id: 'hands', displayName: 'Hands', handles: ['small', 'medium'], freeBaseline: true },
-    { id: 'magnetic-collector', displayName: 'Magnetic Collector', handles: ['small'], freeBaseline: true },
+    {
+      id: 'magnetic-collector',
+      displayName: 'Magnetic Collector',
+      handles: ['small'],
+      freeBaseline: true,
+      // Owner decision 2026-10-30: magnet (Fe), then eddy-current (+Al, Cu), then suction (+Pl, Hf).
+      // Regolith ceramic never goes through the collector.
+      upgradeTiers: [['ferrous'], ['aluminum', 'copper'], ['polymer', 'heliofoil']],
+    },
     { id: 'grabber', displayName: 'Grabber', handles: ['small', 'medium'], freeBaseline: false },
     { id: 'cutter', displayName: 'Cutter', handles: ['large'], freeBaseline: false },
     { id: 'cart', displayName: 'Cart', handles: ['medium'], freeBaseline: true },

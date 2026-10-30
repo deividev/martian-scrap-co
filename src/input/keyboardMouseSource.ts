@@ -13,9 +13,23 @@ export const KEYBOARD_BINDINGS = Object.freeze({
   pause: ['Escape', 'KeyP'],
   rotateRight: ['KeyR'],
   rotateLeft: ['KeyQ'],
+  nextMaterial: ['KeyC', 'WheelDown'],
+  previousMaterial: ['KeyZ', 'WheelUp'],
+  upgrade: ['KeyU'],
 });
 
-type EdgeAction = 'jump' | 'interact' | 'secondary' | 'pause' | 'rotateRight' | 'rotateLeft';
+const EDGE_ACTIONS = [
+  'jump',
+  'interact',
+  'secondary',
+  'pause',
+  'rotateRight',
+  'rotateLeft',
+  'nextMaterial',
+  'previousMaterial',
+  'upgrade',
+] as const;
+type EdgeAction = (typeof EDGE_ACTIONS)[number];
 
 export class KeyboardMouseSource {
   readonly #held = new Set<string>();
@@ -37,7 +51,7 @@ export class KeyboardMouseSource {
     this.#touched = true;
     this.#held.add(code);
     if (repeat) return;
-    for (const action of ['jump', 'interact', 'secondary', 'pause', 'rotateRight', 'rotateLeft'] as const) {
+    for (const action of EDGE_ACTIONS) {
       if ((KEYBOARD_BINDINGS[action] as readonly string[]).includes(code)) this.#pressed.add(action);
     }
   }
@@ -52,6 +66,14 @@ export class KeyboardMouseSource {
     this.#touched = true;
     this.#lookYaw -= dx * this.#settings.mouseSensitivity;
     this.#lookPitch -= dy * this.#settings.mouseSensitivity * (this.#settings.invertY ? -1 : 1);
+  }
+
+  /** Each wheel notch is a press-and-release of a virtual WheelUp/WheelDown key. */
+  handleWheel(deltaY: number, pointerLocked: boolean): void {
+    if (!pointerLocked || !Number.isFinite(deltaY) || deltaY === 0) return;
+    const code = deltaY > 0 ? 'WheelDown' : 'WheelUp';
+    this.handleKeyDown(code);
+    this.handleKeyUp(code);
   }
 
   /** Releases everything, e.g. when the window loses focus, so no key stays stuck. */
@@ -75,6 +97,8 @@ export class KeyboardMouseSource {
       secondary: this.#pressed.has('secondary'),
       pause: this.#pressed.has('pause'),
       rotate: this.#pressed.has('rotateRight') ? 1 : this.#pressed.has('rotateLeft') ? -1 : 0,
+      cycleMaterial: this.#pressed.has('nextMaterial') ? 1 : this.#pressed.has('previousMaterial') ? -1 : 0,
+      upgrade: this.#pressed.has('upgrade'),
       device: this.#touched ? 'keyboard-mouse' : 'none',
     };
     this.#pressed.clear();
@@ -102,6 +126,7 @@ export class KeyboardMouseSource {
       if (event.button === 0) this.handleKeyUp('Mouse0');
       if (event.button === 2) this.handleKeyUp('Mouse2');
     };
+    const wheel = (event: WheelEvent): void => this.handleWheel(event.deltaY, isPointerLocked());
     // Right click is a game action (unload), never the browser context menu.
     const contextMenu = (event: MouseEvent): void => event.preventDefault();
     const blur = (): void => this.releaseAll();
@@ -111,6 +136,7 @@ export class KeyboardMouseSource {
     target.addEventListener('mousedown', mouseDown);
     target.addEventListener('mouseup', mouseUp);
     target.addEventListener('contextmenu', contextMenu);
+    target.addEventListener('wheel', wheel);
     target.addEventListener('blur', blur);
     return () => {
       target.removeEventListener('keydown', keyDown);
@@ -119,6 +145,7 @@ export class KeyboardMouseSource {
       target.removeEventListener('mousedown', mouseDown);
       target.removeEventListener('mouseup', mouseUp);
       target.removeEventListener('contextmenu', contextMenu);
+      target.removeEventListener('wheel', wheel);
       target.removeEventListener('blur', blur);
     };
   }

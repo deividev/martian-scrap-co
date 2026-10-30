@@ -20,6 +20,10 @@ export interface ActionFrame {
   readonly pause: boolean;
   /** Edge-triggered rotate step for a held object: -1, 0 or 1. */
   readonly rotate: -1 | 0 | 1;
+  /** Edge-triggered step through the collector's unlocked materials: -1, 0 or 1. */
+  readonly cycleMaterial: -1 | 0 | 1;
+  /** Test-yard stand-in for buying a collector upgrade until the shared-credit store exists. */
+  readonly upgrade: boolean;
   readonly device: InputDevice;
 }
 
@@ -32,6 +36,8 @@ export const EMPTY_FRAME: ActionFrame = Object.freeze({
   secondary: false,
   pause: false,
   rotate: 0,
+  cycleMaterial: 0,
+  upgrade: false,
   device: 'none',
 });
 
@@ -68,7 +74,9 @@ export function mergeFrames(primary: ActionFrame, secondary: ActionFrame): Actio
       secondary.interactHeld ||
       secondary.secondary ||
       secondary.pause ||
-      secondary.rotate !== 0);
+      secondary.rotate !== 0 ||
+      secondary.cycleMaterial !== 0 ||
+      secondary.upgrade);
   return {
     move,
     look: { yaw: primary.look.yaw + secondary.look.yaw, pitch: primary.look.pitch + secondary.look.pitch },
@@ -78,6 +86,8 @@ export function mergeFrames(primary: ActionFrame, secondary: ActionFrame): Actio
     secondary: primary.secondary || secondary.secondary,
     pause: primary.pause || secondary.pause,
     rotate: primary.rotate !== 0 ? primary.rotate : secondary.rotate,
+    cycleMaterial: primary.cycleMaterial !== 0 ? primary.cycleMaterial : secondary.cycleMaterial,
+    upgrade: primary.upgrade || secondary.upgrade,
     device: secondaryActive ? secondary.device : primary.device,
   };
 }

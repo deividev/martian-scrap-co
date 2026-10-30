@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { PortableContainer } from '../../src/domain/container';
 import { EntityIdAllocator, contentId, type EntityId } from '../../src/domain/ids';
 import { BaseIntake } from '../../src/domain/intake';
-import { Breakables, type BreakableSpec } from '../../src/simulation/handling/breakables';
+import { Breakables, cutYields, type BreakableSpec } from '../../src/simulation/handling/breakables';
 import { ClaimRegistry } from '../../src/simulation/handling/claims';
 import { MediumPropSet } from '../../src/simulation/handling/mediumProps';
 import type { PhysicsWorldPort } from '../../src/simulation/physics/physicsPort';
@@ -87,6 +87,56 @@ describe('Breakables', () => {
       yields: [{ materialId: contentId('ferrous'), count: 0 }],
     };
     expect(() => new Breakables(props, field, world, claims, () => 'ent-zy' as EntityId, [bad])).toThrow(RangeError);
+  });
+});
+
+describe('cutting large parts into small pieces', () => {
+  it('yields roughly one piece per 3 kg of each material, 2 to 12 per part', () => {
+    expect(
+      cutYields([
+        { materialId: contentId('ferrous'), massKg: 80 },
+        { materialId: contentId('aluminum'), massKg: 10 },
+        { materialId: contentId('ferrous'), massKg: 3 },
+      ]),
+    ).toEqual([
+      { materialId: 'ferrous', count: 14 },
+      { materialId: 'aluminum', count: 3 },
+    ]);
+  });
+
+  it('makes an existing prop cuttable into small pieces of its own material', async () => {
+    const { field, props, breakables, world } = await setup();
+    const chunk = props.add({
+      id: 'ent-chunk' as EntityId,
+      materialId: contentId('aluminum'),
+      displayName: 'Cover panel',
+      position: { x: 2, y: 0.3, z: 0 },
+      halfExtents: { x: 0.5, y: 0.05, z: 0.4 },
+      massKg: 10,
+    });
+    breakables.registerExisting(chunk.id, cutYields([{ materialId: contentId('aluminum'), massKg: 10 }]));
+    expect(breakables.method(chunk.id)).toBe('cut');
+    const result = breakables.break(chunk.id);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.created.map((id) => field.piece(id)?.materialId)).toEqual(['aluminum', 'aluminum', 'aluminum']);
+    for (let i = 0; i < 120; i += 1) world.step();
+    expect(props.get(chunk.id)).toBeUndefined();
+  });
+
+  it('forgets a chunk that another cut retired', async () => {
+    const { props, breakables } = await setup();
+    const chunk = props.add({
+      id: 'ent-chunk2' as EntityId,
+      materialId: contentId('ferrous'),
+      displayName: 'Bracket',
+      position: { x: -2, y: 0.3, z: 0 },
+      halfExtents: { x: 0.1, y: 0.1, z: 0.1 },
+      massKg: 3,
+    });
+    breakables.registerExisting(chunk.id, [{ materialId: contentId('ferrous'), count: 2 }]);
+    breakables.forget(chunk.id);
+    expect(breakables.isBreakable(chunk.id)).toBe(false);
+    expect(breakables.break(chunk.id)).toEqual({ ok: false, reason: 'unknown' });
   });
 });
 

@@ -1,7 +1,8 @@
 import type { ContentPack } from '../../content/schema';
 import type { ContainerItem } from '../../domain/container';
 import { contentId, type ContentId, type EntityId } from '../../domain/ids';
-import { checkCompatibility, type MaterialDefinition, type ToolDefinition } from '../../domain/materials';
+import type { MaterialDefinition, ToolDefinition } from '../../domain/materials';
+import { MaterialSelector } from '../../domain/materialSelector';
 import type { CharacterHandle, PhysicsBodyHandle, PhysicsWorldPort, Vec3 } from '../physics/physicsPort';
 import type { ScrapField } from '../scrap/scrapField';
 import { TARGETING, type AimRay, type TargetPick } from './targeting';
@@ -10,11 +11,11 @@ export type TargetFeedback =
   | { readonly state: 'none' }
   | { readonly state: 'compatible'; readonly id: EntityId; readonly material: MaterialDefinition }
   | {
-      /** Wrong tool for the material; the piece stays where it is. */
+      /** The collector will not take it right now; the piece stays where it is. */
       readonly state: 'incompatible';
       readonly id: EntityId;
       readonly material: MaterialDefinition;
-      readonly reason: 'not-magnetic' | 'too-big';
+      readonly reason: IncompatibleReason;
       /** Tools that can collect it, for the player-facing hint (localized by the UI). */
       readonly collectableBy: readonly ContentId[];
     }
@@ -26,6 +27,12 @@ export type TargetFeedback =
       readonly reason: 'container-full';
     };
 
+/**
+ * Why the collector refuses a piece: the material never goes through it, a higher upgrade tier unlocks it,
+ * it is not the selected material, or the piece is not small.
+ */
+export type IncompatibleReason = 'not-collectable' | 'needs-upgrade' | 'not-selected' | 'too-big';
+
 /** Where collected pieces go. Capture removes a piece from the world only if the sink accepts it. */
 export interface CollectionSink {
   canAccept(id: EntityId): boolean;
@@ -33,6 +40,8 @@ export interface CollectionSink {
   accept(item: ContainerItem): void;
   /** Free capacity, so suction never pulls more than fits. */
   remaining?(): number;
+  /** Whether the sink holds nothing; the material selection is locked otherwise. */
+  isEmpty?(): boolean;
 }
 
 export type PullOutcome =
@@ -56,9 +65,9 @@ export const COLLECTOR_TUNING = Object.freeze({
 });
 
 /**
- * Ordinary magnetic collector (MSC-014). It attracts only materials whose content definition lists
- * it; everything else is left untouched with a reason. A piece is collected exactly once, when it
- * reaches the collector, never at button press.
+ * Collector (MSC-014, owner decision 2026-10-30). It takes only the selected material among those its
+ * upgrade tier unlocks; everything else is left untouched with a reason. A piece is collected exactly
+ * once, when it reaches the collector, never at button press.
  */
 export class MagneticCollector {
   readonly #pack: ContentPack;
@@ -67,6 +76,7 @@ export class MagneticCollector {
   readonly #tool: ToolDefinition;
   readonly #sink: CollectionSink;
   readonly #pulling = new Set<EntityId>();
+  readonly selector: MaterialSelector;
 
   constructor(
     pack: ContentPack,
@@ -82,6 +92,13 @@ export class MagneticCollector {
     this.#physics = physics;
     this.#tool = tool;
     this.#sink = sink;
+    const baseline = [...pack.materials.values()]
+      .filter((material) => material.collectableBy.includes(tool.id))
+      .map((material) => material.id);
+    this.selector = new MaterialSelector(
+      tool.upgradeTiers ?? [baseline],
+      () => this.#pulling.size > 0 || sink.isEmpty?.() === false,
+    );
   }
 
   get pulling(): readonly EntityId[] {
@@ -93,19 +110,13 @@ export class MagneticCollector {
     const piece = this.#field.piece(pick.candidate.id);
     const material = piece ? this.#pack.materials.get(piece.materialId) : undefined;
     if (!piece || piece.state !== 'active' || !material) return { state: 'none' };
-    const result = checkCompatibility(this.#tool, material, 'small');
-    if (result.compatible) {
+    const reason = this.#refusal(material);
+    if (reason === null) {
       return this.#sink.canAccept(piece.id)
         ? { state: 'compatible', id: piece.id, material }
         : { state: 'blocked', id: piece.id, material, reason: 'container-full' };
     }
-    return {
-      state: 'incompatible',
-      id: piece.id,
-      material,
-      reason: result.reason === 'scale-not-handled' ? 'too-big' : 'not-magnetic',
-      collectableBy: material.collectableBy,
-    };
+    return { state: 'incompatible', id: piece.id, material, reason, collectableBy: material.collectableBy };
   }
 
   /** Starts pulling a compatible target. Returns false (and changes nothing) otherwise. */
@@ -127,7 +138,7 @@ export class MagneticCollector {
       if (this.#pulling.has(target.id)) continue;
       const piece = this.#field.piece(target.id);
       const material = piece ? this.#pack.materials.get(piece.materialId) : undefined;
-      if (!material || !checkCompatibility(this.#tool, material, 'small').compatible) continue;
+      if (!material || this.#refusal(material) !== null) continue;
       const d = {
         x: target.position.x - aim.origin.x,
         y: target.position.y - aim.origin.y,
@@ -169,6 +180,14 @@ export class MagneticCollector {
       }
     }
     return outcomes;
+  }
+
+  #refusal(material: MaterialDefinition): IncompatibleReason | null {
+    if (!this.#tool.handles.includes('small')) return 'too-big';
+    const tier = this.selector.tierOf(material.id);
+    if (tier === undefined) return 'not-collectable';
+    if (tier > this.selector.tier) return 'needs-upgrade';
+    return this.selector.accepts(material.id) ? null : 'not-selected';
   }
 
   #freeSlots(): number {

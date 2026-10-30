@@ -30,6 +30,7 @@ Unlabelled implementation examples below are **Proposed**, not new approved comm
 | Windows keyboard/mouse and controller; Deck compatibility goal | Approved / Validation required | No Deck Verified, hardware minimum or proven performance claim. |
 | Minimum six-hour first-time four-player campaign | Approved target / Validation required | Excludes optional content; never pad with waiting or divide solo time by four. |
 | Launch languages: English and Spanish | Approved (2026-10-30, MSC-020 review) | Every player-facing string and content name ships in both; player can switch at any time. Further languages need a separate decision. |
+| Collector upgrades with a locked material selector; large parts are cut into small pieces | Approved (2026-10-30, MSC-020 review) | Base collector takes iron only; level 2 adds aluminum and copper (eddy current); level 3 adds polymer and heliofoil (suction); regolith ceramic never goes through it. The player selects one unlocked material and the selection stays locked until the container is unloaded. The collector ignores medium/large parts: they are broken or cut into small pieces first ([record](decisions/MSC-020-handling-review.md)). Tier prices and capacities stay unapproved. |
 | EUR 5 reference | Deferred | Symbolic starting reference only; decide actual price after the full game is developed. |
 
 The financial constraint is **zero additional spending** on tools, assets, plugins, APIs, services, hosting or subscriptions. Existing AI subscriptions may assist production; Steam publication fee is already covered. This plan authorizes no purchases, account mutations, commits or publication.
@@ -79,10 +80,10 @@ Names, count, prices and yield rates are unapproved. Start with these six behavi
 | Candidate | Readable appearance | Collection compatibility | Separation / compaction rule |
 |---|---|---|---|
 | Ferrous scrap | Cool gray brackets, bolts, ribbed plates | Ordinary magnetic collector | Ferrous-only hopper and dense block. |
-| Aluminum | Pale broad panels, light frames, stamped triangle | Hand/cart or compatible grip tool, not ordinary magnet | Separate light-metal hopper; folded panel bale. |
-| Copper | Warm coils and exposed bundled cable | Grip/cable tool; not ordinary magnet | Cut cable mounts, then coil bale. |
-| Polymer | Saturated housings and molded ribs | Hand/cart or compatible grip tool (suction collector removed at MSC-002) | Plastic-only press, rounded compressed bundle. |
-| Heliofoil — fictional | Teal-edged layered solar sheeting | Proposed sheet clamp | Release frame first; laminated bale, no magic magnet attraction. |
+| Aluminum | Pale broad panels, light frames, stamped triangle | Hand/cart or compatible grip tool; collector level 2 (selected) | Separate light-metal hopper; folded panel bale. |
+| Copper | Warm coils and exposed bundled cable | Grip/cable tool; collector level 2 (selected) | Cut cable mounts, then coil bale. |
+| Polymer | Saturated housings and molded ribs | Hand/cart or compatible grip tool; collector level 3 suction upgrade (selected), not a separate tool (MSC-002, MSC-020) | Plastic-only press, rounded compressed bundle. |
+| Heliofoil — fictional | Teal-edged layered solar sheeting | Proposed sheet clamp; collector level 3 (selected) | Release frame first; laminated bale, no magic magnet attraction. |
 | Regolith ceramic — fictional technology | Cream ribbed heat shields, dotted stamp | Hand/cart or pad gripper | Predefined panel separation; contained ceramic compact, stylized not hazardous dust. |
 
 Materials may share economic processing infrastructure where that keeps decisions readable. Fictional materials must have explicit compatibility definitions, not unexplained exceptions. Mixed assemblies list their separable families. Icons remain stable across world decals, hoppers, inventory and store.

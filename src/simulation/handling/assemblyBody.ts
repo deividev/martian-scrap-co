@@ -63,6 +63,37 @@ export class AssemblyBody {
     return joint.between.some((fragment) => anchored.includes(fragment)) ? position : null;
   }
 
+  /**
+   * The anchored part once everything else has been cut off it: a large part the magnet ignores until it
+   * is cut into small pieces (owner decision 2026-10-30).
+   */
+  isolatedAnchor(): { fragmentId: string; body: PhysicsBodyHandle } | null {
+    const anchored = this.#state.anchoredFragments();
+    const fragmentId = anchored[0];
+    if (anchored.length !== 1 || fragmentId === undefined) return null;
+    const body = this.#fixed.get(fragmentId);
+    return body === undefined ? null : { fragmentId, body };
+  }
+
+  /** Whether the aim hits the isolated anchor part within cutter reach. */
+  aimsAtIsolatedAnchor(aim: AimRay, self?: CharacterHandle): boolean {
+    const anchor = this.isolatedAnchor();
+    if (!anchor) return false;
+    const hit = this.#physics.castRay(aim.origin, aim.direction, CUTTER_TUNING.reachMeters, self);
+    return hit?.body === anchor.body;
+  }
+
+  /** Removes the isolated anchor part's body (it is being cut up); returns where it was. Once only. */
+  removeIsolatedAnchor(): { fragmentId: string; position: Vec3; massKg: number } | null {
+    const anchor = this.isolatedAnchor();
+    if (!anchor) return null;
+    const position = this.#physics.bodyPosition(anchor.body);
+    this.#physics.removeBody(anchor.body);
+    this.#fixed.delete(anchor.fragmentId);
+    const massKg = this.#state.definition.fragments.find((f) => f.id === anchor.fragmentId)?.massKg ?? 0;
+    return { fragmentId: anchor.fragmentId, position, massKg };
+  }
+
   /** Picks the uncut joint closest to the aim, within reach and a narrow cone, with nothing in front. */
   pickJoint(aim: AimRay, self?: CharacterHandle): { jointId: string; available: boolean } | null {
     const cosLimit = Math.cos((CUTTER_TUNING.coneDegrees * Math.PI) / 180);

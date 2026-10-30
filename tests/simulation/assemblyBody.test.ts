@@ -98,3 +98,23 @@ describe('AssemblyBody', () => {
     ).toBeNull();
   });
 });
+
+describe('isolated anchor part', () => {
+  it('becomes cuttable only once everything else is cut off, and is removed once', async () => {
+    const { world, rover } = await setup();
+    expect(rover.isolatedAnchor()).toBeNull();
+    for (const joint of ['cover-left', 'cover-right', 'coil-mount', 'side-bolt']) {
+      if (!rover.cut(joint, txn()).ok) throw new Error(`cut ${joint} failed`);
+    }
+    const anchor = rover.isolatedAnchor();
+    expect(anchor?.fragmentId).toBe('frame');
+    for (let i = 0; i < 60; i += 1) world.step();
+    const eye = { x: -6, y: 1.4, z: 2.2 };
+    expect(rover.aimsAtIsolatedAnchor(aimAt({ x: -6, y: 0.4, z: 4 }, eye))).toBe(true);
+    const bodies = world.bodyCount();
+    expect(rover.removeIsolatedAnchor()).toMatchObject({ fragmentId: 'frame', massKg: 80 });
+    expect(world.bodyCount()).toBe(bodies - 1);
+    expect(rover.removeIsolatedAnchor()).toBeNull();
+    expect(rover.aimsAtIsolatedAnchor(aimAt({ x: -6, y: 0.4, z: 4 }, eye))).toBe(false);
+  });
+});
