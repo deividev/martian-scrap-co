@@ -384,3 +384,39 @@ body.model-review #yard-tip {
   color: var(--hud-muted);
   font-size: 12px;
 }
+
+.hud-base {
+  left: 16px;
+  bottom: 150px;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 260px;
+}
+
+.hud-base[hidden] {
+  display: none;
+}
+
+.hud-bins,
+.hud-machine {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.hud-bin {
+  display: grid;
+  grid-template-columns: 14px 28px 1fr 48px;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.hud-bin-count {
+  color: var(--hud-muted);
+  text-align: right;
+}
+
+.hud-machine {
+  font-size: 13px;
+}

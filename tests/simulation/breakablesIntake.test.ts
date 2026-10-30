@@ -149,8 +149,8 @@ describe('BaseIntake', () => {
     }
     const intake = new BaseIntake();
     const items = container.unloadAll();
-    expect(intake.receive(items)).toEqual({ accepted: 3, duplicates: 0 });
-    expect(intake.receive(items)).toEqual({ accepted: 0, duplicates: 3 });
+    expect(intake.receive(items)).toEqual({ accepted: 3, duplicates: 0, kept: [] });
+    expect(intake.receive(items)).toEqual({ accepted: 0, duplicates: 3, kept: [] });
     expect(container.count).toBe(0);
     expect(intake.batches()).toEqual([
       { materialId: 'ferrous', count: 2, massKg: 4 },

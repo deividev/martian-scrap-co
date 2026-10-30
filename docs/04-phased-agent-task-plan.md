@@ -569,7 +569,9 @@ Check: Solo/guest tests with mixed, empty and full batches.
 
 Requirements: PRD-006, PRD-019.
 
-Status: Planned
+Status: In progress
+
+Outcome: 2026-10-30 — Brought forward by the owner as local single-player work ahead of the MSC-030 gate (dependency not yet met). `BaseIntake` now classifies a whole mixed batch into one bin per material (40 pieces each, placeholder) with no per-piece sorting: `preview` shows accepted/kept batches before committing, `receive` routes pieces and hands back what does not fit (full bin) or is not accepted, pieces are never counted twice, and `take`/`restore` lend bin contents to the compactor. `PortableContainer` gained `items()` and `take(ids)` so an unload only removes what the intake accepted. The test yard prompt previews the unload ("descargar 8 Fe"), reports pieces kept when a bin is full, and a base panel shows the bins with material colors. Checks: 4 new intake tests (mixed batch, full bin and refused material kept, duplicates, empty batch, partial container unload, take/restore order); `npm run check` 7/7. **Pending:** the guest half of the check needs the co-op transport (MSC-021–030).
 
 ### MSC-032 — Build physical compactor state machine
 

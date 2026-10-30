@@ -38,6 +38,23 @@ export interface HudToolSlot {
   readonly owned: boolean;
 }
 
+export interface HudBin {
+  readonly symbol: string;
+  readonly name: string;
+  readonly color: string;
+  readonly count: number;
+}
+
+/** Base machines panel, shown near the base (MSC-031–033). */
+export interface HudBase {
+  readonly title: string;
+  readonly capacity: number;
+  readonly bins: readonly HudBin[];
+  readonly emptyText: string;
+  /** One line per machine with an optional 0–1 progress bar. */
+  readonly machines: readonly { readonly label: string; readonly progress: number | null }[];
+}
+
 export interface HudState {
   readonly labels: {
     readonly container: string;
@@ -55,6 +72,7 @@ export interface HudState {
     readonly color: string | null;
   };
   readonly tools: readonly HudToolSlot[];
+  readonly base: HudBase | null;
   /** Panel for the tool in hand: the collector filter or the cutter. */
   readonly inHand:
     | {
@@ -95,6 +113,7 @@ export class GameHud {
   readonly #crewIcons: HTMLElement;
   readonly #tools: HTMLElement;
   readonly #hand: HTMLElement;
+  readonly #base: HTMLElement;
   #lastKey = '';
 
   constructor(root: HTMLElement) {
@@ -115,6 +134,7 @@ export class GameHud {
 
     this.#tools = element('section', 'hud-tools', root);
     this.#hand = element('section', 'hud-panel hud-hand', root);
+    this.#base = element('section', 'hud-panel hud-base', root);
   }
 
   get root(): HTMLElement {
@@ -158,6 +178,8 @@ export class GameHud {
       }),
     );
 
+    this.#renderBase(state.base);
+
     const hand = state.inHand;
     this.#hand.replaceChildren();
     this.#hand.dataset['kind'] = hand.kind;
@@ -190,5 +212,34 @@ export class GameHud {
     const footer = element('div', 'hud-row hud-footer', this.#hand);
     footer.append(icon(hand.locked ? 'lock' : 'wheel', 'hud-icon hud-icon-sm'));
     element('span', '', footer).textContent = hand.locked ? state.labels.lockedHint : state.labels.wheelHint;
+  }
+
+  #renderBase(base: HudBase | null): void {
+    this.#base.hidden = base === null;
+    this.#base.replaceChildren();
+    if (!base) return;
+    element('span', 'hud-label', this.#base).textContent = base.title;
+    const bins = element('div', 'hud-bins', this.#base);
+    if (base.bins.length === 0) element('span', 'hud-detail', bins).textContent = base.emptyText;
+    for (const bin of base.bins) {
+      const row = element('div', 'hud-bin', bins);
+      row.title = bin.name;
+      const swatch = element('span', 'hud-swatch', row);
+      swatch.style.background = bin.color;
+      element('span', 'hud-bin-name', row).textContent = bin.symbol;
+      const track = element('div', 'hud-bar', row);
+      const fill = element('div', 'hud-bar-fill', track);
+      fill.style.width = `${Math.round((bin.count / Math.max(1, base.capacity)) * 100)}%`;
+      fill.style.background = bin.color;
+      element('span', 'hud-bin-count', row).textContent = `${bin.count}/${base.capacity}`;
+    }
+    for (const machine of base.machines) {
+      const row = element('div', 'hud-machine', this.#base);
+      element('span', '', row).textContent = machine.label;
+      if (machine.progress !== null) {
+        const track = element('div', 'hud-bar', row);
+        element('div', 'hud-bar-fill', track).style.width = `${Math.round(machine.progress * 100)}%`;
+      }
+    }
   }
 }

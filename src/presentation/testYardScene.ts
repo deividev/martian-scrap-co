@@ -246,6 +246,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     () => allocator.allocate(),
     createTestYardBreakables(allocator),
   );
+  // Every material has its own bin; ceramic never arrives by container but would be routed the same way.
   const intake = new BaseIntake();
   const hopper = createIntakeHopperModel();
   hopper.position.set(TEST_YARD_INTAKE.position.x, 0, TEST_YARD_INTAKE.position.z);
@@ -304,6 +305,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     return `${material?.symbol ?? '?'} ${materialName(id, material?.displayName ?? id)}`;
   };
   const jointLabel = (id: string): string => i18n.tKey(`joint.${id}`, id);
+  const batchList = (batches: readonly { materialId: ContentId; count: number }[]): string =>
+    batches.map((batch) => `${batch.count} ${content.pack.materials.get(batch.materialId)?.symbol ?? '?'}`).join(' · ');
   const PLACE_NOTICES: Record<Exclude<PlaceResult, { ok: true }>['reason'], Notice | null> = {
     'not-holding': null,
     blocked: { key: 'place.blocked' },
@@ -570,16 +573,32 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     const nearIntake =
       Math.hypot(aimView.position.x - TEST_YARD_INTAKE.position.x, aimView.position.z - TEST_YARD_INTAKE.position.z) <
       TEST_YARD_INTAKE.reach;
+    // MSC-031: one action unloads the whole batch; the intake classifies it and anything that does not fit stays.
+    const unloadPlan = nearIntake && container.count > 0 ? intake.preview(container.items()) : null;
     if (frame.secondary && !secondaryUsed && grip.held === null) {
-      if (nearIntake && container.count > 0) {
-        const result = intake.receive(container.unloadAll());
-        notice = { key: 'unload.done', params: { count: result.accepted } };
+      if (unloadPlan && unloadPlan.acceptedIds.length > 0) {
+        const result = intake.receive(container.take(unloadPlan.acceptedIds));
+        const kept = container.count;
+        notice =
+          kept > 0
+            ? { key: 'unload.partial', params: { count: result.accepted, kept } }
+            : { key: 'unload.done', params: { count: result.accepted } };
+      } else if (unloadPlan) {
+        notice = { key: 'intake.binsFull' };
       } else {
         notice = { key: container.count === 0 ? 'unload.empty' : 'unload.needIntake' };
       }
-      noticeUntil = now + 2000;
+      noticeUntil = now + 2500;
     }
-    if (nearIntake && !prompt && feedback.state === 'none') prompt = i18n.t('intake.prompt');
+    if (nearIntake && !prompt && feedback.state === 'none') {
+      if (!unloadPlan) prompt = i18n.t('intake.prompt');
+      else if (unloadPlan.acceptedIds.length === 0) prompt = i18n.t('intake.binsFull');
+      else {
+        const list = batchList(unloadPlan.accepted);
+        const kept = unloadPlan.kept.reduce((sum, batch) => sum + batch.count, 0);
+        prompt = kept > 0 ? i18n.t('intake.previewKept', { list, kept }) : i18n.t('intake.preview', { list });
+      }
+    }
 
     // Wake clusters near the player and let distant ones sleep (MSC-012 activation).
     if (now - lastActivation > 500) {
@@ -683,6 +702,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     canvas.dataset['collected'] = String(container.count);
     canvas.dataset['held'] = grip.held ?? '';
     canvas.dataset['intake'] = String(intake.count);
+    canvas.dataset['bins'] = JSON.stringify(Object.fromEntries(intake.batches().map((b) => [b.materialId, b.count])));
     canvas.dataset['selector'] = JSON.stringify({
       tier: collector.selector.tier,
       selected: collector.selector.selected,
@@ -700,6 +720,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       chunks: rover.state.chunks().length,
     });
     canvas.dataset['cart'] = JSON.stringify({ loads: cart.loads.length, pushing, recoveries: cart.recoveries });
+    const nearBase =
+      Math.hypot(view.position.x - TEST_YARD_INTAKE.position.x, view.position.z - TEST_YARD_INTAKE.position.z) < 9;
     if (gameHud) {
       const contents = container.batches()[0]?.materialId;
       gameHud.update({
@@ -713,6 +735,18 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
           level: i18n.t('hud.level'),
         },
         crew: { present: 1, max: 4 },
+        base: nearBase
+          ? {
+              title: i18n.t('hud.base'),
+              capacity: intake.binCapacity,
+              emptyText: i18n.t('intake.empty'),
+              bins: intake.batches().map((batch) => {
+                const chip = materialChip(batch.materialId);
+                return { symbol: chip.symbol, name: chip.name, color: chip.color, count: batch.count };
+              }),
+              machines: [],
+            }
+          : null,
         container: {
           count: container.count,
           capacity: container.capacity,

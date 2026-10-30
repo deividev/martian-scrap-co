@@ -104,6 +104,23 @@ export const STRINGS = {
     es: 'Tolva de la base: clic derecho / F / Y para descargar el contenedor',
   },
   'intake.contents': { en: 'Intake: {list}', es: 'Tolva: {list}' },
+  'intake.preview': {
+    en: 'Base intake: right click / F / Y to unload {list}',
+    es: 'Tolva de la base: clic derecho / F / Y para descargar {list}',
+  },
+  'intake.previewKept': {
+    en: 'Base intake: right click to unload {list} · {kept} stay in the container (bin full)',
+    es: 'Tolva de la base: clic derecho para descargar {list} · {kept} se quedan en el contenedor (compartimento lleno)',
+  },
+  'intake.binsFull': {
+    en: 'Base intake: that material bin is full. Wait for the compactor to free space.',
+    es: 'Tolva de la base: el compartimento de ese material está lleno. Espera a que la compactadora haga sitio.',
+  },
+  'unload.partial': {
+    en: 'Unloaded {count} pieces; {kept} stay in the container because the bin is full.',
+    es: 'Descargadas {count} piezas; {kept} se quedan en el contenedor porque el compartimento está lleno.',
+  },
+  'hud.base': { en: 'Base intake', es: 'Tolva de la base' },
   'intake.empty': { en: 'empty', es: 'vacía' },
   'unload.done': {
     en: 'Unloaded {count} pieces into the intake, ready to compact.',
