@@ -31,6 +31,10 @@ Unlabelled implementation examples below are **Proposed**, not new approved comm
 | Minimum six-hour first-time four-player campaign | Approved target / Validation required | Excludes optional content; never pad with waiting or divide solo time by four. |
 | Launch languages: English and Spanish | Approved (2026-10-30, MSC-020 review) | Every player-facing string and content name ships in both; player can switch at any time. Further languages need a separate decision. |
 | Collector upgrades with a locked material selector; large parts are cut into small pieces | Approved (2026-10-30, MSC-020 review) | Base collector takes iron only; level 2 adds aluminum and copper (eddy current); level 3 adds polymer and heliofoil (suction); regolith ceramic never goes through it. The player selects one unlocked material and the selection stays locked until the container is unloaded. The collector ignores medium/large parts: they are broken or cut into small pieces first with the equippable cutter (held cut, owned tools only, its own speed upgrades) ([record](decisions/MSC-020-handling-review.md)). Tier prices, capacities and cut times stay unapproved. |
+| Material identity by color and silhouette | Approved (2026-10-30, MSC-020 review) | Every loose piece shows one identifying color per material plus its own silhouette family, so it reads at a glance and colors stay apart from each other and the ground: iron gunmetal nuts/brackets/plates, aluminum silver-white stamped panels, copper bright coils, polymer blue housings, heliofoil teal layered sheets, regolith ceramic lilac ribbed tiles (placeholder palette until MSC-042; ceramic moves from cream to lilac so it does not clash with aluminum). Symbol and shape remain secondary cues. |
+| Scrap size rules | Approved (2026-10-30, MSC-020 review) | Small pieces go to the collector; medium objects are broken into small pieces; large parts are cut into small pieces of their own material. A later base machine that takes a whole large part and processes/packs it by material is **Proposed** for the facility progression (MSC-057), not built yet. |
+| Collector material switching | Approved (2026-10-30, MSC-020 review) | With the collector in hand the material is switched with the mouse wheel (D-pad left/right on controller); keyboard Z/C removed. The HUD shows the selected material, its lock and the unlocked list. |
+| Bales and sale machine | Approved (2026-10-30, MSC-020 review) | Small pieces unloaded at the intake are compacted into one-material bales; a sale machine takes a bale and turns it into shared credits almost instantly. The owner brought MSC-031–033 forward as a local single-player implementation ahead of the phase 3 gate; their co-op checks stay pending until MSC-021–030. |
 | EUR 5 reference | Deferred | Symbolic starting reference only; decide actual price after the full game is developed. |
 
 The financial constraint is **zero additional spending** on tools, assets, plugins, APIs, services, hosting or subscriptions. Existing AI subscriptions may assist production; Steam publication fee is already covered. This plan authorizes no purchases, account mutations, commits or publication.
@@ -79,12 +83,12 @@ Names, count, prices and yield rates are unapproved. Start with these six behavi
 
 | Candidate | Readable appearance | Collection compatibility | Separation / compaction rule |
 |---|---|---|---|
-| Ferrous scrap | Cool gray brackets, bolts, ribbed plates | Ordinary magnetic collector | Ferrous-only hopper and dense block. |
-| Aluminum | Pale broad panels, light frames, stamped triangle | Hand/cart or compatible grip tool; collector level 2 (selected) | Separate light-metal hopper; folded panel bale. |
-| Copper | Warm coils and exposed bundled cable | Grip/cable tool; collector level 2 (selected) | Cut cable mounts, then coil bale. |
-| Polymer | Saturated housings and molded ribs | Hand/cart or compatible grip tool; collector level 3 suction upgrade (selected), not a separate tool (MSC-002, MSC-020) | Plastic-only press, rounded compressed bundle. |
+| Ferrous scrap | Gunmetal gray nuts, brackets, ribbed plates | Ordinary magnetic collector | Ferrous-only hopper and dense block. |
+| Aluminum | Silver-white broad panels, light frames, stamped triangle | Hand/cart or compatible grip tool; collector level 2 (selected) | Separate light-metal hopper; folded panel bale. |
+| Copper | Bright copper-orange coils and exposed bundled cable | Grip/cable tool; collector level 2 (selected) | Cut cable mounts, then coil bale. |
+| Polymer | Saturated blue housings and molded ribs | Hand/cart or compatible grip tool; collector level 3 suction upgrade (selected), not a separate tool (MSC-002, MSC-020) | Plastic-only press, rounded compressed bundle. |
 | Heliofoil — fictional | Teal-edged layered solar sheeting | Proposed sheet clamp; collector level 3 (selected) | Release frame first; laminated bale, no magic magnet attraction. |
-| Regolith ceramic — fictional technology | Cream ribbed heat shields, dotted stamp | Hand/cart or pad gripper | Predefined panel separation; contained ceramic compact, stylized not hazardous dust. |
+| Regolith ceramic — fictional technology | Lilac ribbed heat-shield tiles, dotted stamp (was cream; changed 2026-10-30 for contrast with aluminum) | Hand/cart or pad gripper | Predefined panel separation; contained ceramic compact, stylized not hazardous dust. |
 
 Materials may share economic processing infrastructure where that keeps decisions readable. Fictional materials must have explicit compatibility definitions, not unexplained exceptions. Mixed assemblies list their separable families. Icons remain stable across world decals, hoppers, inventory and store.
 

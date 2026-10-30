@@ -61,7 +61,7 @@ if (modelName) {
     hint: document.querySelector<HTMLElement>('#input-hint'),
     i18n,
     feedback: document.querySelector<HTMLElement>('#target-feedback'),
-    container: document.querySelector<HTMLElement>('#container-status'),
+    container: document.querySelector<HTMLElement>('#hud'),
     tip: document.querySelector<HTMLElement>('#yard-tip'),
   }).catch((error: unknown) => {
     canvas.dataset['sceneError'] = error instanceof Error ? error.message : String(error);

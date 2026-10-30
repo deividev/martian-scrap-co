@@ -130,13 +130,12 @@ describe('held use and right click', () => {
 });
 
 describe('collector material selector input', () => {
-  it('maps C/Z and the mouse wheel to material steps and U to the test upgrade', () => {
+  it('maps only the mouse wheel to material steps and U to the test upgrade', () => {
     const keyboard = new KeyboardMouseSource(DEFAULT_INPUT_SETTINGS);
     keyboard.handleKeyDown('KeyC');
-    expect(keyboard.poll().cycleMaterial).toBe(1);
     expect(keyboard.poll().cycleMaterial).toBe(0);
     keyboard.handleKeyDown('KeyZ');
-    expect(keyboard.poll().cycleMaterial).toBe(-1);
+    expect(keyboard.poll().cycleMaterial).toBe(0);
     keyboard.handleWheel(120, false);
     expect(keyboard.poll().cycleMaterial).toBe(0);
     keyboard.handleWheel(120, true);

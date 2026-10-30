@@ -13,8 +13,9 @@ export const KEYBOARD_BINDINGS = Object.freeze({
   pause: ['Escape', 'KeyP'],
   rotateRight: ['KeyR'],
   rotateLeft: ['KeyQ'],
-  nextMaterial: ['KeyC', 'WheelDown'],
-  previousMaterial: ['KeyZ', 'WheelUp'],
+  // Owner decision 2026-10-30: the collector material is switched with the mouse wheel only.
+  nextMaterial: ['WheelDown'],
+  previousMaterial: ['WheelUp'],
   upgrade: ['KeyU'],
   slot1: ['Digit1', 'Numpad1'],
   slot2: ['Digit2', 'Numpad2'],

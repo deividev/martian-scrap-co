@@ -1,6 +1,6 @@
 import { Mesh, type MeshStandardMaterial, type Scene } from 'three';
 import type { EntityId } from '../domain/ids';
-import { scrapGeometry, scrapMaterial } from '../models/styledModels';
+import { scrapGeometry, scrapMaterial, setScrapHighlight } from '../models/styledModels';
 import type { MediumPropSet } from '../simulation/handling/mediumProps';
 import type { PhysicsWorldPort } from '../simulation/physics/physicsPort';
 import { variantOf } from './scrapPileView';
@@ -24,7 +24,8 @@ export class PropView {
   /** Highlights one prop (aim feedback); `null` clears it. */
   highlight(id: EntityId | null): void {
     for (const [propId, mesh] of this.#meshes) {
-      (mesh.material as MeshStandardMaterial).emissive.set(propId === id ? '#1e8f84' : '#000000');
+      const materialId = this.#props.get(propId)?.materialId ?? '';
+      setScrapHighlight(mesh.material as MeshStandardMaterial, propId === id ? '#1e8f84' : null, materialId);
     }
   }
 
@@ -35,7 +36,10 @@ export class PropView {
       let mesh = this.#meshes.get(prop.id);
       if (!mesh) {
         const { x, y, z } = prop.halfExtents;
-        mesh = new Mesh(scrapGeometry(prop.materialId, variantOf(prop.id)), scrapMaterial(prop.materialId).clone());
+        mesh = new Mesh(
+          scrapGeometry(prop.materialId, variantOf(prop.id)),
+          scrapMaterial(prop.materialId, true).clone(),
+        );
         mesh.scale.set(x * 2, y * 2, z * 2);
         mesh.castShadow = true;
         mesh.receiveShadow = true;

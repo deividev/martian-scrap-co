@@ -39,6 +39,8 @@ export const STYLE = Object.freeze({
   stationWhite: '#e7e1d6',
 });
 
+/** Faint self-light of loose scrap in its own material color (readability against the ground). */
+const GLOW_INTENSITY = 0.14;
 const materialCache = new Map<string, MeshStandardMaterial>();
 /** Shared flat-shaded materials so hundreds of pieces cost few material switches. */
 export function paint(color: string, roughness = 0.6, metalness = 0.05, emissive?: string): MeshStandardMaterial {
@@ -48,7 +50,7 @@ export function paint(color: string, roughness = 0.6, metalness = 0.05, emissive
     material = new MeshStandardMaterial({ color, roughness, metalness, flatShading: true });
     if (emissive) {
       material.emissive.set(emissive);
-      material.emissiveIntensity = 0.8;
+      material.emissiveIntensity = emissive === color ? GLOW_INTENSITY : 0.8;
     }
     materialCache.set(key, material);
   }
@@ -69,14 +71,18 @@ function part(geometry: BufferGeometry, material: MeshStandardMaterial, parent: 
 // ---------------------------------------------------------------------------------------------
 // Scrap: one silhouette vocabulary per material family (visual §6). Unit-sized, scaled to colliders.
 
-/** Material base colors used for scrap visuals; paint never replaces the material identity cue. */
+/**
+ * One identifying color per material (owner decision 2026-10-30): every piece reads its material at a
+ * glance, by color and by its own silhouette family, and the colors stay apart from each other and from
+ * the warm ground. Placeholder values until the scrap pilot (MSC-042).
+ */
 export const SCRAP_COLORS: Readonly<Record<string, string>> = {
-  ferrous: STYLE.steel,
-  aluminum: STYLE.aluminum,
-  copper: STYLE.copper,
-  polymer: STYLE.paintBlue,
-  heliofoil: STYLE.heliofoil,
-  'regolith-ceramic': STYLE.ceramic,
+  ferrous: '#6f7b8a',
+  aluminum: '#eef3f9',
+  copper: '#ff9640',
+  polymer: '#3f7ff2',
+  heliofoil: '#2fd3c0',
+  'regolith-ceramic': '#b88ae8',
 };
 
 function hexNut(): BufferGeometry {
@@ -225,9 +231,20 @@ export function scrapGeometry(materialId: string, variant: number): BufferGeomet
   return geometry;
 }
 
-export function scrapMaterial(materialId: string): MeshStandardMaterial {
+/**
+ * Shared scrap material. `glow` adds a faint self-light in the material color so loose pieces stand out
+ * from the ground; the decorative mountain leaves it off.
+ */
+export function scrapMaterial(materialId: string, glow = false): MeshStandardMaterial {
   const metal = materialId === 'ferrous' || materialId === 'aluminum' || materialId === 'copper';
-  return paint(SCRAP_COLORS[materialId] ?? '#ff00ff', metal ? 0.45 : 0.6, metal ? 0.35 : 0.05);
+  const color = SCRAP_COLORS[materialId] ?? '#ff00ff';
+  return paint(color, metal ? 0.4 : 0.6, metal ? 0.45 : 0.05, glow ? color : undefined);
+}
+
+/** Aim highlight on a (cloned) scrap material; `null` restores the material's own faint glow. */
+export function setScrapHighlight(material: MeshStandardMaterial, highlight: string | null, materialId: string): void {
+  material.emissive.set(highlight ?? SCRAP_COLORS[materialId] ?? '#000000');
+  material.emissiveIntensity = highlight ? 0.9 : GLOW_INTENSITY;
 }
 
 /** A scrap mesh sized to a collider box (full extents in meters). */

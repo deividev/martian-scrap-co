@@ -11,8 +11,8 @@ export const STRINGS = {
     es: 'Haz clic para jugar · WASD o stick izquierdo para moverte',
   },
   'hint.keyboard': {
-    en: 'WASD move · 1 collector / 2 cutter · Hold left click / E vacuum, cut or use · Right click / F unload · Wheel or Z/C material · U upgrade tool in hand (test) · Q/R rotate · Space jump · Esc release mouse',
-    es: 'WASD moverse · 1 colector / 2 cortador · Mantén clic izq. / E aspirar, cortar o usar · Clic der. / F descargar · Rueda o Z/C material · U mejorar herramienta en mano (prueba) · Q/R rotar · Espacio saltar · Esc soltar ratón',
+    en: 'WASD move · 1 collector / 2 cutter · Hold left click / E vacuum, cut or use · Right click / F unload · Mouse wheel material (collector in hand) · U upgrade tool in hand (test) · Q/R rotate · Space jump · Esc release mouse',
+    es: 'WASD moverse · 1 colector / 2 cortador · Mantén clic izq. / E aspirar, cortar o usar · Clic der. / F descargar · Rueda del ratón material (con el colector) · U mejorar herramienta en mano (prueba) · Q/R rotar · Espacio saltar · Esc soltar ratón',
   },
   'hint.gamepad': {
     en: 'Left stick move · Right stick look · D-pad down switch tool · Hold RT / X vacuum, cut or use · Y unload · D-pad left/right material · D-pad up upgrade tool in hand (test) · LB/RB rotate · A jump · Menu pause',
@@ -54,8 +54,8 @@ export const STRINGS = {
     es: '{symbol} {material}: necesita el colector de nivel {tier}.',
   },
   'collect.notSelected': {
-    en: '{symbol} {material}: not selected (now {selected}). Switch with the wheel or Z/C.',
-    es: '{symbol} {material}: no seleccionado (ahora {selected}). Cámbialo con la rueda o Z/C.',
+    en: '{symbol} {material}: not selected (now {selected}). Switch with the mouse wheel.',
+    es: '{symbol} {material}: no seleccionado (ahora {selected}). Cámbialo con la rueda del ratón.',
   },
   'collect.notSelectedLocked': {
     en: '{symbol} {material}: the container holds {selected}. Unload it at the intake to switch.',
@@ -154,6 +154,25 @@ export const STRINGS = {
     es: 'Cortador mejorado a nivel {tier}: corta {speed}× más rápido.',
   },
   'cutter.maxTier': { en: 'The cutter is already at its top level.', es: 'El cortador ya está al nivel máximo.' },
+  'hud.container': { en: 'Container', es: 'Contenedor' },
+  'hud.full': { en: 'full', es: 'lleno' },
+  'hud.crew': { en: 'Crew', es: 'Tripulación' },
+  'hud.filter': { en: 'Filter:', es: 'Filtro:' },
+  'hud.level': { en: 'L', es: 'Nv' },
+  'hud.lockedHint': {
+    en: 'Locked: unload at the intake to switch',
+    es: 'Bloqueado: descarga en la tolva para cambiar',
+  },
+  'hud.wheelHint': {
+    en: 'Mouse wheel / D-pad left-right: switch material',
+    es: 'Rueda del ratón / cruceta izq.-der.: cambiar material',
+  },
+  'hud.collectorTitle': { en: 'Magnetic collector · L{tier}', es: 'Imán colector · Nv{tier}' },
+  'hud.cutterTitle': { en: 'Cutter · L{tier}', es: 'Cortador · Nv{tier}' },
+  'hud.cutterDetail': {
+    en: 'Hold left click to cut · {speed}× speed',
+    es: 'Mantén clic izquierdo para cortar · velocidad {speed}×',
+  },
   'tool.equipped': { en: 'In hand: {tool}', es: 'En mano: {tool}' },
   'tool.notOwned': { en: 'You do not own this tool yet: {tool}.', es: 'Aún no tienes esta herramienta: {tool}.' },
   'cut.blocked': { en: 'Blocked: cut {joints} first', es: 'Bloqueado: corta primero {joints}' },

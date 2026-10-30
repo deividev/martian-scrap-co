@@ -15,6 +15,7 @@ import {
 import hazardUrl from '../assets/textures/hazard-stripes.png';
 import { createRobotModel } from '../models/generated/createRobotModel';
 import {
+  SCRAP_COLORS,
   STYLE,
   createCartModel,
   createIntakeHopperModel,
@@ -26,7 +27,7 @@ import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
 import { BaseIntake } from '../domain/intake';
 import { AssemblyState } from '../domain/assembly';
-import { EntityIdAllocator, contentId, transactionId, type EntityId } from '../domain/ids';
+import { EntityIdAllocator, contentId, transactionId, type ContentId, type EntityId } from '../domain/ids';
 import { ToolLoadout } from '../domain/toolLoadout';
 import type { I18n, StringKey } from '../i18n/i18n';
 import { mergeFrames, type InputDevice } from '../input/actions';
@@ -63,6 +64,7 @@ import {
 } from '../simulation/yard/testYard';
 import { createMarsEnvironment } from './environment';
 import { FirstPersonTool } from './firstPersonTool';
+import { GameHud, type HudMaterialChip } from './hud';
 import { PropView } from './propView';
 import { ScrapPileView } from './scrapPileView';
 
@@ -70,6 +72,7 @@ export interface TestYardHud {
   readonly hint: HTMLElement | null;
   readonly i18n: I18n;
   readonly feedback: HTMLElement | null;
+  /** Root element the gameplay HUD panels are built into. */
   readonly container: HTMLElement | null;
   readonly tip: HTMLElement | null;
 }
@@ -217,6 +220,20 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   let cutterTier = 0;
   const cutting = new CutProgress();
   const toolName = (id: string): string => i18n.tKey(`tool.${id}`, id);
+  const gameHud = hud.container ? new GameHud(hud.container) : null;
+  const collectorTiers = content.pack.tools.get(COLLECTOR)?.upgradeTiers ?? [];
+  const materialChip = (id: string): HudMaterialChip => {
+    const material = content.pack.materials.get(id as ContentId);
+    const tier = collector.selector.tierOf(id as ContentId) ?? 0;
+    return {
+      id,
+      symbol: material?.symbol ?? '?',
+      name: materialName(id, material?.displayName ?? id),
+      color: SCRAP_COLORS[id] ?? '#ffffff',
+      level: tier + 1,
+      unlocked: tier <= collector.selector.tier,
+    };
+  };
 
   const props = new MediumPropSet(world, createTestYardProps(allocator));
   const claims = new ClaimRegistry();
@@ -352,7 +369,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       noticeUntil = now + 1500;
     }
     const cutterInHand = loadout.equipped === CUTTER;
-    if (frame.cycleMaterial !== 0) {
+    // The wheel switches the collector material only while the collector is in hand.
+    if (frame.cycleMaterial !== 0 && loadout.equipped === COLLECTOR) {
       if (collector.selector.available().length === 1) notice = { key: 'selector.onlyOne' };
       else {
         const selected = collector.selector.cycle(frame.cycleMaterial);
@@ -682,22 +700,60 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       chunks: rover.state.chunks().length,
     });
     canvas.dataset['cart'] = JSON.stringify({ loads: cart.loads.length, pushing, recoveries: cart.recoveries });
-    if (hud.container) {
-      const status = i18n.t('container.status', { count: container.count, capacity: container.capacity });
-      const contents = intake
-        .batches()
-        .map((batch) => `${content.pack.materials.get(batch.materialId)?.symbol ?? '?'} ${batch.count}`)
-        .join(' · ');
-      const hopperText = i18n.t('intake.contents', { list: contents || i18n.t('intake.empty') });
-      const selector = i18n.t(collector.selector.locked ? 'selector.statusLocked' : 'selector.status', {
-        tier: collector.selector.tier + 1,
-        material: selectedName(),
+    if (gameHud) {
+      const contents = container.batches()[0]?.materialId;
+      gameHud.update({
+        labels: {
+          container: i18n.t('hud.container'),
+          containerFull: i18n.t('hud.full'),
+          crew: i18n.t('hud.crew'),
+          filter: i18n.t('hud.filter'),
+          lockedHint: i18n.t('hud.lockedHint'),
+          wheelHint: i18n.t('hud.wheelHint'),
+          level: i18n.t('hud.level'),
+        },
+        crew: { present: 1, max: 4 },
+        container: {
+          count: container.count,
+          capacity: container.capacity,
+          color: contents ? (SCRAP_COLORS[contents] ?? null) : null,
+        },
+        tools: [
+          {
+            key: '1',
+            icon: 'magnet',
+            label: toolName(COLLECTOR),
+            level: collector.selector.tier + 1,
+            equipped: !cutterInHand,
+            owned: loadout.owns(COLLECTOR),
+          },
+          {
+            key: '2',
+            icon: 'cutter',
+            label: toolName(CUTTER),
+            level: cutterTier + 1,
+            equipped: cutterInHand,
+            owned: loadout.owns(CUTTER),
+          },
+        ],
+        inHand: cutterInHand
+          ? {
+              kind: 'cutter',
+              title: i18n.t('hud.cutterTitle', { tier: cutterTier + 1 }),
+              detail: i18n.t('hud.cutterDetail', { speed: CUTTER_SPEED_TIERS[cutterTier] ?? 1 }),
+            }
+          : {
+              kind: 'collector',
+              title: i18n.t('hud.collectorTitle', { tier: collector.selector.tier + 1 }),
+              selected: materialChip(collector.selector.selected),
+              locked: collector.selector.locked,
+              materials: collectorTiers.flat().map(materialChip),
+            },
       });
-      const fill = container.isFull ? `${status} · ${i18n.t('container.full')}` : status;
-      const mark = (id: string): string => (loadout.equipped === id ? '▶ ' : '');
-      const cutterText = i18n.t('cutter.status', { tier: cutterTier + 1 });
-      hud.container.textContent = `${mark(COLLECTOR)}1 ${selector} · ${fill} | ${mark(CUTTER)}2 ${cutterText} | ${hopperText}`;
-      hud.container.dataset['full'] = String(container.isFull);
+      hud.container?.setAttribute(
+        'data-summary',
+        `${container.count}/${container.capacity} ${selectedName()}${collector.selector.locked ? ' locked' : ''}`,
+      );
     }
     canvas.dataset['player'] = JSON.stringify({
       x: Number(view.position.x.toFixed(2)),

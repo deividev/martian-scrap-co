@@ -1,6 +1,6 @@
-import { Color, Mesh, type MeshStandardMaterial, type Scene } from 'three';
+import { Mesh, type MeshStandardMaterial, type Scene } from 'three';
 import type { EntityId } from '../domain/ids';
-import { SCRAP_COLORS, scrapGeometry, scrapMaterial } from '../models/styledModels';
+import { SCRAP_COLORS, scrapGeometry, scrapMaterial, setScrapHighlight } from '../models/styledModels';
 import type { TargetFeedback } from '../simulation/collection/magneticCollector';
 import type { PhysicsWorldPort } from '../simulation/physics/physicsPort';
 import type { ScrapField } from '../simulation/scrap/scrapField';
@@ -8,11 +8,10 @@ import type { ScrapField } from '../simulation/scrap/scrapField';
 /** Readable base color per material (styled models own the palette; kept for instanced views). */
 export const MATERIAL_COLORS: Readonly<Record<string, string>> = SCRAP_COLORS;
 
-const HIGHLIGHT: Record<TargetFeedback['state'], Color> = {
-  none: new Color('#000000'),
-  compatible: new Color('#1e8f84'),
-  incompatible: new Color('#7a3410'),
-  blocked: new Color('#7a3410'),
+const HIGHLIGHT: Record<Exclude<TargetFeedback['state'], 'none'>, string> = {
+  compatible: '#1e8f84',
+  incompatible: '#7a3410',
+  blocked: '#7a3410',
 };
 
 /** Stable small hash so each piece keeps the same silhouette variant across sessions. */
@@ -44,7 +43,10 @@ export class ScrapPileView {
       const piece = this.#field.piece(target.id);
       if (!mesh && piece) {
         // Own material instance so highlighting one piece never tints the others.
-        mesh = new Mesh(scrapGeometry(piece.materialId, variantOf(piece.id)), scrapMaterial(piece.materialId).clone());
+        mesh = new Mesh(
+          scrapGeometry(piece.materialId, variantOf(piece.id)),
+          scrapMaterial(piece.materialId, true).clone(),
+        );
         mesh.scale.set(piece.halfExtents.x * 2, piece.halfExtents.y * 2, piece.halfExtents.z * 2);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -67,13 +69,14 @@ export class ScrapPileView {
 
   highlight(feedback: TargetFeedback): void {
     const id = feedback.state === 'none' ? null : feedback.id;
-    if (this.#highlighted !== null && this.#highlighted !== id) {
-      (this.#meshes.get(this.#highlighted)?.material as MeshStandardMaterial | undefined)?.emissive.copy(
-        HIGHLIGHT.none,
-      );
-    }
+    if (this.#highlighted !== null && this.#highlighted !== id) this.#paint(this.#highlighted, null);
     this.#highlighted = id;
-    if (id !== null)
-      (this.#meshes.get(id)?.material as MeshStandardMaterial | undefined)?.emissive.copy(HIGHLIGHT[feedback.state]);
+    if (id !== null && feedback.state !== 'none') this.#paint(id, HIGHLIGHT[feedback.state]);
+  }
+
+  #paint(id: EntityId, highlight: string | null): void {
+    const mesh = this.#meshes.get(id);
+    const piece = this.#field.piece(id);
+    if (mesh && piece) setScrapHighlight(mesh.material as MeshStandardMaterial, highlight, piece.materialId);
   }
 }
