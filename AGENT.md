@@ -86,9 +86,11 @@ Martian Scrap Co/                 Project root
 |-- electron-builder.yml         Packaging allowlist, asarUnpack and fuses (MSC-007)
 |-- package.json, package-lock.json, tsconfig.json
 |-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006)
-|-- src/                         Renderer TypeScript: domain, content, platform adapter, smoke scene
+|-- src/                         Renderer TypeScript: domain, content, simulation, input, i18n (EN/ES), models (styled procedural), platform adapter, test-yard scene
 |-- tests/                       Vitest unit tests
 `-- tools/                       validate-docs.ps1, check.mjs runner, run-electron-dev.mjs
+
+|-- art/sculpt/                 Model review renders, comparison sheets and sculpt records
 
 Generated, not committed: dist/, dist-electron/, release/. Not created yet: native/, assets-source/.
 ```
@@ -111,6 +113,7 @@ npm run check          # all local checks with bounded logs in .check-logs/ (-- 
 npm run electron:start # build, then open the desktop app
 npm run electron:dev   # Electron against a running `npm run dev` server
 npm run package        # build + electron-builder Windows folder in release/win-unpacked/
+# Benchmark: append ?benchmark=baseline|dense to the dev URL, or run the packaged exe with --benchmark=dense --benchmark-seconds=20
 powershell.exe -NoProfile -File .	oolsalidate-docs.ps1
 ```
 

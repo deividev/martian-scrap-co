@@ -15,11 +15,372 @@ body {
 #platform-status {
   position: fixed;
   left: 12px;
-  bottom: 8px;
+  top: 8px;
   margin: 0;
   font:
     12px/1.4 system-ui,
     sans-serif;
   color: #f4ece1;
   opacity: 0.8;
+}
+
+#crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: #f4ece1;
+  box-shadow: 0 0 0 2px rgba(27, 31, 46, 0.6);
+  pointer-events: none;
+}
+
+#input-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 94vw;
+  margin: 0;
+  padding: 3px 12px;
+  border-radius: 10px;
+  background: rgba(27, 31, 46, 0.7);
+  color: #f4ece1;
+  text-align: center;
+  font:
+    12px/1.35 system-ui,
+    sans-serif;
+  pointer-events: none;
+}
+
+#target-feedback {
+  position: fixed;
+  left: 50%;
+  top: calc(50% + 28px);
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: rgba(27, 31, 46, 0.82);
+  color: #f4ece1;
+  font:
+    15px/1.4 system-ui,
+    sans-serif;
+  pointer-events: none;
+}
+
+#target-feedback:empty {
+  display: none;
+}
+
+#target-feedback[data-state='compatible'] {
+  box-shadow: inset 0 0 0 2px #2fb5a8;
+}
+
+#target-feedback[data-state='incompatible'],
+#target-feedback[data-state='blocked'] {
+  box-shadow: inset 0 0 0 2px #f08a3c;
+}
+
+#language-status {
+  position: fixed;
+  right: 16px;
+  top: 82px;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: rgba(27, 31, 46, 0.7);
+  font:
+    13px/1.4 system-ui,
+    sans-serif;
+  color: #f4ece1;
+}
+
+body.model-review #crosshair,
+body.model-review #input-hint,
+body.model-review #target-feedback,
+body.model-review #hud,
+body.model-review #platform-status,
+body.model-review #language-status,
+body.model-review #yard-tip {
+  display: none;
+}
+
+#yard-tip {
+  position: fixed;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  max-width: min(720px, 90vw);
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: rgba(27, 31, 46, 0.86);
+  box-shadow: inset 0 0 0 2px #f08a3c;
+  color: #f4ece1;
+  font:
+    15px/1.4 system-ui,
+    sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+
+#yard-tip:empty {
+  display: none;
+}
+
+/* Gameplay HUD (approved UI style: charcoal/navy rounded panels, off-white text, orange focus, teal progress). */
+:root {
+  --hud-panel: rgba(28, 33, 48, 0.9);
+  --hud-edge: #2f374d;
+  --hud-text: #f4ece1;
+  --hud-muted: #b9b3aa;
+  --hud-focus: #f08a3c;
+  --hud-progress: #2fb5a8;
+  --hud-font: 'Segoe UI', system-ui, sans-serif;
+}
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  color: var(--hud-text);
+  font: 600 14px/1.25 var(--hud-font);
+}
+
+.hud-panel {
+  position: absolute;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--hud-panel);
+  box-shadow:
+    inset 0 0 0 2px var(--hud-edge),
+    0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.hud-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.hud-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.hud-label {
+  color: var(--hud-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hud-value {
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.hud-detail {
+  font-size: 15px;
+}
+
+.hud-icon {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  color: var(--hud-text);
+}
+
+.hud-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.hud-icon-lg {
+  width: 44px;
+  height: 44px;
+}
+
+.hud-icon-sm {
+  width: 16px;
+  height: 16px;
+}
+
+.hud-container {
+  left: 16px;
+  bottom: 52px;
+  min-width: 230px;
+}
+
+.hud-container .hud-stack {
+  flex: 1;
+}
+
+.hud-bar {
+  height: 10px;
+  border-radius: 6px;
+  background: #11141d;
+  box-shadow: inset 0 0 0 1px var(--hud-edge);
+  overflow: hidden;
+}
+
+.hud-bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--hud-progress);
+  transition: width 0.2s ease;
+}
+
+.hud-container[data-full='true'] {
+  box-shadow:
+    inset 0 0 0 2px var(--hud-focus),
+    0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.hud-crew {
+  right: 16px;
+  top: 16px;
+}
+
+.hud-crew-icons {
+  display: flex;
+  gap: 6px;
+}
+
+.hud-crew-icons .hud-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.hud-absent {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+
+.hud-tools {
+  position: absolute;
+  left: 50%;
+  bottom: 52px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+}
+
+.hud-slot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  background: var(--hud-panel);
+  box-shadow: inset 0 0 0 2px var(--hud-edge);
+}
+
+.hud-slot .hud-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.hud-slot[data-equipped='true'] {
+  box-shadow:
+    inset 0 0 0 3px var(--hud-focus),
+    0 0 14px rgba(240, 138, 60, 0.55);
+}
+
+.hud-slot[data-equipped='true'] .hud-icon {
+  color: var(--hud-focus);
+}
+
+.hud-slot[data-owned='false'] {
+  opacity: 0.35;
+}
+
+.hud-slot-key {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.hud-slot-level {
+  position: absolute;
+  right: 6px;
+  top: 4px;
+  color: var(--hud-progress);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.hud-hand {
+  right: 16px;
+  bottom: 52px;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 270px;
+}
+
+.hud-hand .hud-icon-lg {
+  color: var(--hud-focus);
+}
+
+.hud-filter {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 15px;
+}
+
+.hud-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+.hud-lock {
+  color: var(--hud-focus);
+}
+
+.hud-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hud-chip {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: #151925;
+  box-shadow: inset 0 0 0 1px var(--hud-edge);
+  font-size: 12px;
+}
+
+.hud-chip[data-selected='true'] {
+  box-shadow: inset 0 0 0 2px var(--hud-focus);
+}
+
+.hud-chip[data-unlocked='false'] {
+  color: var(--hud-muted);
+  opacity: 0.55;
+}
+
+.hud-footer {
+  color: var(--hud-muted);
+  font-size: 12px;
 }

@@ -245,7 +245,9 @@ Check: Run identical basic bodies/queries in dev and packaged runtime.
 
 Requirements: PRD-005, PRD-008.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added the engine-neutral `PhysicsWorldPort` and a Rapier 0.21.0 (compat WASM) implementation in `src/simulation/physics/`, documented conventions (+Y up, SI units, Mars gravity 3.721 m/s², fixed 1/60 s step with capped catch-up, numeric handles never used as identity) and turned the smoke scene into a small falling-crates sandbox. CSP now allows `'wasm-unsafe-eval'` only. Check: the same probe (3 boxes, 600 steps, downward ray) gave identical results in Vitest/Node, the browser dev server and the packaged Electron app from a clean folder; 4 new tests. Details in [MSC-011 record](decisions/MSC-011-physics-conventions.md).
 
 ### MSC-012 — Separate visual density from active bodies
 
@@ -259,7 +261,9 @@ Check: Activate/deactivate a cluster repeatedly and verify identity/conservation
 
 Requirements: PRD-001, PRD-005, PRD-021.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added `ScrapField` (`src/simulation/scrap/scrapField.ts`): clusters hold decorative visual counts (never simulated) plus identified pieces that are `dormant` (pose only), `active` (physics body, transient handle map) or `removed` (terminal, never re-created). Deactivation stores the live pose and rotation; snapshots persist no handles and save active pieces as dormant; a fully cleared cluster drops its decorative mass so cleared areas stay cleared. `metrics()` exposes dormant/active/removed, decorative instances, physics bodies and awake bodies. Physics boxes accept an initial rotation. Check: 50 activate/step/deactivate cycles keep the same ids, conserve 15 pieces, leave only the ground body and never revive a removed piece; save/restore round trip preserves poses; awake count observed going 9 → 0 after settling; `npm run check` 7/7.
 
 ### MSC-013 — Implement first-person action controller
 
@@ -273,7 +277,9 @@ Check: Navigate ramps, corners and recovery zones on both input types.
 
 Requirements: PRD-003, PRD-022.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added one action vocabulary (`src/input/actions.ts`: move, look, jump, interact, pause, active device) fed by `KeyboardMouseSource` (WASD/arrows by physical code, pointer-locked mouse look, blur releases keys) and `GamepadSource` (standard mapping, rescaled radial deadzone, time-scaled stick look, edge-triggered A/X/Menu); settings defaults in `inputSettings.ts`. `PlayerController` drives a Rapier kinematic capsule (new character API in the physics port: slide, 40° slope limit, 0.3 m autostep, ground snap) with clamped pitch, calm Mars-gravity jump (~0.9 m) and recovery to the last fully supported ground (four-ray support check) from pits or recovery zones. The scene is now a first-person movement test yard (15°/30°/50° ramps, 20/50 cm steps, inside corner, pit) with a rounded robot proxy, crosshair and device-aware prompts. Checks: 10 controller tests on the yard (both ramps climbed, 50° blocked, 20 cm stepped/50 cm blocked, corner not penetrated, pit recovery, pitch clamp, jump height) plus a test proving keyboard W and a full forward stick give identical movement; 9 input tests; in-browser W press moved the player 4 m with the prompt switching to keyboard; `npm run check` 7/7. **Not yet exercised on real controller hardware**: the owner's keyboard/controller walkthrough is part of MSC-020.
 
 ### MSC-014 — Build collector compatibility and target feedback
 
@@ -287,7 +293,9 @@ Check: Test all proposed material flags, wall occlusion and competing targets.
 
 Requirements: PRD-005–006, PRD-009.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added `pickTarget` (`src/simulation/collection/targeting.ts`: 3.5 m reach, 14° cone, closest-to-aim then nearest, line-of-sight ray that must hit the candidate itself and ignores the player capsule) and `MagneticCollector` (`magneticCollector.ts`): compatibility comes from the content pack, so the ordinary magnet attracts ferrous only; incompatible pieces stay untouched with a reason built from content ("Aluminum isn't magnetic. Collect with: Hands, Grabber."); compatible pieces are pulled at 6 m/s and collected exactly once on arrival (0.7 m), not on button press; pulls drop safely when out of range. The test yard gained a mixed 18-piece pile with readable material colors, target highlight and an on-screen feedback line with the material symbol as a non-color cue (E / click or X to collect). Checks: all six material flags (ferrous attracted, five rejected and left active), wall occlusion, reach/cone limits, competing targets switching with aim, single collection and no confirmation at press; in the running Electron app the player looked down at the pile, targeted "Fe Ferrous Scrap: collect" and E raised the collected count 0 → 1; `npm run check` 7/7. Not stealing another player's held object needs claims (MSC-022).
 
 ### MSC-015 — Implement portable batch container
 
@@ -301,7 +309,9 @@ Check: Boundary tests around empty/full containers and repeated collect requests
 
 Requirements: PRD-005–006, PRD-019.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added the domain `PortableContainer` (`src/domain/container.ts`): provisional capacity 20 pieces, per-material batch summary, `unloadAll()` that hands every item back exactly once, duplicate ids rejected, full intake refused without touching contents. The collector now captures through a `CollectionSink`: a full container makes compatible targets `blocked` ("Container full. Unload at the base intake.") and refuses to start a pull; if it fills mid-pull the piece is dropped and stays in the world; otherwise the piece leaves the world and enters the container in the same step. `fixedUpdate` returns explicit outcomes (collected / dropped with reason). HUD shows "Container n/20" with a full state. Checks: boundary tests for empty, capacity−1, full, overflow, repeated requests for the same piece, invalid capacity/mass, and collector integration (blocked at start, full on arrival keeps the piece, two pieces collected once each with removed count equal to container count); running Electron app showed "Container 1/20" after one collection; `npm run check` 7/7.
 
 ### MSC-016 — Implement medium-object grip and placement
 
@@ -315,7 +325,9 @@ Check: Pick/drop near edges, other props and player collision proxies.
 
 Requirements: PRD-005, PRD-008.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added `ClaimRegistry` (one holder per object; second claims fail instead of stealing; holder-only release; `releaseAll` for disconnects), `MediumPropSet` (dynamic medium props with recovery to the last settled, sleeping pose when they fall below −20 m) and `GripController`: the held object stays a physical body steered to a hold point 1.6 m ahead and 0.45 m below the eye (readable in first person), floats while held, rotates in 45° steps (new `rotate` action: Q/R, LB/RB) and cannot pass through walls or props. Placement is refused and the object kept when it is held back by an obstacle (`blocked`) or overlaps the player; a valid place restores gravity and releases the claim. Physics port gained sleep state, angular velocity, pose teleport and gravity scale. The test yard has three medium props; aim chooses between props and scrap by angle, with grab/holding/refusal prompts. Checks: 10 grip/claim tests (claim and hold point, claimed-by-other refusal, rotation, valid place, wall blocking + refused placement, player overlap refusal, props not passing through each other, edge drop recovered to the last settled pose not the release point) and a rotate input test; in the running Electron app the player aimed at "Polymer housing: grab", grabbed, rotated and placed it; `npm run check` 7/7. Observation for MSC-020: a held object at full follow speed can shove lighter props hard.
 
 ### MSC-017 — Prototype cart handling and recovery
 
@@ -329,7 +341,9 @@ Check: Drive loaded/empty routes and recover overturned/out-of-bounds cases.
 
 Requirements: PRD-005, PRD-014.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added `Cart` (`src/simulation/handling/cart.ts`): a 40 kg push cart claimed by one pusher, steered to a point 1.4 m ahead of the player with heading following the player; up to 4 loads / 60 kg (provisional). Loaded props are claimed by the cart and ride on bed slots with their bodies disabled, so they cannot fall out or be grabbed; `unloadAll` lines them up beside the cart with physics restored and claims released. Recovery assistance: the cart rights itself after more than 1 s tipped past 60°, and returns (with its loads) to its last settled spot if it leaves the yard. Physics port gained body enable/disable and linear velocity readback; quaternion helpers moved to `physics/quat.ts`; new `secondary` action (F / Y) unloads. Test yard has a cart: aim to push, drop a held prop over the bed to load, F to unload. Checks: 10 cart tests (empty route, turning, second-player push refused, full 4-item load carried along a route, mass/duplicate limits, claimed prop refused, unload with physics and claims restored, bed detection, tip-over self-righting with load kept, out-of-bounds return with loads); in the running Electron app a prop was grabbed, loaded (1/4), pushed 3.3 m and unloaded; `npm run check` 7/7.
 
 ### MSC-018 — Prototype designed cutting joints
 
@@ -343,7 +357,9 @@ Check: Cut joints in alternative valid orders and retry identical commands.
 
 Requirements: PRD-008, PRD-019, PRD-021.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added the pure cutting model `src/domain/assembly.ts`: authored fragments and joints with an anchor and acyclic access requirements (validated: unknown references, duplicates, cycles, detached fragments, bad masses). `AssemblyState.cut(joint, txn)` cuts each joint at most once, releases anything no longer connected to the anchor as one chunk entity, splits a loose chunk into two new entities while retiring the old one (ids never reused), records every transaction result for retries and snapshots/restores without re-creating chunks. `AssemblyBody` mirrors it physically: anchored fragments are fixed bodies, released chunks become medium props sized to their fragments at their current place, and `pickJoint` uses an 8° cone, 2.6 m reach and line of sight. The test yard has a rover chassis (cover must come off before the copper coil; side panel carries a bracket) with joint markers and "Cut …" / "Blocked: cut … first" prompts; released chunks can be grabbed and carted. `MediumPropSet` can add/remove props; `PropView` renders them dynamically. Checks: 8 domain tests (access order, sub-assembly release and split, three alternative valid orders reaching the identical final layout, retried transaction returns the recorded result, already-cut/unknown refused, no id reuse and fragment conservation, snapshot restore) and 5 physics tests (chunk placement and mass, split replacement, no duplicate on retry, full dismantle, joint picking/blocked); in the running Electron app "Cut side bolt" released "Side panel + Bracket" as a grabbable chunk; `npm run check` 7/7.
 
 ### MSC-019 — Build representative benchmark fixture
 
@@ -359,7 +375,9 @@ Requirements: PRD-001, PRD-005, PRD-022.
 
 Context: [Capture guide](../references/TRAILER_CAPTURE_INSTRUCTIONS.md) camera/format/review guidance; visual §9 and architecture §11.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-29 — Added a seeded, parameterized dense-yard fixture (`src/simulation/benchmark/denseYardFixture.ts`, presets `baseline` and `dense`) that keeps decorative instances, dormant pieces, active bodies, props, carts, a cuttable rover and station geometry separate, and a benchmark scene that drives four real collectors, four pushed carts and periodic cuts with a smooth camera orbit, then reports frame/simulation percentiles, awake bodies, draw calls, triangles, counts per category, interactions, late-join snapshot size and memory with the Vite-injected build hash. Launch: `?benchmark=` or allowlisted `--benchmark=` / `--benchmark-seconds=` flags. Baseline captured on the packaged clean build `0286085` (Ryzen 7 3700X, RTX 2060, 120 Hz): dense simulation p99 5.2 ms with up to 552 awake bodies; 40,000 decorative instances added draw calls but no physics cost; dense snapshot 1.67 MB (needs chunking at MSC-024); frame time is v-sync capped. Evidence in [MSC-019 baseline](benchmarks/MSC-019-baseline.md). No safe-count claims; no video, screenshots or audio recorded; compactor, networking and Deck not yet covered.
 
 ### MSC-020 — Review core handling and simulation feasibility
 
@@ -373,7 +391,9 @@ Check: Recorded keyboard/controller walkthrough and worst-case fixture review.
 
 Requirements: PRD-002, PRD-005–009, PRD-022.
 
-Status: Planned
+Status: Done
+
+Outcome: 2026-10-30 — Owner approved the handling feel and the provisional budgets after a series of play sessions ([review record](decisions/MSC-020-handling-review.md)). Delivered during the review: early style pass (crew robot, scrap silhouettes, cart, rover, tools, Mars backdrop), English/Spanish localization, a continuous floor and colliders for all scrap and scenery, vacuum collector with right-click unload at the intake, mountain-foot starter scrap and breakable medium junk, collector upgrade tiers with a locked material selector (wheel only), large parts cut into small pieces of their material, an equippable hold-to-cut cutter with its own speed upgrades, one identifying color and silhouette per material and a HUD in the approved UI style. Budgets accepted as working limits: ≤ 300 awake bodies, simulation p95 ≤ 3 ms / p99 ≤ 5 ms on the reference PC, ≤ 300 active pieces per area, ≤ 150 draw calls, chunked late-join snapshots. **Before the roadmap continues past the brought-forward MSC-031–033, the owner requires follow-ups R1–R4 from the record:** better machine models, better cart, better scenery, and a giant scrap mountain made of real small/medium/large material pieces with real collision within these budgets.
 
 ## Phase 3 — Co-op authority and real Steam/native feasibility
 

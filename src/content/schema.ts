@@ -24,6 +24,8 @@ const toolSchema = z.strictObject({
   displayName: displayNameSchema,
   handles: z.array(handlingScaleSchema).min(1).max(3),
   freeBaseline: z.boolean(),
+  /** Collector upgrade tiers: materials each tier unlocks, cumulatively (tier 0 is the base tool). */
+  upgradeTiers: z.array(z.array(contentIdSchema).min(1).max(8)).min(1).max(8).optional(),
 });
 
 export const contentPackSchema = z.strictObject({
@@ -72,6 +74,20 @@ export function parseContentPack(input: unknown): ContentResult {
       errors.push(`material ${material.id}: no free-baseline tool can collect it`);
     }
   }
+  const materialById = new Map(materials.map((material) => [material.id, material]));
+  for (const tool of tools) {
+    const tiered = (tool.upgradeTiers ?? []).flat();
+    for (const id of duplicates(tiered)) errors.push(`tool ${tool.id}: material ${id} appears in two tiers`);
+    for (const id of tiered) {
+      if (!materialById.has(id)) errors.push(`tool ${tool.id}: unknown tier material ${id}`);
+    }
+    // The base tier is what the free tool already collects; upgrades add to it.
+    for (const id of tool.upgradeTiers?.[0] ?? []) {
+      if (materialById.get(id)?.collectableBy.includes(tool.id) === false) {
+        errors.push(`tool ${tool.id}: base tier material ${id} does not list the tool`);
+      }
+    }
+  }
   if (errors.length > 0) return { ok: false, errors };
 
   return {
@@ -100,6 +116,7 @@ export function parseContentPack(input: unknown): ContentResult {
             displayName: tool.displayName,
             handles: tool.handles,
             freeBaseline: tool.freeBaseline,
+            ...(tool.upgradeTiers ? { upgradeTiers: tool.upgradeTiers.map((tier) => tier.map(contentId)) } : {}),
           },
         ]),
       ),

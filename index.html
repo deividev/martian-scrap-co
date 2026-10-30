@@ -7,7 +7,13 @@
   </head>
   <body>
     <canvas id="game" aria-label="Game view"></canvas>
+    <div id="crosshair" aria-hidden="true"></div>
+    <p id="target-feedback" role="status" aria-live="polite"></p>
+    <p id="input-hint" role="status"></p>
+    <p id="yard-tip" role="status" aria-live="polite"></p>
+    <div id="hud" role="status" aria-live="off"></div>
     <p id="platform-status" role="status"></p>
+    <p id="language-status" role="status"></p>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

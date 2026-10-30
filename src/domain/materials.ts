@@ -25,6 +25,8 @@ export interface ToolDefinition {
   readonly handles: readonly HandlingScale[];
   /** Part of the free baseline that can never be lost or sold (PRD-011). */
   readonly freeBaseline: boolean;
+  /** Materials each upgrade tier unlocks, cumulatively; tier 0 is the base tool (collector selector). */
+  readonly upgradeTiers?: readonly (readonly ContentId[])[];
 }
 
 export type CompatibilityResult =

@@ -107,6 +107,8 @@ Quality gates should reject wrong proportions, missing attachment, inconsistent 
 - Reduced settings preserve affordances; representative four-player scenes meet measured budgets.
 - Original sources and adopted licenses are recorded; no unlicensed downloads or extra spending.
 
+**Early style pass (2026-10-30, owner request at the MSC-020 review):** the test yard now uses procedural, approved-anchor-based models (crew robot, scrap silhouettes per material, cart, rover, tools, Mars backdrop) in `src/models/`. This is a direction check in the real game, not the MSC-041–050 pilot approval or a catalog.
+
 **Next decision:** review the in-engine pilot before approving a full asset catalog. Professional-quality output is the target; AI assistance, procedural modeling and a good concept sheet do not guarantee it.
 
 ## 9. Capture and communication context

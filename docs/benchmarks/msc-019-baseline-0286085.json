@@ -1,0 +1,86 @@
+{
+  "buildHash": "0286085",
+  "preset": "baseline",
+  "params": {
+    "seed": 1,
+    "activeClusters": 4,
+    "piecesPerCluster": 40,
+    "dormantClusters": 20,
+    "decorativeInstances": 5000,
+    "mediumProps": 12,
+    "carts": 4,
+    "stationBlocks": 24
+  },
+  "environment": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) MartianScrapCo./0.0.0 Chrome/152.0.7977.169 Electron/44.10.0 Safari/537.36",
+    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 2060 (0x00001F08) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "hardwareConcurrency": 16,
+    "devicePixelRatio": 1,
+    "canvas": "1264x735",
+    "physics": "rapier3d-compat 0.21.0"
+  },
+  "measuredSeconds": 20.01,
+  "frameMs": {
+    "samples": 2401,
+    "mean": 8.33,
+    "p50": 8.3,
+    "p95": 8.4,
+    "p99": 8.5,
+    "max": 8.7
+  },
+  "simulationMsPerFrame": {
+    "samples": 2401,
+    "mean": 0.35,
+    "p50": 0.3,
+    "p95": 1,
+    "p99": 1.2,
+    "max": 1.6
+  },
+  "awakeBodies": {
+    "samples": 2401,
+    "mean": 18.56,
+    "p50": 14,
+    "p95": 63,
+    "p99": 76,
+    "max": 82
+  },
+  "drawCalls": {
+    "samples": 2401,
+    "mean": 52.77,
+    "p50": 53,
+    "p95": 54,
+    "p99": 54,
+    "max": 54
+  },
+  "triangles": {
+    "samples": 2401,
+    "mean": 62085.41,
+    "p50": 62088,
+    "p95": 62100,
+    "p99": 62100,
+    "max": 62100
+  },
+  "counts": {
+    "visualInstances": 5000,
+    "activePieces": 132,
+    "dormantPieces": 800,
+    "removedPieces": 28,
+    "mediumProps": 16,
+    "physicsBodies": 178
+  },
+  "interactions": {
+    "collected": 28,
+    "cuts": 5,
+    "cartMeters": 291
+  },
+  "lateJoinSnapshot": {
+    "bytes": 293235,
+    "serializeMs": 0.9
+  },
+  "memory": {
+    "jsHeapStartMb": 16,
+    "jsHeapEndMb": 16,
+    "geometries": 45,
+    "textures": 1
+  }
+}
