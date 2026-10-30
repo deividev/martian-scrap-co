@@ -13,6 +13,7 @@ export const GAMEPAD_BINDINGS = Object.freeze({
   rotateRight: 5, // RB
   vacuum: 7, // RT (held)
   upgrade: 12, // D-pad up (test-yard stand-in for the store)
+  nextTool: 13, // D-pad down
   previousMaterial: 14, // D-pad left
   nextMaterial: 15, // D-pad right
 });
@@ -78,6 +79,8 @@ export class GamepadSource {
       rotate: edge(GAMEPAD_BINDINGS.rotateRight) ? 1 : edge(GAMEPAD_BINDINGS.rotateLeft) ? -1 : 0,
       cycleMaterial: edge(GAMEPAD_BINDINGS.nextMaterial) ? 1 : edge(GAMEPAD_BINDINGS.previousMaterial) ? -1 : 0,
       upgrade: edge(GAMEPAD_BINDINGS.upgrade),
+      toolSlot: null,
+      cycleTool: edge(GAMEPAD_BINDINGS.nextTool),
       device: 'gamepad',
     };
     this.#previous = pressedNow;

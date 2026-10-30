@@ -5,7 +5,7 @@ export type ToolMode = 'magnet' | 'cutter' | 'hands';
 
 /**
  * First-person tool view (visual §3, §6): the held tool sits in the lower right of the view, sways gently
- * while walking and recoils briefly on use. It switches to the cutter while a joint is targeted.
+ * while walking, recoils briefly on use and shakes while the cutter is working.
  */
 export class FirstPersonTool {
   readonly #holder = new Group();
@@ -39,13 +39,14 @@ export class FirstPersonTool {
     this.#kick = 1;
   }
 
-  update(dt: number, moving: boolean): void {
+  update(dt: number, moving: boolean, working = false): void {
     this.#phase += dt * (moving ? 9 : 2);
     const amplitude = moving ? 0.012 : 0.004;
     this.#kick = Math.max(0, this.#kick - dt * 6);
+    const shake = working ? (Math.random() - 0.5) * 0.012 : 0;
     this.#holder.position.set(
-      0.34 + Math.cos(this.#phase * 0.5) * amplitude,
-      -0.33 + Math.sin(this.#phase) * amplitude,
+      0.34 + Math.cos(this.#phase * 0.5) * amplitude + shake,
+      -0.33 + Math.sin(this.#phase) * amplitude + shake,
       -0.72 + this.#kick * 0.05,
     );
   }

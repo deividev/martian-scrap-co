@@ -157,3 +157,19 @@ describe('collector material selector input', () => {
     expect(new GamepadSource(DEFAULT_INPUT_SETTINGS, () => [pad([0, 0, 0, 0], [12])]).poll(1 / 60).upgrade).toBe(true);
   });
 });
+
+describe('tool switching input', () => {
+  it('maps 1/2 to direct tool slots and the D-pad down to the next tool', () => {
+    const keyboard = new KeyboardMouseSource(DEFAULT_INPUT_SETTINGS);
+    expect(keyboard.poll().toolSlot).toBeNull();
+    keyboard.handleKeyDown('Digit2');
+    expect(keyboard.poll().toolSlot).toBe(1);
+    expect(keyboard.poll().toolSlot).toBeNull();
+    keyboard.handleKeyDown('Numpad1');
+    expect(keyboard.poll().toolSlot).toBe(0);
+    const frame = new GamepadSource(DEFAULT_INPUT_SETTINGS, () => [pad([0, 0, 0, 0], [13])]).poll(1 / 60);
+    expect(frame.cycleTool).toBe(true);
+    expect(mergeFrames(EMPTY_FRAME, frame).cycleTool).toBe(true);
+    expect(mergeFrames({ ...EMPTY_FRAME, toolSlot: 1 }, EMPTY_FRAME).toolSlot).toBe(1);
+  });
+});

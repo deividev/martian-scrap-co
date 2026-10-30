@@ -22,8 +22,12 @@ export interface ActionFrame {
   readonly rotate: -1 | 0 | 1;
   /** Edge-triggered step through the collector's unlocked materials: -1, 0 or 1. */
   readonly cycleMaterial: -1 | 0 | 1;
-  /** Test-yard stand-in for buying a collector upgrade until the shared-credit store exists. */
+  /** Test-yard stand-in for buying an upgrade of the equipped tool until the shared-credit store exists. */
   readonly upgrade: boolean;
+  /** Edge-triggered: zero-based tool slot picked directly this frame, or null. */
+  readonly toolSlot: number | null;
+  /** Edge-triggered: switch to the next owned tool. */
+  readonly cycleTool: boolean;
   readonly device: InputDevice;
 }
 
@@ -38,6 +42,8 @@ export const EMPTY_FRAME: ActionFrame = Object.freeze({
   rotate: 0,
   cycleMaterial: 0,
   upgrade: false,
+  toolSlot: null,
+  cycleTool: false,
   device: 'none',
 });
 
@@ -76,7 +82,9 @@ export function mergeFrames(primary: ActionFrame, secondary: ActionFrame): Actio
       secondary.pause ||
       secondary.rotate !== 0 ||
       secondary.cycleMaterial !== 0 ||
-      secondary.upgrade);
+      secondary.upgrade ||
+      secondary.toolSlot !== null ||
+      secondary.cycleTool);
   return {
     move,
     look: { yaw: primary.look.yaw + secondary.look.yaw, pitch: primary.look.pitch + secondary.look.pitch },
@@ -88,6 +96,8 @@ export function mergeFrames(primary: ActionFrame, secondary: ActionFrame): Actio
     rotate: primary.rotate !== 0 ? primary.rotate : secondary.rotate,
     cycleMaterial: primary.cycleMaterial !== 0 ? primary.cycleMaterial : secondary.cycleMaterial,
     upgrade: primary.upgrade || secondary.upgrade,
+    toolSlot: primary.toolSlot ?? secondary.toolSlot,
+    cycleTool: primary.cycleTool || secondary.cycleTool,
     device: secondaryActive ? secondary.device : primary.device,
   };
 }

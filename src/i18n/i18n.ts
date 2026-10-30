@@ -11,12 +11,12 @@ export const STRINGS = {
     es: 'Haz clic para jugar · WASD o stick izquierdo para moverte',
   },
   'hint.keyboard': {
-    en: 'WASD move · Hold left click / E vacuum or use · Right click / F unload, break or cut · Wheel or Z/C material · U upgrade (test) · Q/R rotate · Space jump · Esc release mouse',
-    es: 'WASD moverse · Mantén clic izq. / E aspirar o usar · Clic der. / F descargar, romper o trocear · Rueda o Z/C material · U mejorar (prueba) · Q/R rotar · Espacio saltar · Esc soltar ratón',
+    en: 'WASD move · 1 collector / 2 cutter · Hold left click / E vacuum, cut or use · Right click / F unload · Wheel or Z/C material · U upgrade tool in hand (test) · Q/R rotate · Space jump · Esc release mouse',
+    es: 'WASD moverse · 1 colector / 2 cortador · Mantén clic izq. / E aspirar, cortar o usar · Clic der. / F descargar · Rueda o Z/C material · U mejorar herramienta en mano (prueba) · Q/R rotar · Espacio saltar · Esc soltar ratón',
   },
   'hint.gamepad': {
-    en: 'Left stick move · Right stick look · Hold RT / X vacuum or use · Y unload, break or cut · D-pad left/right material · D-pad up upgrade (test) · LB/RB rotate · A jump · Menu pause',
-    es: 'Stick izq. moverse · Stick der. mirar · Mantén RT / X aspirar o usar · Y descargar, romper o trocear · Cruceta izq./der. material · Cruceta arriba mejorar (prueba) · LB/RB rotar · A saltar · Menú pausa',
+    en: 'Left stick move · Right stick look · D-pad down switch tool · Hold RT / X vacuum, cut or use · Y unload · D-pad left/right material · D-pad up upgrade tool in hand (test) · LB/RB rotate · A jump · Menu pause',
+    es: 'Stick izq. moverse · Stick der. mirar · Cruceta abajo cambiar herramienta · Mantén RT / X aspirar, cortar o usar · Y descargar · Cruceta izq./der. material · Cruceta arriba mejorar herramienta en mano (prueba) · LB/RB rotar · A saltar · Menú pausa',
   },
 
   'tip.collect': {
@@ -24,8 +24,8 @@ export const STRINGS = {
     es: 'Consejo: mantén clic izquierdo (RT) para aspirar las piezas grises de hierro y descárgalas con clic derecho en la tolva de la base.',
   },
   'tip.cut': {
-    en: 'Tip: aim at the glowing orange rings on the rover and press E (X) to cut.',
-    es: 'Consejo: apunta a los anillos naranjas del rover y pulsa E (X) para cortar.',
+    en: 'Tip: equip the cutter with 2 (D-pad down), aim at the glowing orange rings on the rover and hold left click (RT).',
+    es: 'Consejo: equipa el cortador con 2 (cruceta abajo), apunta a los anillos naranjas del rover y mantén clic izquierdo (RT).',
   },
   'tip.cart': {
     en: 'Tip: hold an object over the cart and press E to load it. Aim at the cart and press E to push it.',
@@ -80,6 +80,10 @@ export const STRINGS = {
     es: 'Colector mejorado a nivel {tier}: ahora también recoge {list}.',
   },
   'selector.maxTier': { en: 'The collector is already at its top level.', es: 'El colector ya está al nivel máximo.' },
+  'collect.needCollector': {
+    en: '{symbol} {material}: equip the collector (1) to vacuum',
+    es: '{symbol} {material}: equipa el colector (1) para aspirar',
+  },
   'collect.tooBig': { en: '{symbol} Too big for the magnet.', es: '{symbol} Demasiado grande para el imán.' },
   'collect.containerFull': {
     en: '{symbol} Container full. Unload at the base intake.',
@@ -88,12 +92,12 @@ export const STRINGS = {
 
   'grip.grab': { en: '{name}: grab', es: '{name}: agarrar' },
   'grip.grabOrCut': {
-    en: '{name}: use to grab · right click to cut into small pieces',
-    es: '{name}: usar para agarrar · clic derecho para cortar en trozos pequeños',
+    en: '{name}: grab · equip the cutter (2) to cut it into small pieces',
+    es: '{name}: agarrar · equipa el cortador (2) para cortarlo en trozos pequeños',
   },
   'grip.grabOrBreak': {
-    en: '{name}: use to grab · right click to break',
-    es: '{name}: usar para agarrar · clic derecho para romper',
+    en: '{name}: grab · equip the cutter (2) to break it open',
+    es: '{name}: agarrar · equipa el cortador (2) para romperlo',
   },
   'intake.prompt': {
     en: 'Base intake: right click / F / Y to unload the container',
@@ -133,11 +137,25 @@ export const STRINGS = {
   'cart.tooHeavy': { en: 'Too heavy for the cart.', es: 'Demasiado pesado para el carrito.' },
   'cart.claimed': { en: 'Someone else is holding that.', es: 'Otra persona lo está sujetando.' },
 
-  'cut.ready': { en: 'Cut: {joint}', es: 'Cortar: {joint}' },
+  'cut.ready': { en: 'Hold use to cut: {joint}', es: 'Mantén pulsado para cortar: {joint}' },
   'cut.intoPieces': {
-    en: '{name}: click or right click to cut into small pieces',
-    es: '{name}: clic o clic derecho para cortar en trozos pequeños',
+    en: '{name}: hold use to cut into small pieces',
+    es: '{name}: mantén pulsado para cortar en trozos pequeños',
   },
+  'cut.breakOpen': { en: '{name}: hold use to break it open', es: '{name}: mantén pulsado para romperlo' },
+  'cut.progress': { en: 'Cutting {name}… {percent}%', es: 'Cortando {name}… {percent}%' },
+  'cut.needCutter': {
+    en: 'To cut {name}, equip the cutter (2 / D-pad down)',
+    es: 'Para cortar {name}, equipa el cortador (2 / cruceta abajo)',
+  },
+  'cutter.status': { en: 'Cutter L{tier}', es: 'Cortador Nv{tier}' },
+  'cutter.upgraded': {
+    en: 'Cutter upgraded to level {tier}: cuts {speed}× faster.',
+    es: 'Cortador mejorado a nivel {tier}: corta {speed}× más rápido.',
+  },
+  'cutter.maxTier': { en: 'The cutter is already at its top level.', es: 'El cortador ya está al nivel máximo.' },
+  'tool.equipped': { en: 'In hand: {tool}', es: 'En mano: {tool}' },
+  'tool.notOwned': { en: 'You do not own this tool yet: {tool}.', es: 'Aún no tienes esta herramienta: {tool}.' },
   'cut.blocked': { en: 'Blocked: cut {joints} first', es: 'Bloqueado: corta primero {joints}' },
   'list.and': { en: ' and ', es: ' y ' },
 

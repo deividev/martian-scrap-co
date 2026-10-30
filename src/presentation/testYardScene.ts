@@ -26,7 +26,8 @@ import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
 import { BaseIntake } from '../domain/intake';
 import { AssemblyState } from '../domain/assembly';
-import { EntityIdAllocator, transactionId, type EntityId } from '../domain/ids';
+import { EntityIdAllocator, contentId, transactionId, type EntityId } from '../domain/ids';
+import { ToolLoadout } from '../domain/toolLoadout';
 import type { I18n, StringKey } from '../i18n/i18n';
 import { mergeFrames, type InputDevice } from '../input/actions';
 import { GamepadSource } from '../input/gamepadSource';
@@ -37,6 +38,7 @@ import { pickTarget, type TargetPick } from '../simulation/collection/targeting'
 import { AssemblyBody } from '../simulation/handling/assemblyBody';
 import { Breakables, cutYields } from '../simulation/handling/breakables';
 import { CART_TUNING, Cart, type LoadResult } from '../simulation/handling/cart';
+import { CUTTER_SPEED_TIERS, CUTTER_TIMING, CutProgress, partCutSeconds } from '../simulation/handling/cutterTool';
 import { ClaimRegistry } from '../simulation/handling/claims';
 import { GripController, type PlaceResult } from '../simulation/handling/gripController';
 import { MediumPropSet } from '../simulation/handling/mediumProps';
@@ -77,6 +79,18 @@ const HINT_KEYS: Record<InputDevice, StringKey> = {
   gamepad: 'hint.gamepad',
   none: 'hint.none',
 };
+
+/** Something the equipped cutter can work on while use is held. */
+interface CutTarget {
+  readonly key: string;
+  readonly prompt: string;
+  readonly name: string;
+  readonly seconds: number;
+  readonly run: () => void;
+}
+
+const COLLECTOR = contentId('magnetic-collector');
+const CUTTER = contentId('cutter');
 
 interface Notice {
   readonly key: StringKey;
@@ -194,6 +208,15 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     accept: (item) => void container.add(item),
   });
   let feedback: TargetFeedback = { state: 'none' };
+  const loadout = new ToolLoadout(
+    [COLLECTOR, CUTTER],
+    [...content.pack.tools.values()].filter((entry) => entry.freeBaseline).map((entry) => entry.id),
+  );
+  // Test-yard stand-in: the cutter is granted up front until the shared-credit store sells it.
+  loadout.grant(CUTTER);
+  let cutterTier = 0;
+  const cutting = new CutProgress();
+  const toolName = (id: string): string => i18n.tKey(`tool.${id}`, id);
 
   const props = new MediumPropSet(world, createTestYardProps(allocator));
   const claims = new ClaimRegistry();
@@ -314,10 +337,21 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     const aimView = player.view();
     const aim = { origin: aimView.eye, direction: forwardOf(aimView.yaw, aimView.pitch) };
     let prompt = '';
-    let toolMode: 'magnet' | 'cutter' | 'hands' = grip.held !== null ? 'hands' : 'magnet';
     let highlightedProp: EntityId | null = null;
     let secondaryUsed = false;
+    let cutTarget: CutTarget | null = null;
     if (frame.rotate !== 0) grip.rotate(frame.rotate);
+    if (frame.toolSlot !== null || frame.cycleTool) {
+      const slotTool = frame.toolSlot === null ? undefined : loadout.slots[frame.toolSlot];
+      const equipped = frame.toolSlot === null ? { ok: true as const } : loadout.equipSlot(frame.toolSlot);
+      if (frame.toolSlot === null) loadout.cycle();
+      notice =
+        equipped.ok || slotTool === undefined
+          ? { key: 'tool.equipped', params: { tool: toolName(loadout.equipped) } }
+          : { key: 'tool.notOwned', params: { tool: toolName(slotTool) } };
+      noticeUntil = now + 1500;
+    }
+    const cutterInHand = loadout.equipped === CUTTER;
     if (frame.cycleMaterial !== 0) {
       if (collector.selector.available().length === 1) notice = { key: 'selector.onlyOne' };
       else {
@@ -328,7 +362,14 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       }
       noticeUntil = now + 2000;
     }
-    if (frame.upgrade) {
+    if (frame.upgrade && cutterInHand) {
+      const top = cutterTier >= CUTTER_SPEED_TIERS.length - 1;
+      if (!top) cutterTier += 1;
+      notice = top
+        ? { key: 'cutter.maxTier' }
+        : { key: 'cutter.upgraded', params: { tier: cutterTier + 1, speed: CUTTER_SPEED_TIERS[cutterTier] ?? 1 } };
+      noticeUntil = now + 3000;
+    } else if (frame.upgrade) {
       const unlocked = collector.selector.upgrade();
       notice =
         unlocked.length === 0
@@ -376,23 +417,27 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       }
     } else if (rover.pickJoint(aim, player.characterHandle)) {
       feedback = { state: 'none' };
-      toolMode = 'cutter';
       const joint = rover.pickJoint(aim, player.characterHandle);
       if (joint?.available) {
-        prompt = i18n.t('cut.ready', { joint: jointLabel(joint.jointId) });
-        if (frame.interact) {
-          tool.use();
-          cutCounter += 1;
-          const cut = rover.cut(joint.jointId, transactionId(`txn-cut${cutCounter.toString(36)}`));
-          if (cut.ok) {
+        const jointId = joint.jointId;
+        const name = jointLabel(jointId);
+        cutTarget = {
+          key: `joint:${jointId}`,
+          prompt: i18n.t('cut.ready', { joint: name }),
+          name,
+          seconds: CUTTER_TIMING.jointSeconds,
+          run: () => {
+            cutCounter += 1;
+            const cut = rover.cut(jointId, transactionId(`txn-cut${cutCounter.toString(36)}`));
+            if (!cut.ok) return;
             for (const retired of cut.retired) breakables.forget(retired);
             for (const created of cut.created) {
               if (props.get(created.entityId) && !breakables.isBreakable(created.entityId)) {
                 breakables.registerExisting(created.entityId, cutYields(fragmentParts(created.fragments)));
               }
             }
-          }
-        }
+          },
+        };
       } else if (joint) {
         const blockers = TEST_YARD_ROVER.joints
           .find((candidate) => candidate.id === joint.jointId)
@@ -403,24 +448,26 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     } else if (rover.aimsAtIsolatedAnchor(aim, player.characterHandle)) {
       // The bare frame is a large part: the magnet ignores it until it is cut into small pieces.
       feedback = { state: 'none' };
-      toolMode = 'cutter';
       const anchor = rover.isolatedAnchor();
-      const name = anchor
-        ? i18n.tKey(TEST_YARD_ROVER_LAYOUT.fragmentNameKeys?.[anchor.fragmentId] ?? '', anchor.fragmentId)
-        : '';
-      prompt = i18n.t('cut.intoPieces', { name });
-      if (frame.interact || frame.secondary) {
-        secondaryUsed = true;
-        const removed = rover.removeIsolatedAnchor();
-        if (removed) {
-          cutAnchors.add(removed.fragmentId);
-          breakables.shatter(
-            removed.position,
-            cutYields(fragmentParts([removed.fragmentId])),
-            `cut-${removed.fragmentId}`,
-          );
-          tool.use();
-        }
+      if (anchor) {
+        const name = i18n.tKey(TEST_YARD_ROVER_LAYOUT.fragmentNameKeys?.[anchor.fragmentId] ?? '', anchor.fragmentId);
+        const massKg = fragmentParts([anchor.fragmentId]).reduce((sum, part) => sum + part.massKg, 0);
+        cutTarget = {
+          key: `anchor:${anchor.fragmentId}`,
+          prompt: i18n.t('cut.intoPieces', { name }),
+          name,
+          seconds: partCutSeconds(massKg),
+          run: () => {
+            const removed = rover.removeIsolatedAnchor();
+            if (!removed) return;
+            cutAnchors.add(removed.fragmentId);
+            breakables.shatter(
+              removed.position,
+              cutYields(fragmentParts([removed.fragmentId])),
+              `cut-${removed.fragmentId}`,
+            );
+          },
+        };
       }
     } else {
       const loose = props.targets().filter((target) => !cart.loads.includes(target.id));
@@ -445,25 +492,60 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         feedback = { state: 'none' };
         const target = props.get(best.candidate.id);
         const targetName = nameOf(target?.nameKeys, target?.displayName ?? '');
-        const breakable = breakables.isBreakable(best.candidate.id);
-        const method = breakables.method(best.candidate.id);
-        prompt = i18n.t(!breakable ? 'grip.grab' : method === 'cut' ? 'grip.grabOrCut' : 'grip.grabOrBreak', {
-          name: targetName,
-        });
-        highlightedProp = best.candidate.id;
-        if (breakable) toolMode = 'cutter';
-        if (frame.interact) grip.tryGrab(best, aimView.yaw);
-        else if (frame.secondary && breakable) {
-          secondaryUsed = true;
-          if (breakables.break(best.candidate.id).ok) tool.use();
+        const propId = best.candidate.id;
+        const breakable = breakables.isBreakable(propId);
+        const method = breakables.method(propId);
+        highlightedProp = propId;
+        if (breakable && cutterInHand) {
+          // With the cutter in hand, holding use cuts or breaks the part; switch to the collector to grab it.
+          cutTarget = {
+            key: `prop:${propId}`,
+            prompt: i18n.t(method === 'cut' ? 'cut.intoPieces' : 'cut.breakOpen', { name: targetName }),
+            name: targetName,
+            seconds: partCutSeconds(target?.massKg ?? 0),
+            run: () => void breakables.break(propId),
+          };
+        } else {
+          prompt = i18n.t(!breakable ? 'grip.grab' : method === 'cut' ? 'grip.grabOrCut' : 'grip.grabOrBreak', {
+            name: targetName,
+          });
+          if (frame.interact) grip.tryGrab(best, aimView.yaw);
         }
       } else {
         feedback = collector.evaluate(scrapPick);
-        if (frame.interactHeld) tool.use();
+        if (cutterInHand && feedback.state !== 'none') {
+          prompt = i18n.t('collect.needCollector', {
+            symbol: feedback.material.symbol,
+            material: materialName(feedback.material.id, feedback.material.displayName),
+          });
+          feedback = { state: 'none' };
+        } else if (frame.interactHeld) tool.use();
+      }
+    }
+    // The cutter works only while use is held on one target; releasing or looking away restarts the cut.
+    const cutTick = cutting.update(
+      cutTarget?.key ?? null,
+      cutterInHand && frame.interactHeld,
+      dt,
+      cutTarget?.seconds ?? 0,
+      CUTTER_SPEED_TIERS[cutterTier] ?? 1,
+    );
+    if (cutTarget && !cutterInHand) {
+      prompt = i18n.t('cut.needCutter', { name: cutTarget.name });
+    } else if (cutTarget) {
+      prompt =
+        cutTick.progress > 0 && !cutTick.done
+          ? i18n.t('cut.progress', { name: cutTarget.name, percent: Math.floor(cutTick.progress * 100) })
+          : cutTarget.prompt;
+      if (cutTick.done) {
+        cutTarget.run();
+        tool.use();
       }
     }
     // Holding use vacuums whatever the aim prefers (a prop or the cart nearby), unless something is held.
-    if (frame.interactHeld && !pushing && grip.held === null) collector.suck(aim, player.characterHandle);
+    if (frame.interactHeld && !pushing && grip.held === null && !cutterInHand) {
+      collector.suck(aim, player.characterHandle);
+    }
     if (wasSucking && !frame.interactHeld) collector.cancelPull();
     wasSucking = frame.interactHeld;
 
@@ -530,8 +612,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     cartGroup.quaternion.set(cartRotation.x, cartRotation.y, cartRotation.z, cartRotation.w);
     propView.sync();
     propView.highlight(highlightedProp);
-    tool.setMode(toolMode);
-    tool.update(dt, frame.move.x !== 0 || frame.move.y !== 0);
+    tool.setMode(grip.held !== null ? 'hands' : cutterInHand ? 'cutter' : 'magnet');
+    tool.update(dt, frame.move.x !== 0 || frame.move.y !== 0, cutting.target !== null);
     if (hud.tip) {
       const near = (x: number, z: number, radius: number): boolean =>
         Math.hypot(view.position.x - x, view.position.z - z) < radius;
@@ -539,7 +621,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       hud.tip.textContent =
         grip.held === null && container.count > 0 && near(TEST_YARD_INTAKE.position.x, TEST_YARD_INTAKE.position.z, 5)
           ? i18n.t('intake.prompt')
-          : grip.held === null && near(-6, 4, 5) && !allCut
+          : grip.held === null && near(-6, 4, 5) && (!allCut || rover.isolatedAnchor() !== null)
             ? i18n.t('tip.cut')
             : grip.held === null && near(0, 3, 4.5) && scrap.metrics().active > 0
               ? i18n.t('tip.collect')
@@ -588,6 +670,12 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       selected: collector.selector.selected,
       locked: collector.selector.locked,
     });
+    canvas.dataset['tools'] = JSON.stringify({
+      equipped: loadout.equipped,
+      cutterTier,
+      cutting: cutting.target,
+      progress: Number(cutTick.progress.toFixed(2)),
+    });
     canvas.dataset['activePieces'] = String(scrap.metrics().active);
     canvas.dataset['rover'] = JSON.stringify({
       cut: TEST_YARD_ROVER.joints.filter((j) => rover.state.isCut(j.id)).map((j) => j.id),
@@ -606,7 +694,9 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         material: selectedName(),
       });
       const fill = container.isFull ? `${status} · ${i18n.t('container.full')}` : status;
-      hud.container.textContent = `${selector} | ${fill} | ${hopperText}`;
+      const mark = (id: string): string => (loadout.equipped === id ? '▶ ' : '');
+      const cutterText = i18n.t('cutter.status', { tier: cutterTier + 1 });
+      hud.container.textContent = `${mark(COLLECTOR)}1 ${selector} · ${fill} | ${mark(CUTTER)}2 ${cutterText} | ${hopperText}`;
       hud.container.dataset['full'] = String(container.isFull);
     }
     canvas.dataset['player'] = JSON.stringify({

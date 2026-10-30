@@ -16,6 +16,8 @@ export const KEYBOARD_BINDINGS = Object.freeze({
   nextMaterial: ['KeyC', 'WheelDown'],
   previousMaterial: ['KeyZ', 'WheelUp'],
   upgrade: ['KeyU'],
+  slot1: ['Digit1', 'Numpad1'],
+  slot2: ['Digit2', 'Numpad2'],
 });
 
 const EDGE_ACTIONS = [
@@ -28,6 +30,8 @@ const EDGE_ACTIONS = [
   'nextMaterial',
   'previousMaterial',
   'upgrade',
+  'slot1',
+  'slot2',
 ] as const;
 type EdgeAction = (typeof EDGE_ACTIONS)[number];
 
@@ -99,6 +103,8 @@ export class KeyboardMouseSource {
       rotate: this.#pressed.has('rotateRight') ? 1 : this.#pressed.has('rotateLeft') ? -1 : 0,
       cycleMaterial: this.#pressed.has('nextMaterial') ? 1 : this.#pressed.has('previousMaterial') ? -1 : 0,
       upgrade: this.#pressed.has('upgrade'),
+      toolSlot: this.#pressed.has('slot1') ? 0 : this.#pressed.has('slot2') ? 1 : null,
+      cycleTool: false,
       device: this.#touched ? 'keyboard-mouse' : 'none',
     };
     this.#pressed.clear();
