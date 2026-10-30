@@ -585,7 +585,9 @@ Check: Interrupt each machine transition, retry and inspect conservation.
 
 Requirements: PRD-007, PRD-019, PRD-021.
 
-Status: Planned
+Status: In progress
+
+Outcome: 2026-10-30 — Brought forward by the owner as local single-player work ahead of the MSC-030 gate. `Compactor` is a state machine idle → loading → processing → output fed by the intake bins: loading reserves a full load (10 pieces of one material, placeholder; 0.6 s load, 3 s press) in one step, an interruption before the bale exists returns every reserved piece to its bin, and a pressed bale whose exit pad is occupied stays inside (`blocked`) until the pad clears. Each bale gets a new id and lists its piece ids, so a piece can never be in two bales. The test yard has a compactor beside the intake with a moving press head, a status lamp (teal idle, orange working, red blocked) and an output pad; bales are physical props (grab, carry, cart) with per-material bale models (strapped block, copper roll, rounded polymer bundle) and the base HUD panel shows the machine state and progress. Checks: 6 compactor tests (idle threshold, full transition sequence with one unique bale, blocked exit keeps and later ejects the bale, interruption at every transition then retry conserves every piece exactly once, invalid size); in Electron 16 vacuumed iron pieces were unloaded, the compactor loaded, pressed and dropped one 10-piece iron bale on the pad, leaving 6 in the bin; `npm run check` 7/7. **Pending:** host/guest interruption checks need the co-op transport (MSC-021–030).
 
 ### MSC-033 — Build sale transaction and feedback
 

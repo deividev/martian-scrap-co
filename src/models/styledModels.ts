@@ -77,7 +77,7 @@ function part(geometry: BufferGeometry, material: MeshStandardMaterial, parent: 
  * the warm ground. Placeholder values until the scrap pilot (MSC-042).
  */
 export const SCRAP_COLORS: Readonly<Record<string, string>> = {
-  ferrous: '#6f7b8a',
+  ferrous: '#8592a3',
   aluminum: '#eef3f9',
   copper: '#ff9640',
   polymer: '#3f7ff2',
@@ -488,6 +488,103 @@ export function createIntakeHopperModel(): Group {
   return hopper;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Base machines (MSC-032/033): compactor fed by the intake, bales per material, and the sale machine.
+
+/** Compactor: dark steel body, yellow frame and press head (named `press-head`), teal status lamp. */
+export function createCompactorModel(): Group {
+  const machine = new Group();
+  machine.name = 'compactor';
+  const yellow = paint(STYLE.paintYellow, 0.55);
+  const dark = paint(STYLE.dark, 0.8);
+  const steel = paint(STYLE.steel, 0.55, 0.3);
+  part(rounded(1.6, 1.2, 1.4, 0.08), steel, machine, 0, 0.6, 0);
+  for (const x of [-0.75, 0.75]) part(rounded(0.14, 2.1, 0.14, 0.03), yellow, machine, x, 1.05, -0.2);
+  part(rounded(1.64, 0.16, 0.3, 0.04), yellow, machine, 0, 2.05, -0.2);
+  const head = part(rounded(1.2, 0.35, 0.9, 0.06), yellow, machine, 0, 1.55, -0.1);
+  head.name = 'press-head';
+  part(rounded(0.24, 0.5, 0.24, 0.04), steel, machine, 0, 1.85, -0.1);
+  for (let i = 0; i < 4; i += 1) {
+    const stripe = part(
+      rounded(0.12, 0.5, 0.02, 0.01),
+      paint(STYLE.paintOrange, 0.5),
+      machine,
+      -0.45 + i * 0.3,
+      0.6,
+      0.71,
+    );
+    stripe.rotation.z = 0.5;
+  }
+  part(rounded(0.9, 0.5, 0.06, 0.04), dark, machine, 0, 0.35, 0.72);
+  const lamp = part(
+    new SphereGeometry(0.09, 10, 8),
+    paint('#7ff0e2', 0.3, 0, STYLE.heliofoil),
+    machine,
+    0.6,
+    1.35,
+    0.68,
+  );
+  lamp.name = 'status-lamp';
+  const chute = part(new CylinderGeometry(0.22, 0.28, 1.2, 8), dark, machine, -1.1, 1.2, 0);
+  chute.rotation.z = 1.1;
+  return machine;
+}
+
+/** Output pad the compactor drops bales onto: dark plate with a yellow border. */
+export function createOutputPadModel(): Group {
+  const pad = new Group();
+  pad.name = 'output-pad';
+  part(rounded(1.2, 0.06, 1.0, 0.02), paint(STYLE.paintYellow, 0.6), pad, 0, 0.03, 0);
+  part(rounded(1.0, 0.07, 0.8, 0.02), paint(STYLE.dark, 0.85), pad, 0, 0.04, 0);
+  return pad;
+}
+
+/**
+ * One-material bale (PRD material table): pressed block in the material color with dark straps; copper is a
+ * coil roll and polymer a rounded bundle. Sized to the collider half extents.
+ */
+export function createBaleModel(materialId: string, half: { x: number; y: number; z: number }): Group {
+  const bale = new Group();
+  bale.name = `bale-${materialId}`;
+  const body = scrapMaterial(materialId).clone();
+  const strap = paint(STYLE.dark, 0.8);
+  if (materialId === 'copper') {
+    const roll = part(new CylinderGeometry(half.y, half.y, half.x * 2, 14), body, bale);
+    roll.rotation.z = Math.PI / 2;
+    part(new CylinderGeometry(half.y * 0.35, half.y * 0.35, half.x * 2.02, 10), strap, bale).rotation.z = Math.PI / 2;
+  } else {
+    const radius = materialId === 'polymer' ? Math.min(half.x, half.y) * 0.45 : 0.03;
+    part(rounded(half.x * 2, half.y * 2, half.z * 2, radius), body, bale);
+  }
+  for (const x of [-half.x * 0.5, half.x * 0.5]) {
+    part(rounded(0.05, half.y * 2.04, half.z * 2.04, 0.01), strap, bale, x, 0, 0);
+  }
+  part(rounded(half.x * 0.6, half.y * 0.5, 0.02, 0.01), paint(STYLE.stationWhite, 0.6), bale, 0, 0, half.z + 0.012);
+  return bale;
+}
+
+/** Sale machine: navy kiosk with a glowing teal screen, coin badge, yellow bale tray and orange button. */
+export function createSaleTerminalModel(): Group {
+  const kiosk = new Group();
+  kiosk.name = 'sale-terminal';
+  const navy = paint('#26304a', 0.6, 0.15);
+  part(rounded(1.3, 1.9, 0.9, 0.1), navy, kiosk, 0, 0.95, 0);
+  part(rounded(0.95, 0.6, 0.06, 0.05), paint('#7ff0e2', 0.3, 0, STYLE.heliofoil), kiosk, 0, 1.4, 0.46);
+  const coin = part(
+    new CylinderGeometry(0.16, 0.16, 0.05, 16),
+    paint(STYLE.paintYellow, 0.4, 0.5),
+    kiosk,
+    0,
+    2.05,
+    0.2,
+  );
+  coin.rotation.x = Math.PI / 2;
+  part(rounded(1.1, 0.12, 0.7, 0.03), paint(STYLE.paintYellow, 0.55), kiosk, 0, 0.62, 0.7);
+  part(rounded(0.9, 0.3, 0.06, 0.03), paint(STYLE.dark, 0.85), kiosk, 0, 0.8, 0.46);
+  part(new SphereGeometry(0.07, 10, 8), paint(STYLE.paintOrange, 0.4, 0, '#ff6a00'), kiosk, 0.45, 1.0, 0.47);
+  return kiosk;
+}
+
 /** Named models for the review viewer. */
 export const STYLED_MODEL_NAMES = [
   'magnet-tool',
@@ -497,6 +594,9 @@ export const STYLED_MODEL_NAMES = [
   'rover',
   'station-dome',
   'intake-hopper',
+  'compactor',
+  'sale-terminal',
+  'bale-set',
 ] as const;
 export type StyledModelName = (typeof STYLED_MODEL_NAMES)[number];
 
@@ -512,6 +612,19 @@ export function createStyledModel(name: StyledModelName): Object3D {
       return createStationDome(3);
     case 'intake-hopper':
       return createIntakeHopperModel();
+    case 'compactor':
+      return createCompactorModel();
+    case 'sale-terminal':
+      return createSaleTerminalModel();
+    case 'bale-set': {
+      const group = new Group();
+      Object.keys(SCRAP_COLORS).forEach((id, index) => {
+        const bale = createBaleModel(id, { x: 0.3, y: 0.3, z: 0.3 });
+        bale.position.set((index - 2.5) * 0.8, 0.3, 0);
+        group.add(bale);
+      });
+      return group;
+    }
     case 'rover': {
       const group = new Group();
       const layout: Record<string, { p: [number, number, number]; h: [number, number, number] }> = {

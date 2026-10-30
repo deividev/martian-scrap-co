@@ -121,6 +121,24 @@ export const STRINGS = {
     es: 'Descargadas {count} piezas; {kept} se quedan en el contenedor porque el compartimento está lleno.',
   },
   'hud.base': { en: 'Base intake', es: 'Tolva de la base' },
+  'compactor.idle': {
+    en: 'Compactor: waiting for {size} pieces of one material',
+    es: 'Compactadora: esperando {size} piezas de un material',
+  },
+  'compactor.loading': { en: 'Compactor: loading {symbol}', es: 'Compactadora: cargando {symbol}' },
+  'compactor.processing': {
+    en: 'Compactor: pressing a {symbol} bale',
+    es: 'Compactadora: prensando una paca de {symbol}',
+  },
+  'compactor.blocked': {
+    en: 'Compactor: exit occupied, move the bale off the pad',
+    es: 'Compactadora: salida ocupada, retira la paca de la plataforma',
+  },
+  'compactor.baleReady': {
+    en: 'A {material} bale is ready on the compactor pad.',
+    es: 'Hay una paca de {material} lista en la plataforma de la compactadora.',
+  },
+  'bale.name': { en: '{material} bale ({count})', es: 'Paca de {material} ({count})' },
   'intake.empty': { en: 'empty', es: 'vacía' },
   'unload.done': {
     en: 'Unloaded {count} pieces into the intake, ready to compact.',

@@ -17,7 +17,10 @@ import { createRobotModel } from '../models/generated/createRobotModel';
 import {
   SCRAP_COLORS,
   STYLE,
+  createBaleModel,
   createCartModel,
+  createCompactorModel,
+  createOutputPadModel,
   createIntakeHopperModel,
   createRoverFragmentModel,
   paint,
@@ -26,6 +29,7 @@ import { FIRST_PASS_CONTENT } from '../content/firstPass';
 import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
 import { BaseIntake } from '../domain/intake';
+import { COMPACTOR_TUNING, Compactor, type Bale } from '../domain/compactor';
 import { AssemblyState } from '../domain/assembly';
 import { EntityIdAllocator, contentId, transactionId, type ContentId, type EntityId } from '../domain/ids';
 import { ToolLoadout } from '../domain/toolLoadout';
@@ -56,6 +60,8 @@ import {
   TEST_YARD_ROVER_LAYOUT,
   TEST_YARD_SPAWN,
   TEST_YARD_INTAKE,
+  TEST_YARD_COMPACTOR,
+  BALE_HALF_EXTENTS,
   createMountainFootScrap,
   createTestYardBreakables,
   createTestYardProps,
@@ -256,6 +262,36 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     position: { x: TEST_YARD_INTAKE.position.x, y: TEST_YARD_INTAKE.halfExtents.y, z: TEST_YARD_INTAKE.position.z },
     halfExtents: TEST_YARD_INTAKE.halfExtents,
   });
+  // MSC-032: the compactor presses full bins into one-material bales on its output pad.
+  const bales = new Map<EntityId, Bale>();
+  const compactor = new Compactor(intake, [...content.pack.materials.keys()], () => allocator.allocate());
+  const compactorModel = createCompactorModel();
+  compactorModel.position.set(TEST_YARD_COMPACTOR.position.x, 0, TEST_YARD_COMPACTOR.position.z);
+  scene.add(compactorModel);
+  const padModel = createOutputPadModel();
+  padModel.position.set(TEST_YARD_COMPACTOR.pad.x, 0, TEST_YARD_COMPACTOR.pad.z);
+  scene.add(padModel);
+  const pressHead = compactorModel.getObjectByName('press-head');
+  const statusLamp = compactorModel.getObjectByName('status-lamp') as Mesh | undefined;
+  const lampMaterial = statusLamp ? (statusLamp.material as MeshStandardMaterial).clone() : null;
+  if (statusLamp && lampMaterial) statusLamp.material = lampMaterial;
+  world.addBox({
+    kind: 'fixed',
+    position: {
+      x: TEST_YARD_COMPACTOR.position.x,
+      y: TEST_YARD_COMPACTOR.halfExtents.y,
+      z: TEST_YARD_COMPACTOR.position.z,
+    },
+    halfExtents: TEST_YARD_COMPACTOR.halfExtents,
+  });
+  const padClear = (): boolean =>
+    !props.all().some((prop) => {
+      const p = world.bodyPosition(prop.body);
+      return (
+        Math.hypot(p.x - TEST_YARD_COMPACTOR.pad.x, p.z - TEST_YARD_COMPACTOR.pad.z) < TEST_YARD_COMPACTOR.padRadius &&
+        p.y < 1.5
+      );
+    });
   let wasSucking = false;
   let lastActivation = 0;
   const cart = new Cart(world, props, claims, allocator.allocate(), { x: 2, y: 0.4, z: 5 });
@@ -268,7 +304,9 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     claimed: { key: 'cart.claimed' },
     unknown: null,
   };
-  const propView = new PropView(scene, props, world);
+  const propView = new PropView(scene, props, world, (prop) =>
+    bales.has(prop.id) ? createBaleModel(prop.materialId, prop.halfExtents) : null,
+  );
   const rover = new AssemblyBody(
     world,
     props,
@@ -305,6 +343,34 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     return `${material?.symbol ?? '?'} ${materialName(id, material?.displayName ?? id)}`;
   };
   const jointLabel = (id: string): string => i18n.tKey(`joint.${id}`, id);
+  const propLabel = (id: EntityId): string => {
+    const bale = bales.get(id);
+    if (bale) {
+      return i18n.t('bale.name', {
+        material: materialName(bale.materialId, bale.materialId),
+        count: bale.pieceIds.length,
+      });
+    }
+    const prop = props.get(id);
+    return nameOf(prop?.nameKeys, prop?.displayName ?? '');
+  };
+  const symbolOf = (id: ContentId): string => content.pack.materials.get(id)?.symbol ?? '?';
+  const compactorLine = (): { label: string; progress: number | null } => {
+    const state = compactor.state;
+    switch (state.kind) {
+      case 'idle':
+        return { label: i18n.t('compactor.idle', { size: COMPACTOR_TUNING.balePieces }), progress: null };
+      case 'loading':
+        return { label: i18n.t('compactor.loading', { symbol: symbolOf(state.materialId) }), progress: state.progress };
+      case 'processing':
+        return {
+          label: i18n.t('compactor.processing', { symbol: symbolOf(state.materialId) }),
+          progress: state.progress,
+        };
+      case 'blocked':
+        return { label: i18n.t('compactor.blocked'), progress: 1 };
+    }
+  };
   const batchList = (batches: readonly { materialId: ContentId; count: number }[]): string =>
     batches.map((batch) => `${batch.count} ${content.pack.materials.get(batch.materialId)?.symbol ?? '?'}`).join(' · ');
   const PLACE_NOTICES: Record<Exclude<PlaceResult, { ok: true }>['reason'], Notice | null> = {
@@ -420,7 +486,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       const heldId = grip.held;
       const heldProp = props.get(heldId);
       const overBed = heldProp ? cart.isOverBed(world.bodyPosition(heldProp.body)) : false;
-      const heldName = nameOf(heldProp?.nameKeys, heldProp?.displayName ?? '');
+      const heldName = propLabel(heldId);
       prompt = i18n.t(overBed ? 'grip.holdingOverCart' : 'grip.holding', { name: heldName });
       if (frame.interact && overBed) {
         grip.forceRelease();
@@ -512,7 +578,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       } else if (best && best === propPick) {
         feedback = { state: 'none' };
         const target = props.get(best.candidate.id);
-        const targetName = nameOf(target?.nameKeys, target?.displayName ?? '');
+        const targetName = propLabel(best.candidate.id);
         const propId = best.candidate.id;
         const breakable = breakables.isBreakable(propId);
         const method = breakables.method(propId);
@@ -613,6 +679,32 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       }
     }
 
+    // MSC-032: the compactor runs on its own; a finished bale waits inside while the pad is occupied.
+    const ejected = compactor.update(dt, padClear());
+    if (ejected) {
+      bales.set(ejected.id, ejected);
+      props.add({
+        id: ejected.id,
+        materialId: ejected.materialId,
+        displayName: 'Bale',
+        position: { x: TEST_YARD_COMPACTOR.pad.x, y: BALE_HALF_EXTENTS.y + 0.1, z: TEST_YARD_COMPACTOR.pad.z },
+        halfExtents: BALE_HALF_EXTENTS,
+        massKg: Math.max(ejected.massKg, 1),
+      });
+      notice = {
+        key: 'compactor.baleReady',
+        params: { material: materialName(ejected.materialId, ejected.materialId) },
+      };
+      noticeUntil = now + 3000;
+    }
+    const press = compactor.state;
+    if (pressHead) {
+      pressHead.position.y = press.kind === 'processing' ? 1.55 - Math.sin(press.progress * Math.PI) * 0.55 : 1.55;
+    }
+    lampMaterial?.emissive.set(
+      press.kind === 'idle' ? STYLE.heliofoil : press.kind === 'blocked' ? '#ff3b2f' : STYLE.paintOrange,
+    );
+
     // Fixed-step simulation with bounded catch-up.
     accumulator = Math.min(accumulator + dt, step * 5);
     while (accumulator >= step) {
@@ -702,6 +794,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     canvas.dataset['collected'] = String(container.count);
     canvas.dataset['held'] = grip.held ?? '';
     canvas.dataset['intake'] = String(intake.count);
+    canvas.dataset['compactor'] = JSON.stringify({ state: compactor.state.kind, bales: [...bales.keys()] });
     canvas.dataset['bins'] = JSON.stringify(Object.fromEntries(intake.batches().map((b) => [b.materialId, b.count])));
     canvas.dataset['selector'] = JSON.stringify({
       tier: collector.selector.tier,
@@ -744,7 +837,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
                 const chip = materialChip(batch.materialId);
                 return { symbol: chip.symbol, name: chip.name, color: chip.color, count: batch.count };
               }),
-              machines: [],
+              machines: [compactorLine()],
             }
           : null,
         container: {

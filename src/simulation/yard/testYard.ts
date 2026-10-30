@@ -272,6 +272,18 @@ export function createTestYardBreakables(allocator: EntityIdAllocator): Breakabl
   ];
 }
 
+/** Compactor next to the intake (MSC-032): body collider and the output pad bales drop onto. */
+export const TEST_YARD_COMPACTOR = Object.freeze({
+  position: { x: 7.4, y: 0, z: 9.4 },
+  halfExtents: { x: 0.8, y: 1.05, z: 0.7 },
+  pad: { x: 7.4, y: 0, z: 7.9 },
+  /** A prop closer than this to the pad center (horizontally) blocks the exit. */
+  padRadius: 0.75,
+});
+
+/** Half extents of a bale prop (MSC-032); placeholder size readable in first person. */
+export const BALE_HALF_EXTENTS = Object.freeze({ x: 0.32, y: 0.3, z: 0.3 });
+
 /** Base intake hopper where the portable container is unloaded (early prototype ahead of MSC-031). */
 export const TEST_YARD_INTAKE = Object.freeze({
   position: { x: 4.5, y: 0, z: 9 },
