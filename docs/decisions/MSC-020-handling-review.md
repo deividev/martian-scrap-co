@@ -90,6 +90,17 @@ In-app check (Electron, Spanish UI): the HUD showed `Colector Nv1: Fe Chatarra f
 
 ## Owner decision
 
-**Feel:** _pending_
+**Feel:** Approved by the owner on 2026-10-30 ("Aprobar y fusionar"): collector with locked material selector and upgrade tiers, equippable hold-to-cut cutter, grip/cart handling, breakable medium junk and the intake unload.
 
-**Budgets:** _pending_
+**Budgets:** The provisional measured budgets above are accepted as working limits until Steam Deck evidence (MSC-030) and networking (MSC-021+) revise them. They are not minimum specifications.
+
+## Required follow-ups before continuing with the next tasks
+
+Raised by the owner with the approval (2026-10-30). They must be done before MSC-034 and the rest of the roadmap continue.
+
+| # | Follow-up | Notes |
+|---|---|---|
+| R1 | Improve every machine model: intake hopper, compactor, output pad and sale machine. | Closer to the approved gameplay and UI concepts (chunky rounded industrial shapes, readable states). |
+| R2 | Improve the cart model. | Same style reference; keep the collider and handling unchanged unless a change is reviewed. |
+| R3 | Improve the scenery around the yard and base. | Ground, rocks, mesas, station and base area. |
+| R4 | Build the giant scrap mountain from real material pieces, mixed small, medium and large, each with real collision. | Replaces the decorative instances plus heightfield. Must respect the MSC-019 budgets (≤ 300 awake bodies, draw calls ≤ 150): pieces stay asleep or static until disturbed, are activated by area, and the dense benchmark is re-run as evidence. Small pieces stay collectable, medium ones breakable, large ones cuttable. |
