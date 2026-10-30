@@ -1,6 +1,6 @@
 import type { ContentPack } from '../../content/schema';
 import type { ContainerItem } from '../../domain/container';
-import { contentId, type EntityId } from '../../domain/ids';
+import { contentId, type ContentId, type EntityId } from '../../domain/ids';
 import { checkCompatibility, type MaterialDefinition, type ToolDefinition } from '../../domain/materials';
 import type { PhysicsWorldPort, Vec3 } from '../physics/physicsPort';
 import type { ScrapField } from '../scrap/scrapField';
@@ -10,12 +10,20 @@ export type TargetFeedback =
   | { readonly state: 'none' }
   | { readonly state: 'compatible'; readonly id: EntityId; readonly material: MaterialDefinition }
   | {
-      /** `incompatible`: wrong tool for the material. `blocked`: compatible, but intake is refused (full). */
-      readonly state: 'incompatible' | 'blocked';
+      /** Wrong tool for the material; the piece stays where it is. */
+      readonly state: 'incompatible';
       readonly id: EntityId;
       readonly material: MaterialDefinition;
-      /** Player-facing explanation; the piece stays where it is. */
-      readonly reason: string;
+      readonly reason: 'not-magnetic' | 'too-big';
+      /** Tools that can collect it, for the player-facing hint (localized by the UI). */
+      readonly collectableBy: readonly ContentId[];
+    }
+  | {
+      /** Compatible, but intake is refused because the container is full. */
+      readonly state: 'blocked';
+      readonly id: EntityId;
+      readonly material: MaterialDefinition;
+      readonly reason: 'container-full';
     };
 
 /** Where collected pieces go. Capture removes a piece from the world only if the sink accepts it. */
@@ -80,16 +88,15 @@ export class MagneticCollector {
     if (result.compatible) {
       return this.#sink.canAccept(piece.id)
         ? { state: 'compatible', id: piece.id, material }
-        : { state: 'blocked', id: piece.id, material, reason: 'Container full. Unload at the base intake.' };
+        : { state: 'blocked', id: piece.id, material, reason: 'container-full' };
     }
-    const tools = material.collectableBy
-      .map((toolId) => this.#pack.tools.get(toolId)?.displayName)
-      .filter((name): name is string => name !== undefined);
-    const reason =
-      result.reason === 'scale-not-handled'
-        ? `Too big for the ${this.#tool.displayName}.`
-        : `${material.displayName} isn't magnetic. Collect with: ${tools.join(', ')}.`;
-    return { state: 'incompatible', id: piece.id, material, reason };
+    return {
+      state: 'incompatible',
+      id: piece.id,
+      material,
+      reason: result.reason === 'scale-not-handled' ? 'too-big' : 'not-magnetic',
+      collectableBy: material.collectableBy,
+    };
   }
 
   /** Starts pulling a compatible target. Returns false (and changes nothing) otherwise. */

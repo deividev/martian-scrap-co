@@ -100,3 +100,17 @@ body {
 #container-status[data-full='true'] {
   box-shadow: inset 0 0 0 2px #f08a3c;
 }
+
+#language-status {
+  position: fixed;
+  left: 12px;
+  top: 8px;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: rgba(27, 31, 46, 0.7);
+  font:
+    13px/1.4 system-ui,
+    sans-serif;
+  color: #f4ece1;
+}

@@ -20,6 +20,7 @@ import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
 import { AssemblyState } from '../domain/assembly';
 import { EntityIdAllocator, transactionId } from '../domain/ids';
+import type { I18n, StringKey } from '../i18n/i18n';
 import { mergeFrames, type InputDevice } from '../input/actions';
 import { GamepadSource } from '../input/gamepadSource';
 import { DEFAULT_INPUT_SETTINGS } from '../input/inputSettings';
@@ -53,23 +54,31 @@ import { MATERIAL_COLORS, ScrapPileView } from './scrapPileView';
 
 export interface TestYardHud {
   readonly hint: HTMLElement | null;
+  readonly i18n: I18n;
   readonly feedback: HTMLElement | null;
   readonly container: HTMLElement | null;
 }
 
-const PROMPTS: Record<InputDevice, string> = {
-  'keyboard-mouse':
-    'WASD move · Mouse look · E / click use or cut · F unload · Q/R rotate · Space jump · Esc release mouse',
-  gamepad: 'Left stick move · Right stick look · X use or cut · Y unload · LB/RB rotate · A jump · Menu pause',
-  none: 'Click to play · WASD or left stick to move',
+const HINT_KEYS: Record<InputDevice, StringKey> = {
+  'keyboard-mouse': 'hint.keyboard',
+  gamepad: 'hint.gamepad',
+  none: 'hint.none',
 };
+
+interface Notice {
+  readonly key: StringKey;
+  readonly params?: Readonly<Record<string, string | number>>;
+}
 
 /**
  * First-person movement test yard (MSC-013): ramps, steps, a corner and a recovery pit, plus a few
  * physics crates and a robot proxy for scale. Debug data is exposed on the canvas dataset.
  */
 export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYardHud): Promise<() => void> {
-  const { hint, feedback: feedbackLabel } = hud;
+  const { hint, feedback: feedbackLabel, i18n } = hud;
+  const nameOf = (keys: readonly string[] | undefined, fallback: string): string =>
+    keys && keys.length > 0 ? keys.map((key) => i18n.tKey(key, fallback)).join(' + ') : fallback;
+  const materialName = (id: string, fallback: string): string => i18n.tKey(`material.${id}`, fallback);
   const content = parseContentPack(FIRST_PASS_CONTENT);
   if (!content.ok) throw new Error(`Invalid content: ${content.errors.join('; ')}`);
   const renderer = new WebGLRenderer({ canvas, antialias: true });
@@ -160,12 +169,12 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   cartHandle.rotation.y = Math.PI / 2;
   cartGroup.add(cartBed, cartHandle);
   scene.add(cartGroup);
-  const LOAD_MESSAGES: Record<Exclude<LoadResult, { ok: true }>['reason'], string> = {
-    full: 'Cart full (4 items).',
-    'too-heavy': 'Too heavy for the cart.',
-    'already-loaded': '',
-    claimed: 'Someone else is holding that.',
-    unknown: '',
+  const LOAD_NOTICES: Record<Exclude<LoadResult, { ok: true }>['reason'], Notice | null> = {
+    full: { key: 'cart.full', params: { max: CART_TUNING.maxLoadCount } },
+    'too-heavy': { key: 'cart.tooHeavy' },
+    'already-loaded': null,
+    claimed: { key: 'cart.claimed' },
+    unknown: null,
   };
   const propView = new PropView(scene, props, world);
   const rover = new AssemblyBody(
@@ -199,13 +208,13 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     }),
   );
   let cutCounter = 0;
-  const jointLabel = (id: string): string => id.replace('-', ' ');
-  const PLACE_MESSAGES: Record<Exclude<PlaceResult, { ok: true }>['reason'], string> = {
-    'not-holding': '',
-    blocked: 'Cannot place here: something is in the way.',
-    'overlaps-player': 'Cannot place here: too close to you.',
+  const jointLabel = (id: string): string => i18n.tKey(`joint.${id}`, id);
+  const PLACE_NOTICES: Record<Exclude<PlaceResult, { ok: true }>['reason'], Notice | null> = {
+    'not-holding': null,
+    blocked: { key: 'place.blocked' },
+    'overlaps-player': { key: 'place.overlapsPlayer' },
   };
-  let notice = '';
+  let notice: Notice | null = null;
   let noticeUntil = 0;
   const closer = (a: TargetPick | null, b: TargetPick | null): TargetPick | null =>
     !a ? b : !b ? a : a.angle <= b.angle ? a : b;
@@ -242,10 +251,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     const dt = Math.min((now - previous) / 1000, 0.1);
     previous = now;
     const frame = mergeFrames(keyboard.poll(), gamepad.poll(dt));
-    if (frame.device !== 'none' && frame.device !== device) {
-      device = frame.device;
-      if (hint) hint.textContent = PROMPTS[device];
-    }
+    if (frame.device !== 'none') device = frame.device;
+    if (hint) hint.textContent = i18n.t(HINT_KEYS[device]);
     if (frame.pause && isLocked()) document.exitPointerLock();
     player.applyLook(frame);
 
@@ -256,7 +263,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     const pushing = cart.pusher() === 'player-0';
     if (pushing) {
       feedback = { state: 'none' };
-      prompt = `Pushing cart (${cart.loads.length}/${CART_TUNING.maxLoadCount}) · use to let go · unload`;
+      prompt = i18n.t('cart.pushing', { loads: cart.loads.length, max: CART_TUNING.maxLoadCount });
       if (frame.interact) cart.stopPush('player-0');
       if (frame.secondary) cart.unloadAll();
     } else if (grip.held !== null) {
@@ -264,18 +271,19 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       const heldId = grip.held;
       const heldProp = props.get(heldId);
       const overBed = heldProp ? cart.isOverBed(world.bodyPosition(heldProp.body)) : false;
-      prompt = `Holding ${heldProp?.displayName ?? 'object'} · ${overBed ? 'load into cart' : 'place'}`;
+      const heldName = nameOf(heldProp?.nameKeys, heldProp?.displayName ?? '');
+      prompt = i18n.t(overBed ? 'grip.holdingOverCart' : 'grip.holding', { name: heldName });
       if (frame.interact && overBed) {
         grip.forceRelease();
         const loaded = cart.load(heldId);
-        if (!loaded.ok && LOAD_MESSAGES[loaded.reason]) {
-          notice = LOAD_MESSAGES[loaded.reason];
+        if (!loaded.ok && LOAD_NOTICES[loaded.reason]) {
+          notice = LOAD_NOTICES[loaded.reason];
           noticeUntil = now + 1500;
         }
       } else if (frame.interact) {
         const placed = grip.tryPlace(aimView.position);
         if (!placed.ok) {
-          notice = PLACE_MESSAGES[placed.reason];
+          notice = PLACE_NOTICES[placed.reason];
           noticeUntil = now + 1500;
         }
       }
@@ -283,7 +291,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       feedback = { state: 'none' };
       const joint = rover.pickJoint(aim, player.characterHandle);
       if (joint?.available) {
-        prompt = `Cut ${jointLabel(joint.jointId)}`;
+        prompt = i18n.t('cut.ready', { joint: jointLabel(joint.jointId) });
         if (frame.interact) {
           cutCounter += 1;
           rover.cut(joint.jointId, transactionId(`txn-cut${cutCounter.toString(36)}`));
@@ -293,7 +301,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
           .find((candidate) => candidate.id === joint.jointId)
           ?.requires?.filter((id) => !rover.state.isCut(id))
           .map(jointLabel);
-        prompt = `Blocked: cut ${blockers?.join(' and ') ?? 'other joints'} first`;
+        prompt = i18n.t('cut.blocked', { joints: blockers?.join(i18n.t('list.and')) ?? '' });
       }
     } else {
       const loose = props.targets().filter((target) => !cart.loads.includes(target.id));
@@ -308,12 +316,13 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       const best = closer(cartPick, closer(propPick, scrapPick));
       if (best && best === cartPick) {
         feedback = { state: 'none' };
-        prompt = `Cart (${cart.loads.length}/${CART_TUNING.maxLoadCount}) · use to push · unload`;
+        prompt = i18n.t('cart.idle', { loads: cart.loads.length, max: CART_TUNING.maxLoadCount });
         if (frame.interact) cart.startPush('player-0');
         if (frame.secondary) cart.unloadAll();
       } else if (best && best === propPick) {
         feedback = { state: 'none' };
-        prompt = `${props.get(best.candidate.id)?.displayName ?? 'Object'}: grab`;
+        const target = props.get(best.candidate.id);
+        prompt = i18n.t('grip.grab', { name: nameOf(target?.nameKeys, target?.displayName ?? '') });
         if (frame.interact) grip.tryGrab(best, aimView.yaw);
       } else {
         feedback = collector.evaluate(scrapPick);
@@ -356,14 +365,20 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     scrapView.sync();
     scrapView.highlight(feedback);
     if (feedbackLabel) {
-      const scrapText =
-        feedback.state === 'compatible'
-          ? `${feedback.material.symbol} ${feedback.material.displayName}: collect`
-          : feedback.state === 'none'
-            ? ''
-            : `${feedback.material.symbol} ${feedback.reason}`;
-      const showingNotice = now < noticeUntil;
-      feedbackLabel.textContent = showingNotice ? notice : prompt || scrapText;
+      let scrapText = '';
+      if (feedback.state !== 'none') {
+        const symbol = feedback.material.symbol;
+        const material = materialName(feedback.material.id, feedback.material.displayName);
+        if (feedback.state === 'compatible') scrapText = i18n.t('collect.ready', { symbol, material });
+        else if (feedback.state === 'blocked') scrapText = i18n.t('collect.containerFull', { symbol });
+        else if (feedback.reason === 'too-big') scrapText = i18n.t('collect.tooBig', { symbol });
+        else {
+          const tools = feedback.collectableBy.map((id) => i18n.tKey(`tool.${id}`, id)).join(', ');
+          scrapText = i18n.t('collect.notMagnetic', { symbol, material, tools });
+        }
+      }
+      const showingNotice = notice !== null && now < noticeUntil;
+      feedbackLabel.textContent = showingNotice && notice ? i18n.t(notice.key, notice.params) : prompt || scrapText;
       feedbackLabel.dataset['state'] = showingNotice ? 'blocked' : prompt ? 'compatible' : feedback.state;
     }
     canvas.dataset['collected'] = String(container.count);
@@ -374,7 +389,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     });
     canvas.dataset['cart'] = JSON.stringify({ loads: cart.loads.length, pushing, recoveries: cart.recoveries });
     if (hud.container) {
-      hud.container.textContent = `Container ${container.count}/${container.capacity}${container.isFull ? ' · FULL' : ''}`;
+      const status = i18n.t('container.status', { count: container.count, capacity: container.capacity });
+      hud.container.textContent = container.isFull ? `${status} · ${i18n.t('container.full')}` : status;
       hud.container.dataset['full'] = String(container.isFull);
     }
     canvas.dataset['player'] = JSON.stringify({
@@ -389,7 +405,6 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     renderer.render(scene, camera);
   });
 
-  if (hint) hint.textContent = PROMPTS.none;
   return () => {
     renderer.setAnimationLoop(null);
     detachKeyboard();

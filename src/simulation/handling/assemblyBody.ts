@@ -10,6 +10,8 @@ export interface AssemblyLayout {
   readonly fragments: Readonly<Record<string, { readonly position: Vec3; readonly halfExtents: Vec3 }>>;
   readonly joints: Readonly<Record<string, Vec3>>;
   readonly fragmentNames: Readonly<Record<string, string>>;
+  /** Localization key per fragment. */
+  readonly fragmentNameKeys?: Readonly<Record<string, string>>;
 }
 
 export const CUTTER_TUNING = Object.freeze({
@@ -157,6 +159,7 @@ export class AssemblyBody {
         id: chunk.entityId,
         materialId: first.materialId,
         displayName: chunk.fragments.map((id) => this.#layout.fragmentNames[id] ?? id).join(' + '),
+        nameKeys: chunk.fragments.map((id) => this.#layout.fragmentNameKeys?.[id] ?? `fragment.${id}`),
         position,
         halfExtents,
         massKg,

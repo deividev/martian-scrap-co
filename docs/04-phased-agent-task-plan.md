@@ -391,7 +391,7 @@ Check: Recorded keyboard/controller walkthrough and worst-case fixture review.
 
 Requirements: PRD-002, PRD-005–009, PRD-022.
 
-Status: Planned
+Status: In progress
 
 ## Phase 3 — Co-op authority and real Steam/native feasibility
 

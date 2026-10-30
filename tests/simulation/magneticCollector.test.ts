@@ -84,7 +84,8 @@ describe('magnetic collector compatibility', () => {
     } else {
       expect(feedback.state).toBe('incompatible');
       if (feedback.state !== 'incompatible') return;
-      expect(feedback.reason).toMatch(/isn't magnetic\. Collect with: Hands, Grabber\./);
+      expect(feedback.reason).toBe('not-magnetic');
+      expect(feedback.collectableBy).toEqual(['hands', 'grabber']);
       expect(collector.tryStartPull(feedback)).toBe(false);
       for (let i = 0; i < 60; i += 1) {
         collector.fixedUpdate(EYE);
@@ -182,7 +183,7 @@ describe('collector and portable container', () => {
     container.add({ id: 'ent-zz' as EntityId, materialId: contentId('ferrous'), massKg: 1 });
     const feedback = collector.evaluate(pickTarget(aimAt(near), field.activeTargets(), world));
     expect(feedback.state).toBe('blocked');
-    if (feedback.state === 'blocked') expect(feedback.reason).toMatch(/Container full/);
+    if (feedback.state === 'blocked') expect(feedback.reason).toBe('container-full');
     expect(collector.tryStartPull(feedback)).toBe(false);
     expect(field.piece(ids[0] as EntityId)?.state).toBe('active');
   });

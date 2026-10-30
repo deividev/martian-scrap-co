@@ -6,6 +6,8 @@ export interface MediumPropSpec {
   readonly id: EntityId;
   readonly materialId: ContentId;
   readonly displayName: string;
+  /** Localization keys of the name parts (a cut chunk lists one per fragment). */
+  readonly nameKeys?: readonly string[];
   readonly position: Vec3;
   readonly halfExtents: Vec3;
   readonly massKg: number;

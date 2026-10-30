@@ -1,4 +1,5 @@
 import './style.css';
+import { I18n } from './i18n/i18n';
 import { createPlatformAdapter } from './platform/platformAdapter';
 import { runBenchmarkScene } from './presentation/benchmarkScene';
 import { createTestYardScene } from './presentation/testYardScene';
@@ -7,6 +8,30 @@ const canvas = document.querySelector<HTMLCanvasElement>('#game');
 if (!canvas) {
   throw new Error('Missing #game canvas');
 }
+
+// Language: saved choice, else the system language; L switches English/Spanish at any time.
+const i18n = I18n.detect(
+  (() => {
+    try {
+      return window.localStorage;
+    } catch {
+      return undefined;
+    }
+  })(),
+  navigator.language,
+);
+const languageLabel = document.querySelector<HTMLElement>('#language-status');
+const applyLanguage = (): void => {
+  document.documentElement.lang = i18n.locale;
+  if (languageLabel) languageLabel.textContent = i18n.t('language.current');
+  updatePlatformStatus();
+};
+window.addEventListener('keydown', (event) => {
+  if (event.code === 'KeyL' && !event.repeat) {
+    i18n.toggle();
+    applyLanguage();
+  }
+});
 
 const query = new URLSearchParams(window.location.search);
 const benchmark = query.get('benchmark');
@@ -24,6 +49,7 @@ if (benchmark) {
 } else {
   createTestYardScene(canvas, {
     hint: document.querySelector<HTMLElement>('#input-hint'),
+    i18n,
     feedback: document.querySelector<HTMLElement>('#target-feedback'),
     container: document.querySelector<HTMLElement>('#container-status'),
   }).catch((error: unknown) => {
@@ -34,11 +60,16 @@ if (benchmark) {
 
 const platform = createPlatformAdapter();
 const status = document.querySelector<HTMLElement>('#platform-status');
-if (status) {
-  void platform.getAppInfo().then((info) => {
-    status.textContent = info
-      ? `Electron ${info.electron} · ${info.platform} · v${info.version}`
-      : 'Browser build · native features unavailable';
-    status.dataset['platform'] = platform.kind;
-  });
+let appInfo: Awaited<ReturnType<typeof platform.getAppInfo>> = null;
+function updatePlatformStatus(): void {
+  if (!status) return;
+  status.textContent = appInfo
+    ? i18n.t('platform.electron', { electron: appInfo.electron, platform: appInfo.platform, version: appInfo.version })
+    : i18n.t('platform.browser');
+  status.dataset['platform'] = platform.kind;
 }
+void platform.getAppInfo().then((info) => {
+  appInfo = info;
+  updatePlatformStatus();
+});
+applyLanguage();
