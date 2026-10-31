@@ -34,7 +34,9 @@ Not wired yet (later tasks): menus/invite button and session start in the game U
 - Packaged asar contains only `steamworks.js` `index.js`, `package.json`, `LICENSE` and the win64 `.node` + DLL from `node_modules`.
 - Environment note: the local `node_modules/electron/dist/electron.exe` had been left truncated (last 4 KiB zero) by the 13:24 blue screen; it was reinstalled from Electron's checksum-verified cache (same 44.10.0) before the smoke.
 
-**Not yet proven:** real Steam init, lobby creation, rich presence, overlay invite and P2P send/receive. These need the Steam client running and an App ID — **blocker A1**, or an explicit owner decision to use Valve's public test App ID 480 (`MSC_STEAM_APP_ID=480`) for the local smoke only. Two-network evidence remains MSC-027 (blocker A2).
+- **Real Steam smoke with test App ID 480** (owner approval 2026-10-31, local only via `MSC_STEAM_APP_ID=480`; nothing committed): with the Steam client signed in, unpackaged `electron . --steam-smoke` and packaged `Martian Scrap Co.exe --steam-smoke` both report `{"status":{"available":true,"self":"present"},"lobbyCreated":true,"ownerIsSelf":true,"members":1,"joinableToggle":true,"leftLobby":true,"shutdown":true}` and exit 0. This proves real init, identity, friends-only lobby creation and ownership, the host lock, leaving and shutdown in the packaged layout. The Steamworks SDK itself prints the local SteamID to stderr; it is not recorded here.
+
+**Not yet proven:** P2P send/receive on the reliable and disposable channels, overlay invite, `+connect_lobby`/`GameLobbyJoinRequested` and rich presence as seen by a friend. These need a second Steam account on another device (**blocker A2**, shared with MSC-027). The real App ID remains **blocker A1**; App ID 480 is used only for local tests and never shipped.
 
 ## Deviations from the guide
 
