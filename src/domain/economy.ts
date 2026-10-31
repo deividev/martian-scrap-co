@@ -1,6 +1,6 @@
 import type { Bale } from './compactor';
 import type { ContentId, EntityId, TransactionId } from './ids';
-import { addCredits, credits, type Credits } from './units';
+import { addCredits, credits, trySpendCredits, type Credits } from './units';
 
 /** Campaign-wide credits owned by the host save and shared by the whole crew (PRD-010). */
 export class SharedCredits {
@@ -14,10 +14,17 @@ export class SharedCredits {
     return this.#balance;
   }
 
-  /** Only sale commits call this; spending arrives with the upgrade purchase slice (MSC-034). */
+  /** Only sale commits call this. */
   deposit(amount: Credits): Credits {
     this.#balance = addCredits(this.#balance, amount);
     return this.#balance;
+  }
+
+  /** Only purchase commits call this (MSC-034); the new balance, or null and no change when funds are short. */
+  spend(cost: Credits): Credits | null {
+    const next = trySpendCredits(this.#balance, cost);
+    if (next !== null) this.#balance = next;
+    return next;
   }
 }
 

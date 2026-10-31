@@ -26,6 +26,11 @@ const toolSchema = z.strictObject({
   freeBaseline: z.boolean(),
   /** Collector upgrade tiers: materials each tier unlocks, cumulatively (tier 0 is the base tool). */
   upgradeTiers: z.array(z.array(contentIdSchema).min(1).max(8)).min(1).max(8).optional(),
+  /** Shared-credit price of each upgrade after the base tier: `upgradePrices[i]` buys tier `i + 1`. */
+  upgradePrices: z
+    .array(z.number().refine((value) => isInRange('credits', value) && value > 0, 'must be positive whole credits'))
+    .max(7)
+    .optional(),
 });
 
 export const contentPackSchema = z.strictObject({
@@ -81,6 +86,9 @@ export function parseContentPack(input: unknown): ContentResult {
     for (const id of tiered) {
       if (!materialById.has(id)) errors.push(`tool ${tool.id}: unknown tier material ${id}`);
     }
+    if (tool.upgradePrices && tool.upgradePrices.length !== (tool.upgradeTiers?.length ?? 1) - 1) {
+      errors.push(`tool ${tool.id}: needs one upgrade price per tier above the base`);
+    }
     // The base tier is what the free tool already collects; upgrades add to it.
     for (const id of tool.upgradeTiers?.[0] ?? []) {
       if (materialById.get(id)?.collectableBy.includes(tool.id) === false) {
@@ -117,6 +125,7 @@ export function parseContentPack(input: unknown): ContentResult {
             handles: tool.handles,
             freeBaseline: tool.freeBaseline,
             ...(tool.upgradeTiers ? { upgradeTiers: tool.upgradeTiers.map((tier) => tier.map(contentId)) } : {}),
+            ...(tool.upgradePrices ? { upgradePrices: tool.upgradePrices.map(credits) } : {}),
           },
         ]),
       ),

@@ -619,7 +619,9 @@ Check: Concurrent purchase and insufficient-credit tests on host/guest.
 
 Requirements: PRD-009–011, PRD-018–019.
 
-Status: Planned
+Status: In progress
+
+Outcome: 2026-10-31 — Local single-player slice ahead of the MSC-030 gate, like MSC-031–033. The upgrade is **collector level 2** (adds aluminum and copper, owner decision 2026-10-30); level 3 is also purchasable. Prices are content data (`upgradePrices`, one per tier above the base, validated) and PLACEHOLDERS: 80 C (two 10-piece iron bales) and 240 C. `UpgradeShop` is host-owned and follows the MSC-003 P2 policy: the host buys directly; a guest's purchase becomes one open request the host approves or declines; only the host can mark a guest "Can spend" for the session; every purchase, request, decline and permission change is announced to the crew. Debit and grant are one step (nothing is taken when the upgrade no longer applies or funds are short), levels are sold in order, a resubmitted transaction id replays the first result without charging again, and a failed attempt can be retried with the same id. In the test yard the sale machine also sells the next collector level: facing it without a bale shows the level, the materials it adds, its price and the crew balance; use buys it, the HUD shows "−80 C" and the material chips unlock; the job panel suggests the purchase once the crew can afford it. The free U-key collector upgrade was removed (U still raises the cutter speed as a test stand-in). Checks: 7 shop tests (host purchase, insufficient credits for host and approved guest, guest request approve/decline and duplicate request, host-only "Can spend", concurrent purchase and transaction replay, approval losing to a direct purchase, ordered levels) and 1 content test; in the browser the machine showed the level 2 offer with price and balance and refused the purchase at 0 C without changing tier or credits; `pnpm run check` 7/7. **Pending:** a successful purchase seen in play (needs selling two bales), and host/guest requests over the real co-op transport (MSC-021–030).
 
 ### MSC-035 — Create starter-yard slice route
 

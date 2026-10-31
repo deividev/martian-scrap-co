@@ -32,6 +32,7 @@ import { PortableContainer } from '../domain/container';
 import { BaseIntake } from '../domain/intake';
 import { COMPACTOR_TUNING, Compactor, type Bale } from '../domain/compactor';
 import { SaleTerminal, SharedCredits } from '../domain/economy';
+import { collectorUpgradeOffers, UpgradeShop, type UpgradeOffer } from '../domain/upgradeShop';
 import { AssemblyState } from '../domain/assembly';
 import { EntityIdAllocator, contentId, transactionId, type ContentId, type EntityId } from '../domain/ids';
 import { ToolLoadout } from '../domain/toolLoadout';
@@ -342,6 +343,20 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     sharedCredits,
     (material) => content.pack.materials.get(material)?.saleValuePerUnit,
   );
+  // MSC-034: the same machine sells collector levels for shared credits. The local player is the host (solo);
+  // guest requests and "Can spend" follow the MSC-003 policy in UpgradeShop once co-op sessions exist.
+  const LOCAL_PLAYER = 'player-0';
+  const shop = new UpgradeShop(
+    sharedCredits,
+    LOCAL_PLAYER,
+    collectorUpgradeOffers(collector.selector, content.pack.tools.get(COLLECTOR)?.upgradePrices ?? []),
+  );
+  const nextCollectorOffer = (): UpgradeOffer | undefined => shop.offer(`collector-${collector.selector.tier + 2}`);
+  const tierMaterials = (tier: number): string =>
+    (collectorTiers[tier] ?? [])
+      .map((id) => materialName(id, content.pack.materials.get(id)?.displayName ?? id))
+      .join(i18n.t('list.and'));
+  let purchaseCounter = 0;
   const terminalModel = createSaleTerminalModel();
   terminalModel.position.set(TEST_YARD_SALE_TERMINAL.position.x, 0, TEST_YARD_SALE_TERMINAL.position.z);
   terminalModel.rotation.y = Math.PI;
@@ -357,6 +372,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     halfExtents: TEST_YARD_SALE_TERMINAL.halfExtents,
   });
   let saleCounter = 0;
+  /** Last credit change shown beside the balance: positive for a sale, negative for a purchase. */
   let lastGain: { credits: number; until: number } | null = null;
   let wasSucking = false;
   let lastActivation = 0;
@@ -470,6 +486,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     if (heldBale) return i18n.t('job.sellBale');
     if (bales.size > 0) return i18n.t('job.takeBale');
     if (compactor.state.kind !== 'idle') return i18n.t('job.pressing');
+    const offer = nextCollectorOffer();
+    if (offer?.available() && sharedCredits.balance >= offer.price && container.count === 0) {
+      return i18n.t('job.buyUpgrade', { tier: collector.selector.tier + 2, credits: offer.price });
+    }
     if (container.count > 0) return i18n.t('job.unload');
     const fullest = intake.batches().sort((a, b) => b.count - a.count)[0];
     if (fullest) {
@@ -598,19 +618,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         : { key: 'cutter.upgraded', params: { tier: cutterTier + 1, speed: CUTTER_SPEED_TIERS[cutterTier] ?? 1 } };
       noticeUntil = now + 3000;
     } else if (frame.upgrade) {
-      const unlocked = collector.selector.upgrade();
-      notice =
-        unlocked.length === 0
-          ? { key: 'selector.maxTier' }
-          : {
-              key: 'selector.upgraded',
-              params: {
-                tier: collector.selector.tier + 1,
-                list: unlocked
-                  .map((id) => materialName(id, content.pack.materials.get(id)?.displayName ?? id))
-                  .join(i18n.t('list.and')),
-              },
-            };
+      // Collector levels are bought with shared credits at the sale machine (MSC-034); no free test upgrade.
+      notice = { key: nextCollectorOffer() ? 'shop.useMachine' : 'selector.maxTier' };
       noticeUntil = now + 3000;
     }
     const pushing = cart.pusher() === 'player-0';
@@ -890,7 +899,25 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       }
     }
     if (!prompt && grip.held === null && feedback.state === 'none' && nearTerminal(aimView)) {
-      prompt = i18n.t('sale.needBale');
+      const offer = nextCollectorOffer();
+      const tier = collector.selector.tier + 2;
+      const list = tierMaterials(tier - 1);
+      if (!offer) prompt = i18n.t('sale.needBale');
+      else if (sharedCredits.balance < offer.price) {
+        prompt = i18n.t('shop.short', { tier, list, credits: offer.price, balance: sharedCredits.balance });
+      } else prompt = i18n.t('shop.preview', { tier, list, credits: offer.price });
+      if (frame.interact && offer) {
+        purchaseCounter += 1;
+        const bought = shop.buy(LOCAL_PLAYER, offer.id, transactionId(`txn-buy${purchaseCounter.toString(36)}`));
+        if (bought.ok && bought.kind === 'purchased') {
+          tool.use();
+          lastGain = { credits: 0 - bought.cost, until: now + 2500 };
+          notice = { key: 'selector.upgraded', params: { tier: collector.selector.tier + 1, list } };
+        } else if (!bought.ok && bought.reason === 'insufficient-credits') {
+          notice = { key: 'shop.insufficient', params: { credits: offer.price, balance: sharedCredits.balance } };
+        }
+        noticeUntil = now + 3000;
+      }
     }
 
     // Wake clusters near the player and let distant ones sleep (MSC-012 activation). The mountain is different:
@@ -1049,6 +1076,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     canvas.dataset['held'] = grip.held ?? '';
     canvas.dataset['intake'] = String(intake.count);
     canvas.dataset['credits'] = String(sharedCredits.balance);
+    canvas.dataset['collectorTier'] = String(collector.selector.tier + 1);
     canvas.dataset['compactor'] = JSON.stringify({ state: compactor.state.kind, bales: [...bales.keys()] });
     canvas.dataset['bins'] = JSON.stringify(Object.fromEntries(intake.batches().map((b) => [b.materialId, b.count])));
     canvas.dataset['selector'] = JSON.stringify({

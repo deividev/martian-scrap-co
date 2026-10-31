@@ -174,7 +174,9 @@ export class GameHud {
 
     this.#creditsLabel.textContent = state.credits.label;
     this.#creditsValue.textContent = `${state.credits.balance.toLocaleString()} C`;
-    this.#creditsGain.textContent = state.credits.gain === null ? '' : `+${state.credits.gain} C`;
+    const gain = state.credits.gain;
+    this.#creditsGain.textContent = gain === null ? '' : `${gain > 0 ? '+' : '−'}${Math.abs(gain)} C`;
+    this.#creditsGain.classList.toggle('hud-spend', gain !== null && gain < 0);
     this.#jobLabel.textContent = state.job.label;
     this.#jobText.textContent = state.job.text;
 

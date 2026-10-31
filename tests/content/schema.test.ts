@@ -121,6 +121,15 @@ describe('content rejection', () => {
     expect(errorsOf(base)).toContain('tool magnetic-collector: base tier material copper does not list the tool');
   });
 
+  it('needs one positive upgrade price per tier above the base', () => {
+    const short = pack();
+    short.tools[1] = { ...short.tools[1], upgradePrices: [80] };
+    expect(errorsOf(short).join()).toContain('one upgrade price per tier');
+    const free = pack();
+    free.tools[1] = { ...free.tools[1], upgradePrices: [0, 240] };
+    expect(errorsOf(free).length).toBeGreaterThan(0);
+  });
+
   it('rejects an unsupported schema version', () => {
     expect(errorsOf({ ...pack(), schemaVersion: 2 }).length).toBeGreaterThan(0);
   });

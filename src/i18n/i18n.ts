@@ -11,12 +11,12 @@ export const STRINGS = {
     es: 'Haz clic para jugar · WASD o stick izquierdo para moverte',
   },
   'hint.keyboard': {
-    en: 'WASD move · 1 collector / 2 cutter · Hold left click / E vacuum, cut or use · Right click / F unload · Mouse wheel material (collector in hand) · U upgrade tool in hand (test) · Q/R rotate · Space jump · Esc release mouse',
-    es: 'WASD moverse · 1 colector / 2 cortador · Mantén clic izq. / E aspirar, cortar o usar · Clic der. / F descargar · Rueda del ratón material (con el colector) · U mejorar herramienta en mano (prueba) · Q/R rotar · Espacio saltar · Esc soltar ratón',
+    en: 'WASD move · 1 collector / 2 cutter · Hold left click / E vacuum, cut or use · Right click / F unload · Mouse wheel material (collector in hand) · U upgrade cutter (test) · Q/R rotate · Space jump · Esc release mouse',
+    es: 'WASD moverse · 1 colector / 2 cortador · Mantén clic izq. / E aspirar, cortar o usar · Clic der. / F descargar · Rueda del ratón material (con el colector) · U mejorar cortador (prueba) · Q/R rotar · Espacio saltar · Esc soltar ratón',
   },
   'hint.gamepad': {
-    en: 'Left stick move · Right stick look · D-pad down switch tool · Hold RT / X vacuum, cut or use · Y unload · D-pad left/right material · D-pad up upgrade tool in hand (test) · LB/RB rotate · A jump · Menu pause',
-    es: 'Stick izq. moverse · Stick der. mirar · Cruceta abajo cambiar herramienta · Mantén RT / X aspirar, cortar o usar · Y descargar · Cruceta izq./der. material · Cruceta arriba mejorar herramienta en mano (prueba) · LB/RB rotar · A saltar · Menú pausa',
+    en: 'Left stick move · Right stick look · D-pad down switch tool · Hold RT / X vacuum, cut or use · Y unload · D-pad left/right material · D-pad up upgrade cutter (test) · LB/RB rotate · A jump · Menu pause',
+    es: 'Stick izq. moverse · Stick der. mirar · Cruceta abajo cambiar herramienta · Mantén RT / X aspirar, cortar o usar · Y descargar · Cruceta izq./der. material · Cruceta arriba mejorar cortador (prueba) · LB/RB rotar · A saltar · Menú pausa',
   },
 
   'tip.collect': {
@@ -145,6 +145,26 @@ export const STRINGS = {
   'sale.needBale': {
     en: 'Sale machine: bring a bale from the compactor to sell it',
     es: 'Máquina de venta: trae una paca de la compactadora para venderla',
+  },
+  'shop.preview': {
+    en: 'Sale machine: use to buy collector level {tier} (+{list}) for {credits} C',
+    es: 'Máquina de venta: usar para comprar el colector nivel {tier} (+{list}) por {credits} C',
+  },
+  'shop.short': {
+    en: 'Collector level {tier} (+{list}) costs {credits} C · the crew has {balance} C',
+    es: 'El colector nivel {tier} (+{list}) cuesta {credits} C · el equipo tiene {balance} C',
+  },
+  'shop.insufficient': {
+    en: 'Not enough credits: {credits} C needed, the crew has {balance} C.',
+    es: 'Faltan créditos: hacen falta {credits} C y el equipo tiene {balance} C.',
+  },
+  'shop.useMachine': {
+    en: 'Buy collector levels with team credits at the sale machine.',
+    es: 'Compra niveles del colector con los créditos del equipo en la máquina de venta.',
+  },
+  'job.buyUpgrade': {
+    en: 'The crew can afford collector level {tier}: buy it at the sale machine ({credits} C)',
+    es: 'El equipo puede comprar el colector nivel {tier}: cómpralo en la máquina de venta ({credits} C)',
   },
   'sale.done': { en: 'Sold {bale}: +{credits} C for the crew.', es: 'Vendida {bale}: +{credits} C para el equipo.' },
   'sale.failed': { en: 'That bale can no longer be sold.', es: 'Esa paca ya no se puede vender.' },

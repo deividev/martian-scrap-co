@@ -22,7 +22,7 @@ export interface ActionFrame {
   readonly rotate: -1 | 0 | 1;
   /** Edge-triggered step through the collector's unlocked materials: -1, 0 or 1. */
   readonly cycleMaterial: -1 | 0 | 1;
-  /** Test-yard stand-in for buying an upgrade of the equipped tool until the shared-credit store exists. */
+  /** Test-yard stand-in for buying a cutter speed level; collector levels are bought at the sale machine. */
   readonly upgrade: boolean;
   /** Edge-triggered: zero-based tool slot picked directly this frame, or null. */
   readonly toolSlot: number | null;

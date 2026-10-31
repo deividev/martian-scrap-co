@@ -452,6 +452,10 @@ body.model-review #yard-tip {
   font-weight: 800;
 }
 
+.hud-gain.hud-spend {
+  color: var(--hud-focus);
+}
+
 .hud-gain:empty {
   display: none;
 }
