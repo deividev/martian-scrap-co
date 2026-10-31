@@ -1,6 +1,6 @@
 # Martian Scrap Co. — Project Guide
 
-**Canonical project context for agents and the human owner.** Version 1.2, updated 2026-10-29: marketing-measurement context added, not product reapproval. This package started as **planning-only** and is not yet an implemented game. On 2026-10-29 the owner authorized sequential execution of the 120-task plan, one task at a time with per-task commits, a branch per phase and integration into `develop`; each task's current state is its **Status** field in the [task plan](docs/04-phased-agent-task-plan.md). Owner-decision and validation gates still apply; the roadmap is never executed past an unapproved or failed gate.
+**Canonical project context for agents and the human owner.** Version 1.2, updated 2026-10-29: marketing-measurement context added, not product reapproval; status refreshed 2026-10-31. This package started as **planning-only**; it now holds a playable solo test yard (phase 2 foundation and the MSC-020 handling gate done, MSC-031–033 brought forward in progress), not a complete game. On 2026-10-29 the owner authorized sequential execution of the 120-task plan, one task at a time with per-task commits, a branch per phase and integration into `develop`; each task's current state is its **Status** field in the [task plan](docs/04-phased-agent-task-plan.md). Owner-decision and validation gates still apply; the roadmap is never executed past an unapproved or failed gate.
 
 ## Start here
 
@@ -114,6 +114,8 @@ npm run electron:start # build, then open the desktop app
 npm run electron:dev   # Electron against a running `npm run dev` server
 npm run package        # build + electron-builder Windows folder in release/win-unpacked/
 npm run bake:mountain  # re-settle the scrap mountain with the game physics; rewrites src/simulation/yard/scrapMountain.baked.json
+npm run bake:mountain -- --resettle  # only re-run the joint settling passes on the committed mountain data
+# In game: F3 toggles the performance overlay (FPS, draw calls, triangles, per-section frame ms); same data in the canvas data-perf / data-frame-ms attributes
 # Benchmark: append ?benchmark=baseline|dense to the dev URL, or run the packaged exe with --benchmark=dense --benchmark-seconds=20
 powershell.exe -NoProfile -File .	oolsalidate-docs.ps1
 ```

@@ -149,3 +149,31 @@ Measured in Electron on the test yard: **99 draw calls at spawn, 82 at the mount
   - Simulation p95 was 1.1–2.1 ms and p99 ≤ 2.4 ms. Draw calls were 73–105 and triangles about 1.0–1.1 M (small pieces beyond 45 m are not drawn and cast no shadows).
 
 **Open:** at this scale, small pieces (about 0.2–0.3 m) cover medium parts but only partly bury large ones (2–3.6 m), and much of the dark core still shows between heaps. Fuller burial needs either several times more small pieces (simulation, triangle and load-size budgets) or a different size mix. This is an owner decision.
+
+## Mountain refinement and frame-time pass (owner check 2026-10-31)
+
+**Changes:**
+
+- **Fuller burial.** The bake now holds 28,958 pieces: 110 large, 1,605 medium and 27,243 small (data file about 3.6 MB). The joint settling passes repeat until pieces come to rest (`npm run bake:mountain -- --resettle` re-runs only these passes on the committed data).
+- **No hovering pieces.** Scrap silhouettes fill their collider boxes (`tests/models/scrapSilhouettes.test.ts`), the visible mountain core is built from exactly the collider triangles (`mountainCoreTriangles`), and small pieces cast shadows.
+- **Distant detail.** Small pieces farther than 18 m use a few-triangle stand-in instead of being hidden. The switch is decided per 4 m ground cell, not per piece.
+- **Collider streaming.** Small-piece clusters hold colliders within 10 m of a player (4 m hysteresis), measured against the cluster's area bounds. Collider changes are queued and applied at most 120 per frame, additions first.
+- **Frame-time spikes removed.** The mountain view only updates pieces that woke, slept or were removed (the field reports each change) instead of scanning every small piece. The 500 ms streaming check no longer averages the positions of every mountain piece.
+- **Performance overlay.** F3 shows or hides FPS, draw calls, triangles and per-section frame times (p50/p99/max over the last 600 frames); the same numbers are in the canvas `data-perf` and `data-frame-ms` attributes.
+
+**Evidence (Electron, reference PC, 120 Hz monitor):**
+
+| Section | Worst frame before | Worst frame after |
+|---|---|---|
+| Mountain view update | 11.2 ms | about 1.0 ms |
+| Scene logic (streaming check) | 7.8 ms | about 1.4–3 ms |
+| Simulation (collider creation) | 5.2 ms | about 3.6–4 ms |
+| Whole frame CPU | — | max about 10.6–12 ms, p99 about 10 ms |
+
+- No frame interval exceeded 17.5 ms while idle, walking to the mountain, strafing along its foot, vacuuming, pushing into a heap or waiting for pieces to settle.
+- About 120 FPS at the mountain and about 105 FPS at spawn. Draw calls 82–88 at the mountain and 111 at spawn (within ≤ 150). Triangles about 1.2 M at spawn and 2.0 M facing the mountain.
+- Checks: typecheck, lint and unit tests pass, including two new streaming and change-report tests.
+
+**Owner decision (2026-10-31):** the owner played the result and accepted this part of R4.
+
+**Not measured:** cutting a large part under a heavy heap (mass wake), other hardware and Steam Deck, and GPU limits with about 2 M triangles plus shadows on weaker graphics cards.
