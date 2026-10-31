@@ -24,6 +24,25 @@ body {
   opacity: 0.8;
 }
 
+#fps-overlay {
+  position: fixed;
+  right: 16px;
+  top: 140px;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgb(20 24 36 / 80%);
+  font:
+    12px/1.4 ui-monospace,
+    monospace;
+  color: #f4ece1;
+  pointer-events: none;
+}
+
+#fps-overlay[hidden] {
+  display: none;
+}
+
 #crosshair {
   position: fixed;
   left: 50%;

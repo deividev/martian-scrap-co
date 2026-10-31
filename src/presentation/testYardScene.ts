@@ -1175,6 +1175,19 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         frameMs[section] = { p50: q(0.5), p99: q(0.99), max: q(1) };
       }
       canvas.dataset['frameMs'] = JSON.stringify(frameMs);
+      const overlay = document.querySelector<HTMLElement>('#fps-overlay');
+      if (overlay && !overlay.hidden) {
+        const rows = Object.entries(frameMs).map(
+          ([section, t]) =>
+            `${section.padEnd(8)} ${t.p50.toFixed(1).padStart(5)} ${t.p99.toFixed(1).padStart(5)} ${t.max.toFixed(1).padStart(5)}`,
+        );
+        overlay.textContent = [
+          `FPS ${fps.toFixed(0)}`,
+          `draw ${renderer.info.render.calls} · tris ${(renderer.info.render.triangles / 1e6).toFixed(2)} M`,
+          'ms         p50   p99   max',
+          ...rows,
+        ].join('\n');
+      }
       canvas.dataset['perf'] = JSON.stringify({
         fps,
         simP50: at(0.5),

@@ -32,6 +32,12 @@ window.addEventListener('keydown', (event) => {
     i18n.toggle();
     applyLanguage();
   }
+  // F3 shows or hides the frame-time overlay (performance checks while playing).
+  if (event.code === 'F3' && !event.repeat) {
+    event.preventDefault();
+    const overlay = document.querySelector<HTMLElement>('#fps-overlay');
+    if (overlay) overlay.hidden = !overlay.hidden;
+  }
 });
 
 const query = new URLSearchParams(window.location.search);
