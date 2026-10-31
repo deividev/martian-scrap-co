@@ -14,7 +14,7 @@ import {
  * depends on Steam or any other transport. Bump `PROTOCOL_VERSION` whenever a message shape changes, so mismatched
  * builds are refused before they can interact.
  */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** Players per session, host included (PRD-016). */
 export const MAX_PLAYERS = 4;
@@ -102,9 +102,18 @@ export const REJECT_REASONS = [
   'incompatible',
   'unavailable',
   'insufficient-credits',
+  /** The guest lacks the permission for this action (MSC-003 P2). */
+  'not-permitted',
+  /** Sent to the host for approval instead of being applied (guest purchase without "Can spend"). */
+  'awaiting-host',
+  'rate-limited',
   'invalid',
 ] as const;
 export type RejectReason = (typeof REJECT_REASONS)[number];
+
+/** Why the host ends a guest's connection; `removed` and `locked` follow the approved session policy (MSC-003 P1, P3). */
+export const CLOSE_REASONS = ['host-left', 'kicked', 'removed', 'locked', 'full', 'protocol-error'] as const;
+export type SessionCloseReason = (typeof CLOSE_REASONS)[number];
 
 const poseSchema = z.strictObject({
   position: z.tuple([coordSchema, coordSchema, coordSchema]),
@@ -162,7 +171,7 @@ const hostMessageSchema = z.discriminatedUnion('type', [
     tick: revisionSchema,
     players: z.array(z.strictObject({ slot: slotSchema, pose: poseSchema })).max(MAX_PLAYERS),
   }),
-  z.strictObject({ type: z.literal('closed'), reason: z.enum(['host-left', 'kicked', 'full', 'protocol-error']) }),
+  z.strictObject({ type: z.literal('closed'), reason: z.enum(CLOSE_REASONS) }),
 ]);
 export type HostMessage = z.infer<typeof hostMessageSchema>;
 

@@ -66,11 +66,15 @@ export class LocalNetwork {
     return this.#host;
   }
 
-  /** Connects a new guest; the host hears about it on the next flush. */
-  connect(): ClientTransport {
+  /**
+   * Connects a new guest; the host hears about it on the next flush. `identity` models a stable account (a Steam id
+   * on the real path), so the same player can leave and come back; by default each connection is a new player.
+   */
+  connect(identity?: string): ClientTransport {
     if (!this.#host?.open) throw new Error('No host is open on this network');
-    const peer = `peer-${this.#nextPeer}` as PeerId;
-    this.#nextPeer += 1;
+    const peer = (identity ?? `peer-${this.#nextPeer}`) as PeerId;
+    if (identity === undefined) this.#nextPeer += 1;
+    if (this.#guests.get(peer)?.open) throw new Error(`${peer} is already connected`);
     const guest: Guest = { peer, open: true, lingering: false, messageHandlers: [], closedHandlers: [] };
     this.#guests.set(peer, guest);
     this.#queue.push({ to: 'host', kind: 'joined', peer });

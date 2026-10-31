@@ -5,7 +5,7 @@ export type HolderId = string;
 
 /**
  * Object claims (PRD-019): one holder per object; a second claim fails instead of stealing.
- * Local single-authority version; the host-arbitrated network version arrives in MSC-022.
+ * The host arbitrates network claims through this registry (`HostRouter`, MSC-022).
  */
 export class ClaimRegistry {
   readonly #holders = new Map<EntityId, HolderId>();
