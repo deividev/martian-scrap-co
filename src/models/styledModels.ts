@@ -17,7 +17,9 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 /**
  * Procedural low-poly models for the visual style pass (approved anchors: gameplay and character concept
  * sheets). Chunky bevelled shapes, saturated industrial paint, dark rubber parts, no grime textures.
- * Physics stays on simple box colliders; these meshes are scaled to fit them.
+ * Physics stays on simple box colliders; these meshes are scaled to fit them, so every scrap silhouette fills its
+ * box (shallow reliefs only, no stems or open corners): whatever rests on the collider must touch the visible shape
+ * (owner check 2026-10-30, pieces seemed to float).
  */
 export const STYLE = Object.freeze({
   dark: '#2b2e35',
@@ -93,17 +95,21 @@ export const SCRAP_COLORS: Readonly<Record<string, string>> = {
   'regolith-ceramic': '#b88ae8',
 };
 
-function hexNut(): BufferGeometry {
+function squareNut(): BufferGeometry {
+  // Square with chamfered corners: a hexagon would leave a quarter of its box empty.
   const outer = new Shape();
-  for (let i = 0; i < 6; i += 1) {
-    const angle = (i / 6) * Math.PI * 2;
-    const point = [Math.cos(angle) * 0.5, Math.sin(angle) * 0.5] as const;
-    if (i === 0) outer.moveTo(point[0], point[1]);
-    else outer.lineTo(point[0], point[1]);
-  }
+  const c = 0.1;
+  outer.moveTo(-0.5 + c, -0.5);
+  outer.lineTo(0.5 - c, -0.5);
+  outer.lineTo(0.5, -0.5 + c);
+  outer.lineTo(0.5, 0.5 - c);
+  outer.lineTo(0.5 - c, 0.5);
+  outer.lineTo(-0.5 + c, 0.5);
+  outer.lineTo(-0.5, 0.5 - c);
+  outer.lineTo(-0.5, -0.5 + c);
   outer.closePath();
   const hole = new Shape();
-  hole.absarc(0, 0, 0.22, 0, Math.PI * 2, true);
+  hole.absarc(0, 0, 0.12, 0, Math.PI * 2, true);
   outer.holes.push(hole);
   const geometry = new ExtrudeGeometry(outer, {
     depth: 0.45,
@@ -117,43 +123,48 @@ function hexNut(): BufferGeometry {
   return geometry;
 }
 
-function lBracket(): BufferGeometry {
-  const shape = new Shape();
-  shape.moveTo(-0.5, -0.5);
-  shape.lineTo(0.5, -0.5);
-  shape.lineTo(0.5, -0.22);
-  shape.lineTo(-0.22, -0.22);
-  shape.lineTo(-0.22, 0.5);
-  shape.lineTo(-0.5, 0.5);
-  shape.closePath();
-  const geometry = new ExtrudeGeometry(shape, { depth: 0.8, bevelEnabled: false });
-  geometry.center();
-  return geometry;
+function gear(): BufferGeometry {
+  const parts = [new CylinderGeometry(0.48, 0.48, 1, 16).toNonIndexed()];
+  for (let i = 0; i < 8; i += 1) {
+    const tooth = new BoxGeometry(0.1, 1, 0.14).toNonIndexed().translate(0.48, 0, 0);
+    tooth.rotateY((i / 8) * Math.PI * 2);
+    parts.push(tooth);
+  }
+  return mergeGeometries(parts);
 }
 
-function pipeStub(): BufferGeometry {
-  const geometry = new CylinderGeometry(0.5, 0.5, 1, 10, 1, true);
-  const inner = new CylinderGeometry(0.33, 0.33, 1, 10, 1, true);
-  inner.scale(-1, 1, -1);
-  const rimTop = new TorusGeometry(0.415, 0.085, 4, 10);
-  rimTop.rotateX(Math.PI / 2);
-  rimTop.translate(0, 0.5, 0);
-  const rimBottom = rimTop.clone().translate(0, -1, 0);
-  const merged = mergeGeometries([
-    geometry.toNonIndexed(),
-    inner.toNonIndexed(),
-    rimTop.toNonIndexed(),
-    rimBottom.toNonIndexed(),
-  ]);
-  merged.rotateZ(Math.PI / 2);
-  return merged;
+function boxTube(): BufferGeometry {
+  // Square hollow section: a round pipe on its side would leave the box corners empty.
+  const outer = new Shape();
+  outer.moveTo(-0.5, -0.5);
+  outer.lineTo(0.5, -0.5);
+  outer.lineTo(0.5, 0.5);
+  outer.lineTo(-0.5, 0.5);
+  outer.closePath();
+  const hole = new Shape();
+  hole.moveTo(-0.32, -0.32);
+  hole.lineTo(-0.32, 0.32);
+  hole.lineTo(0.32, 0.32);
+  hole.lineTo(0.32, -0.32);
+  hole.closePath();
+  outer.holes.push(hole);
+  const geometry = new ExtrudeGeometry(outer, {
+    depth: 1,
+    bevelEnabled: true,
+    bevelSize: 0.04,
+    bevelThickness: 0.04,
+    bevelSegments: 1,
+  });
+  geometry.center();
+  geometry.rotateY(Math.PI / 2);
+  return geometry;
 }
 
 function ribbedPlate(ribs: number): BufferGeometry {
   const pieces: BufferGeometry[] = [new BoxGeometry(1, 0.45, 1).toNonIndexed()];
   for (let i = 0; i < ribs; i += 1) {
-    const rib = new BoxGeometry(0.12, 0.35, 1).toNonIndexed();
-    rib.translate(-0.4 + (i * 0.8) / Math.max(1, ribs - 1), 0.38, 0);
+    const rib = new BoxGeometry(0.12, 0.07, 1).toNonIndexed();
+    rib.translate(-0.4 + (i * 0.8) / Math.max(1, ribs - 1), 0.26, 0);
     pieces.push(rib);
   }
   const merged = mergeGeometries(pieces);
@@ -169,16 +180,17 @@ function stampedPanel(): BufferGeometry {
   triangle.lineTo(0.22, -0.18);
   triangle.lineTo(0, 0.22);
   triangle.closePath();
-  const stamp = new ExtrudeGeometry(triangle, { depth: 0.15, bevelEnabled: false }).toNonIndexed();
+  const stamp = new ExtrudeGeometry(triangle, { depth: 0.05, bevelEnabled: false }).toNonIndexed();
   stamp.rotateX(-Math.PI / 2);
   stamp.translate(0, 0.3, 0);
   return mergeGeometries([panel, stamp]);
 }
 
 function coil(): BufferGeometry {
-  const turns: BufferGeometry[] = [];
+  // A wound bundle: a solid drum with raised turns of wire around it, flat on top and bottom.
+  const turns: BufferGeometry[] = [new CylinderGeometry(0.42, 0.42, 1, 12).toNonIndexed()];
   for (let i = 0; i < 3; i += 1) {
-    const ring = new TorusGeometry(0.36, 0.13, 6, 14).toNonIndexed();
+    const ring = new TorusGeometry(0.43, 0.07, 5, 14).toNonIndexed();
     ring.rotateX(Math.PI / 2);
     ring.translate(0, -0.3 + i * 0.3, 0);
     turns.push(ring);
@@ -187,7 +199,7 @@ function coil(): BufferGeometry {
 }
 
 function housing(): BufferGeometry {
-  const body = new RoundedBoxGeometry(1, 1, 1, 2, 0.22).toNonIndexed();
+  const body = new RoundedBoxGeometry(1, 1, 1, 2, 0.12).toNonIndexed();
   const grille = new BoxGeometry(0.5, 0.08, 0.06).toNonIndexed();
   const slots = [0.2, 0, -0.2].map((y) => grille.clone().translate(0, y, 0.52));
   return mergeGeometries([body, ...slots]);
@@ -202,18 +214,21 @@ function foilSheet(): BufferGeometry {
 
 function ceramicTile(): BufferGeometry {
   const tile = new RoundedBoxGeometry(1, 0.55, 1, 1, 0.1).toNonIndexed();
-  const ridges = [-0.3, 0, 0.3].map((x) => new BoxGeometry(0.1, 0.2, 0.9).toNonIndexed().translate(x, 0.32, 0));
+  const ridges = [-0.3, 0, 0.3].map((x) => new BoxGeometry(0.1, 0.07, 0.9).toNonIndexed().translate(x, 0.3, 0));
   return mergeGeometries([tile, ...ridges]);
 }
 
 const SCRAP_SHAPES: Readonly<Record<string, readonly (() => BufferGeometry)[]>> = {
-  ferrous: [hexNut, lBracket, pipeStub, () => ribbedPlate(3)],
+  ferrous: [squareNut, gear, boxTube, () => ribbedPlate(3)],
   aluminum: [stampedPanel],
   copper: [coil],
   polymer: [housing],
   heliofoil: [foilSheet],
   'regolith-ceramic': [ceramicTile],
 };
+
+/** Round silhouettes (by `SCRAP_SHAPES` index) get a round distant proxy; the others a plain box. */
+const ROUND_SHAPES: Readonly<Record<string, readonly number[]>> = { ferrous: [1], copper: [0] };
 
 /** Centers a geometry and scales its bounding box to 1 × 1 × 1 so it can be fitted to any collider box. */
 function normalizeUnit(geometry: BufferGeometry): BufferGeometry {
@@ -238,7 +253,25 @@ export function scrapGeometry(materialId: string, variant: number): BufferGeomet
   const key = `${materialId}:${index}`;
   let geometry = scrapGeometryCache.get(key);
   if (!geometry) {
-    geometry = normalizeUnit((shapes[index] ?? hexNut)());
+    geometry = normalizeUnit((shapes[index] ?? squareNut)());
+    scrapGeometryCache.set(key, geometry);
+  }
+  return geometry;
+}
+
+/**
+ * Few-triangle stand-in for a small silhouette seen from afar (the dense mountain draws tens of thousands of small
+ * pieces; triangle budget). Same unit box, so it swaps in place of the full shape.
+ */
+export function scrapProxyGeometry(materialId: string, variant: number): BufferGeometry {
+  const count = scrapVariantCount(materialId, 'small');
+  const round = ROUND_SHAPES[materialId]?.includes(Math.abs(variant) % Math.max(1, count)) ?? false;
+  const key = `proxy:${round ? 'round' : 'box'}`;
+  let geometry = scrapGeometryCache.get(key);
+  if (!geometry) {
+    geometry = normalizeUnit(
+      round ? new CylinderGeometry(0.5, 0.5, 1, 8).toNonIndexed() : new BoxGeometry(1, 1, 1).toNonIndexed(),
+    );
     scrapGeometryCache.set(key, geometry);
   }
   return geometry;
@@ -251,14 +284,14 @@ function iBeam(): BufferGeometry {
   shape.moveTo(-0.5, -0.5);
   shape.lineTo(0.5, -0.5);
   shape.lineTo(0.5, -0.32);
-  shape.lineTo(0.12, -0.32);
-  shape.lineTo(0.12, 0.32);
+  shape.lineTo(0.22, -0.32);
+  shape.lineTo(0.22, 0.32);
   shape.lineTo(0.5, 0.32);
   shape.lineTo(0.5, 0.5);
   shape.lineTo(-0.5, 0.5);
   shape.lineTo(-0.5, 0.32);
-  shape.lineTo(-0.12, 0.32);
-  shape.lineTo(-0.12, -0.32);
+  shape.lineTo(-0.22, 0.32);
+  shape.lineTo(-0.22, -0.32);
   shape.lineTo(-0.5, -0.32);
   shape.closePath();
   const geometry = new ExtrudeGeometry(shape, { depth: 2.4, bevelEnabled: false });
@@ -269,7 +302,7 @@ function iBeam(): BufferGeometry {
 function engineBlock(): BufferGeometry {
   const parts = [new RoundedBoxGeometry(1.6, 0.8, 1, 2, 0.08).toNonIndexed()];
   for (const x of [-0.5, 0, 0.5]) {
-    parts.push(new CylinderGeometry(0.2, 0.2, 0.35, 10).toNonIndexed().translate(x, 0.55, 0));
+    parts.push(new CylinderGeometry(0.22, 0.22, 0.1, 10).toNonIndexed().translate(x, 0.45, 0));
   }
   parts.push(new BoxGeometry(1.7, 0.12, 0.3).toNonIndexed().translate(0, -0.2, 0.55));
   return mergeGeometries(parts);
@@ -279,20 +312,19 @@ function panelStack(): BufferGeometry {
   const sheets = [0, 1, 2].map((i) =>
     new RoundedBoxGeometry(1.6, 0.14, 1.1, 1, 0.04).toNonIndexed().translate(i * 0.08, i * 0.16, -i * 0.06),
   );
-  return mergeGeometries([...sheets, stampedPanel().scale(0.6, 0.3, 0.6).translate(0.1, 0.48, 0)]);
+  return mergeGeometries(sheets);
 }
 
 function spool(): BufferGeometry {
   const core = new CylinderGeometry(0.42, 0.42, 1, 14).toNonIndexed();
-  const flanges = [-0.5, 0.5].map((y) => new CylinderGeometry(0.6, 0.6, 0.1, 16).toNonIndexed().translate(0, y, 0));
+  const flanges = [-0.5, 0.5].map((y) => new CylinderGeometry(0.53, 0.53, 0.1, 16).toNonIndexed().translate(0, y, 0));
   const wraps = [-0.25, 0, 0.25].map((y) => {
     const ring = new TorusGeometry(0.44, 0.07, 6, 16).toNonIndexed();
     ring.rotateX(Math.PI / 2);
     return ring.translate(0, y, 0);
   });
-  const merged = mergeGeometries([core, ...flanges, ...wraps]);
-  merged.rotateZ(Math.PI / 2);
-  return merged;
+  // Stands on a flange: lying on its side, its round top would leave the box corners empty.
+  return mergeGeometries([core, ...flanges, ...wraps]);
 }
 
 function crate(): BufferGeometry {
@@ -313,7 +345,6 @@ function solarPanel(): BufferGeometry {
       parts.push(new BoxGeometry(0.38, 0.06, 0.34).toNonIndexed().translate(-0.66 + i * 0.44, 0.07, -0.4 + j * 0.4));
     }
   }
-  parts.push(new BoxGeometry(0.12, 0.5, 0.12).toNonIndexed().translate(0, -0.3, 0));
   return mergeGeometries(parts);
 }
 

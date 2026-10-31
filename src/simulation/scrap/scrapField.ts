@@ -59,6 +59,8 @@ export interface ScrapFieldMetrics {
 }
 
 const IDENTITY: Quat = { x: 0, y: 0, z: 0, w: 1 };
+/** Clusters within this distance of an awake piece of a solid cluster stay loaded, meters. */
+const AWAKE_SUPPORT_REACH = 2;
 
 interface ClusterRecord {
   readonly id: string;
@@ -66,6 +68,8 @@ interface ClusterRecord {
   readonly solid: boolean;
   /** Solid clusters hold fixed colliders only while loaded (near a player, see `streamSolids`). */
   loaded: boolean;
+  /** Ground-plane extent of the cluster's pieces as laid out (streaming distance). */
+  readonly area: { readonly minX: number; readonly maxX: number; readonly minZ: number; readonly maxZ: number };
   decorativeInstances: number;
 }
 
@@ -80,6 +84,10 @@ export class ScrapField {
   readonly #clusterOf = new Map<EntityId, string>();
   /** Dormant pieces of solid clusters by bounds, to find what rests on a piece that moves. */
   readonly #resting = new BoundsGrid<EntityId>();
+  readonly #listeners = new Set<(id: EntityId) => void>();
+  /** Collider changes of loaded/unloaded clusters not applied yet (spread over frames, see `pumpSolids`). */
+  readonly #solidQueue = new Map<EntityId, 'add' | 'drop'>();
+  #version = 0;
 
   constructor(physics: PhysicsWorldPort, source: readonly ScrapClusterSpec[] | ScrapFieldSnapshot) {
     this.#physics = physics;
@@ -114,11 +122,14 @@ export class ScrapField {
       this.#clusterOf.set(piece.id, cluster.id);
     }
     const solid = cluster.solid === true;
+    const xs = cluster.pieces.map((piece) => piece.position.x);
+    const zs = cluster.pieces.map((piece) => piece.position.z);
     this.#clusters.set(cluster.id, {
       id: cluster.id,
       pieceIds,
       solid,
       loaded: solid,
+      area: { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) },
       decorativeInstances: cluster.decorativeInstances,
     });
     if (solid) for (const id of pieceIds) this.#makeSolid(id);
@@ -129,9 +140,16 @@ export class ScrapField {
     return this.#clusterOf.get(id);
   }
 
-  /** Cluster ids with the average position of their remaining pieces (for distance-based activation). */
-  clusterCenters(): { id: string; x: number; z: number; remaining: number }[] {
-    return [...this.#clusters.values()].map((cluster) => {
+  /**
+   * Cluster ids with the average position of their remaining pieces (for distance-based activation). Solid clusters
+   * stream by `streamSolids` instead, so callers can leave them out (`solid: false`; the dense mountain has thousands
+   * of pieces to average).
+   */
+  clusterCenters(filter: { readonly solid?: boolean } = {}): { id: string; x: number; z: number; remaining: number }[] {
+    const clusters = [...this.#clusters.values()].filter(
+      (cluster) => filter.solid === undefined || cluster.solid === filter.solid,
+    );
+    return clusters.map((cluster) => {
       let x = 0;
       let z = 0;
       let remaining = 0;
@@ -152,6 +170,22 @@ export class ScrapField {
 
   bodyOf(id: EntityId): PhysicsBodyHandle | undefined {
     return this.#bodies.get(id);
+  }
+
+  /** Changes whenever a piece wakes, returns to dormant or is removed (views redraw only then). */
+  get version(): number {
+    return this.#version;
+  }
+
+  /** Calls `listener` with the id of every piece that wakes, returns to dormant or is removed; returns unsubscribe. */
+  onStateChange(listener: (id: EntityId) => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  /** Collider changes `streamSolids` queued and has not applied yet. */
+  get pendingSolids(): number {
+    return this.#solidQueue.size;
   }
 
   /** Number of pieces with a dynamic body. */
@@ -255,31 +289,57 @@ export class ScrapField {
    * Physics streaming for solid clusters: each fixed collider costs simulation time even at rest, and a dormant
    * piece far from every player cannot be touched by anything, so clusters keep their colliders only within
    * `radius` of a focus point (players), dropping them past `radius + hysteresis`. Returns clusters changed.
+   * At most `budget` colliders are added or removed now; the rest wait for `pumpSolids` (one cluster can hold
+   * hundreds of pieces, too many to create in one frame).
    */
-  streamSolids(focus: readonly Vec3[], radius: number, hysteresis = 6): number {
+  streamSolids(focus: readonly Vec3[], radius: number, hysteresis = 6, budget = Infinity): number {
+    // Awake pieces of solid clusters keep the colliders around them, so nothing they rest on vanishes under them.
+    const awake: Vec3[] = [];
+    for (const [id, handle] of this.#bodies) {
+      const clusterId = this.#clusterOf.get(id);
+      if (clusterId !== undefined && this.#clusters.get(clusterId)?.solid)
+        awake.push(this.#physics.bodyPosition(handle));
+    }
     let changed = 0;
     for (const cluster of this.#clusters.values()) {
       if (!cluster.solid) continue;
+      const { minX, maxX, minZ, maxZ } = cluster.area;
+      const away = (point: Vec3): number =>
+        Math.hypot(Math.max(minX - point.x, 0, point.x - maxX), Math.max(minZ - point.z, 0, point.z - maxZ));
       let distance = Infinity;
-      for (const id of cluster.pieceIds) {
-        const piece = this.#pieces.get(id);
-        if (!piece || piece.state === 'removed') continue;
-        for (const point of focus) {
-          distance = Math.min(distance, Math.hypot(piece.position.x - point.x, piece.position.z - point.z));
-        }
-        if (distance < radius) break;
-      }
+      for (const point of focus) distance = Math.min(distance, away(point));
+      for (const point of awake) distance = Math.min(distance, away(point) + radius - AWAKE_SUPPORT_REACH);
       if (!cluster.loaded && distance < radius) {
         cluster.loaded = true;
-        for (const id of cluster.pieceIds) this.#makeSolid(id);
+        for (const id of cluster.pieceIds) this.#solidQueue.set(id, 'add');
         changed += 1;
       } else if (cluster.loaded && distance > radius + hysteresis) {
         cluster.loaded = false;
-        for (const id of cluster.pieceIds) this.#dropSolid(id);
+        for (const id of cluster.pieceIds) this.#solidQueue.set(id, 'drop');
         changed += 1;
       }
     }
+    this.pumpSolids(budget);
     return changed;
+  }
+
+  /**
+   * Applies up to `budget` queued collider changes, additions first (the player may be walking toward them; removals
+   * are far away). Returns how many were applied.
+   */
+  pumpSolids(budget: number): number {
+    let applied = 0;
+    for (const kind of ['add', 'drop'] as const) {
+      for (const [id, queued] of this.#solidQueue) {
+        if (applied >= budget) return applied;
+        if (queued !== kind) continue;
+        this.#solidQueue.delete(id);
+        if (kind === 'add') this.#makeSolid(id);
+        else this.#dropSolid(id);
+        applied += 1;
+      }
+    }
+    return applied;
   }
 
   /** Active pieces with their body handle and live position (targeting input). */
@@ -321,6 +381,7 @@ export class ScrapField {
     }
     this.#dropSolid(id);
     this.#pieces.set(id, { ...piece, state: 'removed' });
+    this.#changed(id);
     if (bounds) for (const above of this.#restingOn(bounds)) this.disturb(above);
     const clusterId = this.#clusterOf.get(id);
     const cluster = clusterId === undefined ? undefined : this.#clusters.get(clusterId);
@@ -390,6 +451,7 @@ export class ScrapField {
     });
     this.#bodies.set(id, handle);
     this.#pieces.set(id, { ...piece, state: 'active' });
+    this.#changed(id);
     return true;
   }
 
@@ -405,6 +467,7 @@ export class ScrapField {
     });
     this.#physics.removeBody(handle);
     this.#bodies.delete(id);
+    this.#changed(id);
     const clusterId = this.#clusterOf.get(id);
     if (clusterId !== undefined && this.#clusters.get(clusterId)?.loaded) this.#makeSolid(id);
   }
@@ -427,6 +490,11 @@ export class ScrapField {
       const upper = this.#boundsOf(id);
       return upper !== null && mayRestOn(upper, lower);
     });
+  }
+
+  #changed(id: EntityId): void {
+    this.#version += 1;
+    for (const listener of this.#listeners) listener(id);
   }
 
   #makeSolid(id: EntityId): void {

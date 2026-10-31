@@ -23,6 +23,48 @@ export function mountainHeight(x: number, z: number): number {
   return r >= 1 ? 0 : SCRAP_MOUNTAIN.peak * (1 - r) ** 1.4;
 }
 
+/**
+ * The mountain core collider: a heightfield sampled on this grid (columns along X, rows along Z). The visible core is
+ * built from the same samples and triangles (`mountainCoreTriangles`), so pieces resting on the collider touch what
+ * the player sees (owner check 2026-10-30: a finer, lowered render mesh left them hovering about 5 cm).
+ */
+export const MOUNTAIN_CORE_GRID = Object.freeze({ rows: 48, cols: 48 });
+
+/** Core collider height at a sample position. */
+export function mountainCoreSample(x: number, z: number): number {
+  return mountainHeight(x, z) * SCRAP_MOUNTAIN.colliderScale;
+}
+
+/**
+ * Triangles of the core collider surface (x, y, z per vertex, three vertices per triangle, facing up), split like the
+ * physics heightfield: each cell along its (max X, min Z)–(min X, max Z) diagonal. Cells flat on the ground are left
+ * out, so the core never fights the ground plane.
+ */
+export function mountainCoreTriangles(): Float32Array {
+  const { rows, cols } = MOUNTAIN_CORE_GRID;
+  const x0 = SCRAP_MOUNTAIN.center.x - SCRAP_MOUNTAIN.radiusX;
+  const z0 = SCRAP_MOUNTAIN.center.z - SCRAP_MOUNTAIN.radiusZ;
+  const dx = (SCRAP_MOUNTAIN.radiusX * 2) / cols;
+  const dz = (SCRAP_MOUNTAIN.radiusZ * 2) / rows;
+  const out: number[] = [];
+  const vertex = (col: number, row: number): [number, number, number] => {
+    const x = x0 + col * dx;
+    const z = z0 + row * dz;
+    return [x, mountainCoreSample(x, z), z];
+  };
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const p00 = vertex(col, row);
+      const p10 = vertex(col + 1, row);
+      const p01 = vertex(col, row + 1);
+      const p11 = vertex(col + 1, row + 1);
+      if (p00[1] <= 0 && p10[1] <= 0 && p01[1] <= 0 && p11[1] <= 0) continue;
+      out.push(...p00, ...p01, ...p10, ...p10, ...p01, ...p11);
+    }
+  }
+  return new Float32Array(out);
+}
+
 /** Half-size of the walkable world; invisible walls keep the player on solid ground. */
 export const WORLD_HALF_SIZE = 200;
 
@@ -114,9 +156,9 @@ export function addBackdropColliders(physics: PhysicsWorldPort, layout: Backdrop
     center: { x: SCRAP_MOUNTAIN.center.x, y: 0, z: SCRAP_MOUNTAIN.center.z },
     sizeX: SCRAP_MOUNTAIN.radiusX * 2,
     sizeZ: SCRAP_MOUNTAIN.radiusZ * 2,
-    rows: 48,
-    cols: 48,
-    height: (x, z) => mountainHeight(x, z) * SCRAP_MOUNTAIN.colliderScale,
+    rows: MOUNTAIN_CORE_GRID.rows,
+    cols: MOUNTAIN_CORE_GRID.cols,
+    height: mountainCoreSample,
     // Packed scrap is rough: pieces settle on the core's steepest slopes (about 33 degrees) without sliding.
     friction: 1,
   });

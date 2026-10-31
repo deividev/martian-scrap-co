@@ -3,6 +3,7 @@ import {
   ACESFilmicToneMapping,
   AmbientLight,
   BackSide,
+  BufferGeometry,
   Color,
   CylinderGeometry,
   DirectionalLight,
@@ -19,7 +20,7 @@ import {
   SphereGeometry,
   type WebGLRenderer,
 } from 'three';
-import { SCRAP_MOUNTAIN, mountainHeight, type BackdropLayout } from '../simulation/yard/backdrop';
+import { mountainCoreTriangles, type BackdropLayout } from '../simulation/yard/backdrop';
 import { mergeStatic } from '../models/mergeStatic';
 import { STYLE, createColonyDome, createStationDome, paint } from '../models/styledModels';
 import { createContainerModel, createFloodlightModel, createLayeredRock, createMesa } from '../models/sceneryModels';
@@ -102,19 +103,19 @@ export function createMarsEnvironment(scene: Scene, renderer: WebGLRenderer, lay
   // Static scenery is batched into a few meshes (draw-call budget); colliders come from the backdrop layout.
   const scenery = new Group();
 
-  // The mountain core: a packed mound of dark scrap under the real pieces (same surface as its collider).
-  const coreGeometry = new PlaneGeometry(SCRAP_MOUNTAIN.radiusX * 2, SCRAP_MOUNTAIN.radiusZ * 2, 96, 56);
-  coreGeometry.rotateX(-Math.PI / 2);
-  const corePositions = coreGeometry.attributes['position'];
+  // The mountain core: a packed mound of dark scrap under the real pieces, exactly its collider surface.
+  const corePositions = mountainCoreTriangles();
+  const coreGeometry = new BufferGeometry();
+  coreGeometry.setAttribute('position', new Float32BufferAttribute(corePositions, 3));
   const coreColors: number[] = [];
   const coreTones = [new Color('#4f4a4c'), new Color('#6b5248'), new Color('#3f4450')];
-  for (let i = 0; i < (corePositions?.count ?? 0); i += 1) {
-    const x = (corePositions?.getX(i) ?? 0) + SCRAP_MOUNTAIN.center.x;
-    const z = (corePositions?.getZ(i) ?? 0) + SCRAP_MOUNTAIN.center.z;
-    corePositions?.setY(i, mountainHeight(x, z) * SCRAP_MOUNTAIN.colliderScale - 0.05);
+  for (let i = 0; i < corePositions.length; i += 9) {
+    // One tone per triangle, from its first vertex.
+    const x = corePositions[i] ?? 0;
+    const z = corePositions[i + 2] ?? 0;
     const n = Math.abs(Math.sin(x * 1.7) * Math.cos(z * 1.3) + Math.sin((x - z) * 0.9));
     const pick = coreTones[Math.floor(n * 1.5) % coreTones.length] ?? coreTones[0];
-    if (pick) coreColors.push(pick.r, pick.g, pick.b);
+    if (pick) for (let v = 0; v < 3; v += 1) coreColors.push(pick.r, pick.g, pick.b);
   }
   coreGeometry.setAttribute('color', new Float32BufferAttribute(coreColors, 3));
   coreGeometry.computeVertexNormals();
@@ -122,7 +123,6 @@ export function createMarsEnvironment(scene: Scene, renderer: WebGLRenderer, lay
     coreGeometry,
     new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true }),
   );
-  core.position.set(SCRAP_MOUNTAIN.center.x, 0, SCRAP_MOUNTAIN.center.z);
   core.receiveShadow = true;
   scene.add(core);
 

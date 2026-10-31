@@ -47,21 +47,24 @@ export const MOUNTAIN_MATERIALS: readonly (readonly [string, number])[] = [
   ['regolith-ceramic', 0.1],
 ];
 
-/** First-pass bake tuning; counts are placeholders checked against the MSC-019 budgets. */
+/**
+ * Bake tuning; counts are placeholders checked against the MSC-019 budgets. Owner check 2026-10-30: more pieces of
+ * every size, above all small and medium ones, with medium and large parts buried under heaps of small pieces.
+ */
 export const MOUNTAIN_BAKE = Object.freeze({
   seed: 11,
-  large: 140,
-  medium: 550,
+  large: 170,
+  medium: 1700,
   /** Share of medium/large parts that get a heap of small pieces poured over them. */
-  heapShare: 0.9,
+  heapShare: 1,
   /** Small pieces per square meter of a part's footprint in its heap (scaled by 0.6–1.2). */
-  heapDensity: 11,
+  heapDensity: 14,
   /** Share of a heap poured over the part's own footprint. */
   heapOnTop: 0.7,
   /** Extra heap radius around a part's footprint, meters. */
   heapSpread: 0.45,
   /** Small pieces scattered over the whole mountain. */
-  scattered: 300,
+  scattered: 1500,
   /** Small pieces simulated together. */
   smallWave: 900,
   /** Pieces spawn inside this share of the mound radius and are kept inside `keepLimit`. */
@@ -75,13 +78,18 @@ export const MOUNTAIN_BAKE = Object.freeze({
   footKeepLimit: 1.25,
   /** A piece is at rest below this speed, m/s. */
   restSpeed: 0.03,
-  /** Passes settling all small pieces together as dynamic bodies. */
-  jointPasses: 3,
+  /**
+   * Passes settling all small pieces together as dynamic bodies, each from fresh bodies as the game creates them
+   * when it wakes a piece: at least `jointPassesMin`, then until no piece moves `jointRestMove` (meters) in a pass.
+   */
+  jointPassesMin: 3,
+  jointPassesMax: 10,
+  jointRestMove: 0.05,
   /** Kilograms per cubic meter of collider box (hollow, stylized scrap). */
   density: 140,
 });
 
-type Tuning = typeof MOUNTAIN_BAKE;
+type Tuning = { readonly [K in keyof typeof MOUNTAIN_BAKE]: number };
 
 interface Pending {
   readonly handle: PhysicsBodyHandle;
@@ -153,6 +161,154 @@ export interface BakeProgress {
   readonly worstMove: number;
 }
 
+/** Settles a wave; pieces that moved more than `dropMovedOver` meters are discarded. Returns the worst move. */
+type Settle = (wave: string, pending: Pending[], keepLimit?: number, dropMovedOver?: number) => number;
+
+interface FrozenSmall {
+  readonly handle: PhysicsBodyHandle;
+  readonly piece: Pending;
+  readonly record: BakedPiece;
+}
+
+/**
+ * A wave settler: simulates until the wave is at rest, drops pieces that never rested or left the mound, then freezes
+ * the rest as fixed colliders (recorded in `kept`; parts also in `parts`, small pieces in `frozenSmall`).
+ */
+function createSettle(
+  physics: PhysicsWorldPort,
+  tuning: Tuning,
+  kept: BakedPiece[],
+  parts: { readonly x: number; readonly z: number; readonly h: Vec3 }[],
+  frozenSmall: FrozenSmall[],
+  onProgress?: (progress: BakeProgress) => void,
+): Settle {
+  return (wave, pending, keepLimit = tuning.keepLimit, dropMovedOver = Infinity) => {
+    const starts = new Map(pending.map((piece) => [piece, physics.bodyPosition(piece.handle)]));
+    const maxSteps = Math.round(tuning.maxSettleSeconds / physics.fixedStepSeconds);
+    let live = pending;
+    let steps = 0;
+    // Rest means really still: the engine's sleep would stop slow slides, so the wave never sleeps here and is
+    // done once every piece stays under the rest speed for two checks in a row.
+    const moving = (piece: Pending): boolean => {
+      const v = physics.bodyLinearVelocity(piece.handle);
+      return Math.hypot(v.x, v.y, v.z) > tuning.restSpeed;
+    };
+    for (let pass = 0; pass < 4; pass += 1) {
+      let calm = 0;
+      for (let i = 0; i < maxSteps && calm < 2; i += 1) {
+        physics.step();
+        steps += 1;
+        if (i % 30 === 29) calm = live.some(moving) ? 0 : calm + 1;
+      }
+      const drop = live.filter((piece) => {
+        const p = physics.bodyPosition(piece.handle);
+        return moving(piece) || moundRadius(p.x, p.z) > keepLimit;
+      });
+      if (drop.length === 0) break;
+      for (const piece of drop) physics.removeBody(piece.handle);
+      live = live.filter((piece) => !drop.includes(piece));
+      // Whatever rested on a dropped piece must settle again.
+      for (const piece of live) physics.setLinearVelocity(piece.handle, { x: 0, y: 0, z: 0 });
+    }
+    let worstMove = 0;
+    let frozen = 0;
+    for (const piece of live) {
+      const p = physics.bodyPosition(piece.handle);
+      const start = starts.get(piece);
+      const moved = start ? Math.hypot(p.x - start.x, p.y - start.y, p.z - start.z) : 0;
+      worstMove = Math.max(worstMove, moved);
+      const q = physics.bodyRotation(piece.handle);
+      physics.removeBody(piece.handle);
+      if (moved > dropMovedOver) continue;
+      frozen += 1;
+      const position = { x: round(p.x, 4), y: round(p.y, 4), z: round(p.z, 4) };
+      const norm = Math.hypot(q.x, q.y, q.z, q.w);
+      const rotation = { x: q.x / norm, y: q.y / norm, z: q.z / norm, w: q.w / norm };
+      const handle = physics.addBox({ kind: 'fixed', position, halfExtents: piece.h, rotation });
+      const record: BakedPiece = {
+        m: piece.m,
+        s: piece.s,
+        v: piece.v,
+        p: [position.x, position.y, position.z],
+        q: [round(rotation.x, 5), round(rotation.y, 5), round(rotation.z, 5), round(rotation.w, 5)],
+        h: [piece.h.x, piece.h.y, piece.h.z],
+        k: piece.k,
+      };
+      kept.push(record);
+      if (piece.s > 0) parts.push({ x: position.x, z: position.z, h: piece.h });
+      else frozenSmall.push({ handle, piece, record });
+    }
+    onProgress?.({ wave, spawned: pending.length, kept: frozen, steps, worstMove });
+    return worstMove;
+  };
+}
+
+/**
+ * Joint passes: every small piece settles again together, as dynamic bodies. Waves froze earlier pieces as fixed
+ * supports; once woken in the game those supports can give, so the layout must hold with all of them dynamic. Each
+ * pass starts from fresh bodies, as the game creates them when it wakes a piece (no contact history), and passes
+ * repeat until none moves `jointRestMove` (the last pass's worst move is the bake's stability evidence).
+ */
+function settleJointly(
+  physics: PhysicsWorldPort,
+  tuning: Tuning,
+  kept: BakedPiece[],
+  frozenSmall: FrozenSmall[],
+  settle: Settle,
+): void {
+  for (let pass = 1; pass <= tuning.jointPassesMax; pass += 1) {
+    const smalls = frozenSmall.splice(0);
+    const records = new Set(smalls.map(({ record }) => record));
+    const others = kept.filter((record) => !records.has(record));
+    kept.length = 0;
+    kept.push(...others);
+    const pending = smalls.map(({ handle, piece, record }) => {
+      physics.removeBody(handle);
+      return {
+        ...piece,
+        handle: physics.addBox({
+          kind: 'dynamic',
+          position: { x: record.p[0], y: record.p[1], z: record.p[2] },
+          rotation: { x: record.q[0], y: record.q[1], z: record.q[2], w: record.q[3] },
+          halfExtents: piece.h,
+          massKg: piece.k,
+          canSleep: false,
+        }),
+      };
+    });
+    // Past the minimum passes, pieces that still moved are restless spots (a jammed piece that gives way each
+    // time it is created fresh): they are discarded, and the next pass checks what they held.
+    const restless = pass >= tuning.jointPassesMin ? tuning.jointRestMove : Infinity;
+    const worstMove = settle(`joint ${pass}`, pending, tuning.footKeepLimit, restless);
+    if (pass >= tuning.jointPassesMin && worstMove < tuning.jointRestMove) return;
+  }
+}
+
+/**
+ * Runs the joint passes again on a committed bake (`npm run bake:mountain -- --resettle`), without dropping the
+ * waves again: parts stay fixed where they are, small pieces settle together until at rest.
+ */
+export function resettleBakedMountain(
+  physics: PhysicsWorldPort,
+  baked: BakedMountain,
+  tuning: Tuning = MOUNTAIN_BAKE,
+  onProgress?: (progress: BakeProgress) => void,
+): BakedMountain {
+  const kept: BakedPiece[] = [...baked.pieces];
+  const frozenSmall: FrozenSmall[] = [];
+  for (const record of baked.pieces) {
+    const position = { x: record.p[0], y: record.p[1], z: record.p[2] };
+    const rotation = { x: record.q[0], y: record.q[1], z: record.q[2], w: record.q[3] };
+    const h = { x: record.h[0], y: record.h[1], z: record.h[2] };
+    const handle = physics.addBox({ kind: 'fixed', position, rotation, halfExtents: h });
+    if (record.s === 0)
+      frozenSmall.push({ handle, record, piece: { handle, m: record.m, s: 0, v: record.v, h, k: record.k } });
+  }
+  const settle = createSettle(physics, tuning, kept, [], frozenSmall, onProgress);
+  settleJointly(physics, { ...tuning, jointPassesMin: 1 }, kept, frozenSmall, settle);
+  return { format: 1, seed: baked.seed, materials: baked.materials, pieces: kept };
+}
+
 /**
  * Settles the mountain in `physics`, which must already hold the backdrop colliders (ground, mountain core,
  * station, rocks). Pieces are left in the world as fixed colliders.
@@ -175,7 +331,7 @@ export function bakeScrapMountain(
   };
   const kept: BakedPiece[] = [];
   /** Fixed colliders of settled small pieces, for the joint pass. */
-  const frozenSmall: { handle: PhysicsBodyHandle; piece: Pending; record: BakedPiece }[] = [];
+  const frozenSmall: FrozenSmall[] = [];
   const parts: { readonly x: number; readonly z: number; readonly h: Vec3 }[] = [];
 
   /** Highest surface under a disc (center and four rim points), from rays cast straight down. */
@@ -227,65 +383,7 @@ export function bakeScrapMountain(
     return { handle, m: pickMaterial(), s, v: s === 2 ? Math.floor(random() * 8) : 0, h, k };
   };
 
-  /** Simulates until the wave sleeps, drops pieces that never rested or left the mound, then freezes the rest. */
-  const settle = (wave: string, pending: Pending[], keepLimit: number = tuning.keepLimit): void => {
-    const starts = new Map(pending.map((piece) => [piece, physics.bodyPosition(piece.handle)]));
-    const maxSteps = Math.round(tuning.maxSettleSeconds / physics.fixedStepSeconds);
-    let live = pending;
-    let steps = 0;
-    // Rest means really still: the engine's sleep would stop slow slides, so the wave never sleeps here and is
-    // done once every piece stays under the rest speed for two checks in a row.
-    const moving = (piece: Pending): boolean => {
-      const v = physics.bodyLinearVelocity(piece.handle);
-      return Math.hypot(v.x, v.y, v.z) > tuning.restSpeed;
-    };
-    for (let pass = 0; pass < 4; pass += 1) {
-      let calm = 0;
-      for (let i = 0; i < maxSteps && calm < 2; i += 1) {
-        physics.step();
-        steps += 1;
-        if (i % 30 === 29) calm = live.some(moving) ? 0 : calm + 1;
-      }
-      const drop = live.filter((piece) => {
-        const p = physics.bodyPosition(piece.handle);
-        return moving(piece) || moundRadius(p.x, p.z) > keepLimit;
-      });
-      if (drop.length === 0) break;
-      for (const piece of drop) physics.removeBody(piece.handle);
-      live = live.filter((piece) => !drop.includes(piece));
-      // Whatever rested on a dropped piece must settle again.
-      for (const piece of live) physics.setLinearVelocity(piece.handle, { x: 0, y: 0, z: 0 });
-    }
-    for (const piece of live) {
-      const p = physics.bodyPosition(piece.handle);
-      const q = physics.bodyRotation(piece.handle);
-      physics.removeBody(piece.handle);
-      const position = { x: round(p.x, 4), y: round(p.y, 4), z: round(p.z, 4) };
-      const norm = Math.hypot(q.x, q.y, q.z, q.w);
-      const rotation = { x: q.x / norm, y: q.y / norm, z: q.z / norm, w: q.w / norm };
-      const handle = physics.addBox({ kind: 'fixed', position, halfExtents: piece.h, rotation });
-      const record: BakedPiece = {
-        m: piece.m,
-        s: piece.s,
-        v: piece.v,
-        p: [position.x, position.y, position.z],
-        q: [round(rotation.x, 5), round(rotation.y, 5), round(rotation.z, 5), round(rotation.w, 5)],
-        h: [piece.h.x, piece.h.y, piece.h.z],
-        k: piece.k,
-      };
-      kept.push(record);
-      if (piece.s > 0) parts.push({ x: position.x, z: position.z, h: piece.h });
-      else frozenSmall.push({ handle, piece, record });
-    }
-    let worstMove = 0;
-    for (const piece of live) {
-      const start = starts.get(piece);
-      const record = kept[kept.length - live.length + live.indexOf(piece)];
-      if (!start || !record) continue;
-      worstMove = Math.max(worstMove, Math.hypot(record.p[0] - start.x, record.p[1] - start.y, record.p[2] - start.z));
-    }
-    onProgress?.({ wave, spawned: pending.length, kept: live.length, steps, worstMove });
-  };
+  const settle = createSettle(physics, tuning, kept, parts, frozenSmall, onProgress);
 
   const box = (x: [number, number], y: [number, number], z: [number, number]): Vec3 => ({
     x: round(x[0] + random() * (x[1] - x[0]), 3),
@@ -353,31 +451,7 @@ export function bakeScrapMountain(
   }
   settle('foot', foot, tuning.footKeepLimit);
 
-  // Joint passes: every small piece settles again together, as dynamic bodies. Waves froze earlier pieces as fixed
-  // supports; once woken in the game those supports can give, so the layout must hold with all of them dynamic.
-  // The last pass should barely move anything (its worst move is reported as the bake's stability evidence).
-  for (let pass = 1; pass <= tuning.jointPasses; pass += 1) {
-    const smalls = frozenSmall.splice(0);
-    const records = new Set(smalls.map(({ record }) => record));
-    const others = kept.filter((record) => !records.has(record));
-    kept.length = 0;
-    kept.push(...others);
-    const pending = smalls.map(({ handle, piece, record }) => {
-      physics.removeBody(handle);
-      return {
-        ...piece,
-        handle: physics.addBox({
-          kind: 'dynamic',
-          position: { x: record.p[0], y: record.p[1], z: record.p[2] },
-          rotation: { x: record.q[0], y: record.q[1], z: record.q[2], w: record.q[3] },
-          halfExtents: piece.h,
-          massKg: piece.k,
-          canSleep: false,
-        }),
-      };
-    });
-    settle(`joint ${pass}`, pending, tuning.footKeepLimit);
-  }
+  settleJointly(physics, tuning, kept, frozenSmall, settle);
 
   return { format: 1, seed: tuning.seed, materials, pieces: kept };
 }

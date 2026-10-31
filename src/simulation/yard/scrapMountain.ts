@@ -39,8 +39,11 @@ export interface ScrapMountainLayout {
 }
 
 export const SCRAP_MOUNTAIN_TUNING = Object.freeze({
-  /** Grid cell grouping small pieces into clusters (save structure). */
-  clusterCell: 9,
+  /**
+   * Grid cell grouping small pieces into clusters (save structure and collider streaming). Small enough that loading
+   * one cluster's colliders stays a few hundred bodies on the dense mountain.
+   */
+  clusterCell: 6,
 });
 
 /** Spatial bucket size for aim queries. */

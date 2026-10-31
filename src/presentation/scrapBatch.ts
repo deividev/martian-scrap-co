@@ -1,5 +1,11 @@
 import { BatchedMesh, type BufferGeometry, type Scene } from 'three';
-import { largeScrapGeometry, scrapGeometry, scrapMaterial, scrapVariantCount } from '../models/styledModels';
+import {
+  largeScrapGeometry,
+  scrapGeometry,
+  scrapMaterial,
+  scrapProxyGeometry,
+  scrapVariantCount,
+} from '../models/styledModels';
 
 /** A drawn scrap piece: its batch and instance id there. */
 export interface ScrapInstance {
@@ -11,6 +17,8 @@ interface MaterialBatch {
   readonly mesh: BatchedMesh;
   readonly parts: number[];
   readonly large: number[];
+  /** Distant stand-ins of `parts`, same order. */
+  readonly proxies: number[];
 }
 
 /** Position and normal only, unindexed, so every silhouette fits one batch layout. */
@@ -50,6 +58,15 @@ export class ScrapBatches {
     return { mesh: batch.mesh, id: batch.mesh.addInstance(geometryId) };
   }
 
+  /** Draws a small/medium instance with its full silhouette or, from afar, its few-triangle stand-in. */
+  setDistant(instance: ScrapInstance, materialId: string, variant: number, distant: boolean): void {
+    const batch = this.#batch(materialId);
+    const ids = distant ? batch.proxies : batch.parts;
+    const geometryId = ids[Math.abs(variant) % ids.length] ?? 0;
+    if (instance.mesh.getGeometryIdAt(instance.id) !== geometryId)
+      instance.mesh.setGeometryIdAt(instance.id, geometryId);
+  }
+
   #batch(materialId: string): MaterialBatch {
     let batch = this.#batches.get(materialId);
     if (batch) return batch;
@@ -59,7 +76,11 @@ export class ScrapBatches {
     const large = Array.from({ length: scrapVariantCount(materialId, 'large') }, (_, v) =>
       batchable(largeScrapGeometry(materialId, v)),
     );
-    const vertices = [...parts, ...large].reduce((sum, g) => sum + (g.attributes['position']?.count ?? 0), 0);
+    const proxies = parts.map((_, v) => batchable(scrapProxyGeometry(materialId, v)));
+    const vertices = [...parts, ...large, ...proxies].reduce(
+      (sum, g) => sum + (g.attributes['position']?.count ?? 0),
+      0,
+    );
     const mesh = new BatchedMesh(64, vertices, 0, scrapMaterial(materialId, this.#glow));
     // Pieces move and hide every frame: cull per piece, skip whole-batch culling and per-frame sorting.
     mesh.frustumCulled = false;
@@ -71,6 +92,7 @@ export class ScrapBatches {
       mesh,
       parts: parts.map((g) => mesh.addGeometry(g)),
       large: large.map((g) => mesh.addGeometry(g)),
+      proxies: proxies.map((g) => mesh.addGeometry(g)),
     };
     this.#batches.set(materialId, batch);
     this.#scene.add(mesh);

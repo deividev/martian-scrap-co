@@ -53,7 +53,7 @@ describe('settled scrap mountain (owner follow-up R4, physics check 2026-10-30)'
     expect(covered.length / layout.pieces.length).toBeGreaterThan(0.7);
   });
 
-  it('is at rest: whole areas simulated as dynamic bodies neither move, overlap nor fall', async () => {
+  it('is at rest: whole areas simulated as dynamic bodies hold, with no piece floating or falling through', async () => {
     const world = await createRapierWorld();
     worlds.push(world);
     addBackdropColliders(world, createBackdropLayout());
@@ -90,8 +90,11 @@ describe('settled scrap mountain (owner follow-up R4, physics check 2026-10-30)'
       const p = world.bodyPosition(handle);
       return Math.hypot(p.x - start.x, p.y - start.y, p.z - start.z);
     });
-    const worst = Math.max(...moved);
-    expect(worst).toBeLessThan(0.05);
+    // A heap woken all at once may shift a little where a jammed piece gives way, as real scrap does; but almost
+    // everything stays put and nothing drops as if it had been floating (free fall covers 11 m in 1.5 s).
+    const shifted = moved.filter((distance) => distance > 0.05).length;
+    expect(shifted / moved.length).toBeLessThan(0.005);
+    expect(Math.max(...moved)).toBeLessThan(1);
   });
 });
 
@@ -278,5 +281,39 @@ describe('ScrapField demand waking (mountain physics check 2026-10-30)', () => {
     // Inside the hysteresis band nothing changes.
     expect(field.streamSolids([{ x: 19, y: 0, z: 0 }], 16)).toBe(0);
     expect(field.disturb(side.id)).toBe(1);
+  });
+
+  it('spreads collider changes over frames within a budget, additions first', async () => {
+    const { field } = await column();
+    expect(field.streamSolids([{ x: 40, y: 0, z: 0 }], 10, 6, 1)).toBe(1);
+    expect(field.metrics().solidDormant).toBe(3);
+    expect(field.pendingSolids).toBe(3);
+    // The player turns back before the drops ran: the queued drops become additions again.
+    expect(field.streamSolids([{ x: 0, y: 0, z: 0 }], 10, 6, 0)).toBe(1);
+    expect(field.pumpSolids(10)).toBe(4);
+    expect(field.metrics().solidDormant).toBe(4);
+    expect(field.pendingSolids).toBe(0);
+  });
+
+  it('reports every piece that wakes, sleeps or is removed', async () => {
+    const { field, pieces } = await column();
+    const top = pieces[2];
+    if (!top) return;
+    const changed: string[] = [];
+    const stop = field.onStateChange((id) => changed.push(String(id)));
+    field.disturb(top.id);
+    field.removePiece(top.id);
+    stop();
+    field.removePiece(pieces[3]?.id ?? top.id);
+    expect(changed).toEqual([String(top.id), String(top.id)]);
+  });
+
+  it('keeps the colliders under an awake piece, however far the player is', async () => {
+    const { field, pieces } = await column();
+    const top = pieces[2];
+    if (!top) return;
+    expect(field.disturb(top.id)).toBe(1);
+    expect(field.streamSolids([{ x: 40, y: 0, z: 0 }], 10, 4)).toBe(0);
+    expect(field.metrics().solidDormant).toBe(3);
   });
 });

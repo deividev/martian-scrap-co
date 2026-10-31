@@ -218,8 +218,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   // Owner follow-up R4: the giant mountain is real pieces (large, medium and small) with real colliders, settled
   // offline with the game's physics (it includes the starter spill at its foot).
   const mountainLayout = createScrapMountainLayout(allocator);
+  /** Small mountain pieces hold colliders within this radius of the player, meters (dense mountain, sim budget). */
+  const MOUNTAIN_SOLIDS = { radius: 10, hysteresis: 4, perFrame: 120 } as const;
   const scrap = new ScrapField(world, [createTestYardScrap(allocator), ...mountainLayout.smallClusters]);
-  scrap.streamSolids([TEST_YARD_SPAWN], 16);
+  scrap.streamSolids([TEST_YARD_SPAWN], MOUNTAIN_SOLIDS.radius, MOUNTAIN_SOLIDS.hysteresis);
   const mountain = new ScrapMountain(world, mountainLayout.pieces);
   const mountainView = new MountainView(
     scene,
@@ -360,7 +362,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   let lastActivation = 0;
   let lastTouch = 0;
   /** Mountain wake tuning (owner check 2026-10-30; placeholders within the MSC-019 budgets). */
-  const MOUNTAIN_WAKE = { settleDistance: 7, activeBudget: 260, touchReach: 0.65, solidRadius: 16 } as const;
+  const MOUNTAIN_WAKE = { settleDistance: 7, activeBudget: 260, touchReach: 0.65 } as const;
   const cart = new Cart(world, props, claims, allocator.allocate(), { x: 2, y: 0.4, z: 5 });
   const cartGroup = createCartModel(CART_TUNING.halfExtents);
   scene.add(mergeStatic(cartGroup));
@@ -530,7 +532,18 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   resize();
 
   const simSamples: number[] = [];
+  /** CPU milliseconds per frame section and the frame interval, last 600 frames (spike hunting). */
+  const FRAME_SECTIONS = ['interval', 'logic', 'sim', 'views', 'render', 'cpu'] as const;
+  const frameSamples = new Map<(typeof FRAME_SECTIONS)[number], number[]>(FRAME_SECTIONS.map((s) => [s, []]));
+  const sampleFrame = (section: (typeof FRAME_SECTIONS)[number], ms: number): void => {
+    const samples = frameSamples.get(section);
+    if (!samples) return;
+    samples.push(ms);
+    if (samples.length > 600) samples.shift();
+  };
   let lastPerf = 0;
+  /** Frames rendered since the last perf sample (FPS readout). */
+  let perfFrames = 0;
   let device: InputDevice = 'none';
   let accumulator = 0;
   let previous = performance.now();
@@ -538,6 +551,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   const euler = new Euler(0, 0, 0, 'YXZ');
 
   renderer.setAnimationLoop((now) => {
+    const frameStart = performance.now();
+    sampleFrame('interval', now - previous);
     const dt = Math.min((now - previous) / 1000, 0.1);
     previous = now;
     const frame = mergeFrames(keyboard.poll(), gamepad.poll(dt));
@@ -882,8 +897,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     // its settled pieces stay fixed until disturbed (collector, player, lost support), so nothing moves on its own.
     if (now - lastActivation > 500) {
       lastActivation = now;
-      for (const cluster of scrap.clusterCenters()) {
-        if (cluster.remaining === 0 || cluster.id.startsWith('pile-')) continue;
+      for (const cluster of scrap.clusterCenters({ solid: false })) {
+        if (cluster.remaining === 0) continue;
         const distance = Math.hypot(aimView.position.x - cluster.x, aimView.position.z - cluster.z);
         if (distance < 16) scrap.activateCluster(cluster.id);
         else if (distance > 22 && !collector.pulling.some((id) => scrap.piece(id) && scrap.bodyOf(id))) {
@@ -893,8 +908,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       // Disturbed mountain pieces that came to rest away from the player become fixed again where they lie.
       scrap.settleFar(aimView.position, MOUNTAIN_WAKE.settleDistance, new Set(collector.pulling));
       // Only the mountain around the player holds colliders (each costs simulation time even at rest).
-      scrap.streamSolids([aimView.position], MOUNTAIN_WAKE.solidRadius);
+      scrap.streamSolids([aimView.position], MOUNTAIN_SOLIDS.radius, MOUNTAIN_SOLIDS.hysteresis, 0);
     }
+    // Queued colliders arrive a few per frame (a whole cluster at once is a frame-time spike).
+    scrap.pumpSolids(MOUNTAIN_SOLIDS.perFrame);
     // Pieces the player walks into are pushed for real (while the active-piece budget allows).
     if (now - lastTouch > 100 && scrap.activeCount < MOUNTAIN_WAKE.activeBudget) {
       lastTouch = now;
@@ -938,6 +955,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     // Fixed-step simulation with bounded catch-up.
     accumulator = Math.min(accumulator + dt, step * 5);
     const simStart = performance.now();
+    sampleFrame('logic', simStart - frameStart);
     while (accumulator >= step) {
       player.fixedUpdate(frame.move, step);
       const eye = player.view().eye;
@@ -949,8 +967,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       props.recoverFallen();
       accumulator -= step;
     }
-    simSamples.push(performance.now() - simStart);
+    const viewsStart = performance.now();
+    simSamples.push(viewsStart - simStart);
     if (simSamples.length > 600) simSamples.shift();
+    sampleFrame('sim', viewsStart - simStart);
 
     const view = player.view();
     camera.position.set(view.eye.x, view.eye.y, view.eye.z);
@@ -1135,12 +1155,28 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       device,
     });
     canvas.dataset['awakeBodies'] = String(world.awakeBodyCount());
+    const renderStart = performance.now();
+    sampleFrame('views', renderStart - viewsStart);
     renderer.render(scene, camera);
+    const frameEnd = performance.now();
+    sampleFrame('render', frameEnd - renderStart);
+    sampleFrame('cpu', frameEnd - frameStart);
+    perfFrames += 1;
     if (now - lastPerf > 1000) {
+      const fps = Number(((perfFrames * 1000) / (now - lastPerf)).toFixed(1));
       lastPerf = now;
+      perfFrames = 0;
       const sorted = [...simSamples].sort((a, b) => a - b);
       const at = (q: number): number => Number((sorted[Math.floor((sorted.length - 1) * q)] ?? 0).toFixed(2));
+      const frameMs: Record<string, { p50: number; p99: number; max: number }> = {};
+      for (const [section, samples] of frameSamples) {
+        const s = [...samples].sort((a, b) => a - b);
+        const q = (p: number): number => Number((s[Math.floor((s.length - 1) * p)] ?? 0).toFixed(2));
+        frameMs[section] = { p50: q(0.5), p99: q(0.99), max: q(1) };
+      }
+      canvas.dataset['frameMs'] = JSON.stringify(frameMs);
       canvas.dataset['perf'] = JSON.stringify({
+        fps,
         simP50: at(0.5),
         simP95: at(0.95),
         simP99: at(0.99),
