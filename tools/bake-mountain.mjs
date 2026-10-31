@@ -1,6 +1,6 @@
 // Settles the scrap mountain with the game's own physics and writes the committed data file
-// (src/simulation/yard/scrapMountain.baked.json). Usage: npm run bake:mountain
-// `npm run bake:mountain -- --resettle` only re-runs the joint passes on the committed data (much faster).
+// (src/simulation/yard/scrapMountain.baked.json). Usage: pnpm run bake:mountain
+// `pnpm run bake:mountain --resettle` only re-runs the joint passes on the committed data (much faster).
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runnerImport } from 'vite';

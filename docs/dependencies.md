@@ -23,4 +23,5 @@ Adopted third-party packages with exact versions, licenses and the compatibility
 ## Review notes
 
 - `npm install` reported 0 known vulnerabilities on 2026-10-29.
+- 2026-10-31: the project switched from npm to **pnpm 10.28.2** (`packageManager` field). `pnpm import` converted the npm lockfile, so every resolved version stayed the same; only Electron may run its install script (`pnpm-workspace.yaml`), and the unused Squirrel installer script stays off.
 - The production bundle is about 528 kB minified (131 kB gzip), dominated by three; Vite's 500 kB chunk warning is expected and acceptable for a desktop Electron build. Code splitting is revisited when real content exists.

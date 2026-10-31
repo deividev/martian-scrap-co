@@ -84,7 +84,7 @@ Martian Scrap Co/                 Project root
 |-- references/                  Six PNGs, three prompt MDs, four raw supplied guides
 |-- index.html, vite.config.ts   Vite entry and config (MSC-005)
 |-- electron-builder.yml         Packaging allowlist, asarUnpack and fuses (MSC-007)
-|-- package.json, package-lock.json, tsconfig.json
+|-- package.json, pnpm-lock.yaml, pnpm-workspace.yaml, tsconfig.json
 |-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006)
 |-- src/                         Renderer TypeScript: domain, content, simulation, input, i18n (EN/ES), models (styled procedural), platform adapter, test-yard scene
 |-- tests/                       Vitest unit tests
@@ -99,22 +99,22 @@ The folder omits final punctuation for normal Windows compatibility; the product
 
 ## Runnable project commands
 
-From this project root (Node.js >= 22.12):
+From this project root (Node.js >= 22.12, pnpm >= 10.28):
 
 ```powershell
-npm install            # install pinned dependencies from the lockfile
-npm run dev            # Vite dev server on http://127.0.0.1:5173
-npm run typecheck      # strict TypeScript check
-npm run build          # typecheck + renderer build (dist/) + Electron build (dist-electron/)
-npm test               # Vitest unit tests
-npm run lint           # ESLint (type-aware)
-npm run format         # Prettier write (format:check to verify)
-npm run check          # all local checks with bounded logs in .check-logs/ (-- --package adds packaging)
-npm run electron:start # build, then open the desktop app
-npm run electron:dev   # Electron against a running `npm run dev` server
-npm run package        # build + electron-builder Windows folder in release/win-unpacked/
-npm run bake:mountain  # re-settle the scrap mountain with the game physics; rewrites src/simulation/yard/scrapMountain.baked.json
-npm run bake:mountain -- --resettle  # only re-run the joint settling passes on the committed mountain data
+pnpm install             # install pinned dependencies from pnpm-lock.yaml (pnpm >= 10.28; npm is not used)
+pnpm run dev             # Vite dev server on http://127.0.0.1:5173
+pnpm run typecheck       # strict TypeScript check
+pnpm run build           # typecheck + renderer build (dist/) + Electron build (dist-electron/)
+pnpm test                # Vitest unit tests
+pnpm run lint            # ESLint (type-aware)
+pnpm run format          # Prettier write (format:check to verify)
+pnpm run check           # all local checks with bounded logs in .check-logs/ (--package adds packaging)
+pnpm run electron:start  # build, then open the desktop app
+pnpm run electron:dev    # Electron against a running `pnpm run dev` server
+pnpm run package         # build + electron-builder Windows folder in release/win-unpacked/
+pnpm run bake:mountain   # re-settle the scrap mountain with the game physics; rewrites src/simulation/yard/scrapMountain.baked.json
+pnpm run bake:mountain --resettle  # only re-run the joint settling passes on the committed mountain data
 # In game: F3 toggles the performance overlay (FPS, draw calls, triangles, per-section frame ms); same data in the canvas data-perf / data-frame-ms attributes
 # Benchmark: append ?benchmark=baseline|dense to the dev URL, or run the packaged exe with --benchmark=dense --benchmark-seconds=20
 powershell.exe -NoProfile -File .	oolsalidate-docs.ps1
