@@ -34,7 +34,7 @@ Co-op roles are freely interchangeable: no classes or exclusive abilities. Money
 
 Require the user's scoped implementation instruction before game code, scaffolding, package setup, installed skills or account changes. Work dependency-ready units; preserve approved decisions and unrelated edits. On a failed gate, stop dependent work and report bounded evidence. Never silently drop co-op/Deck requirements, add paid dependencies or claim tests/quality that were not observed.
 
-Prove modern native Steam feasibility early: packaged real Steam launch, two legitimate accounts/devices on different networks, invitations, late join/rejoin and transaction integrity; then representative four-player load and real Deck tests **before full content production**. Human-approved 3D/audio pilots precede catalogs. Details and consequences are in the architecture and task plan, not guaranteed by a dependency install.
+Prove native Steam feasibility early (adopted transport: steamworks.js lobbies + legacy P2P, MSC-026): packaged real Steam launch, two legitimate accounts/devices on different networks, invitations, late join/rejoin and transaction integrity; then representative four-player load and real Deck tests **before full content production**. Human-approved 3D/audio pilots precede catalogs. Details and consequences are in the architecture and task plan, not guaranteed by a dependency install.
 
 Use concise replies in the user's current language. Ask at most one question, then stop. Artifacts default to professional English unless explicitly requested otherwise. Verify technical claims. No `Co-Authored-By` or AI attribution in commits; use conventional commits only when committing is separately authorized. This package mandates no SDD, global orchestration installation, native review activation, deployment or global configuration edits.
 
@@ -46,7 +46,7 @@ Read the applicable guide in full before its scoped implementation, then only re
 
 | Topic / trigger | Required packaged context | Planning sections and exact task IDs | Adaptation / validation caveat |
 |---|---|---|---|
-| Native Steam, secure bridge and packaging | [Co-op guide](references/online-coop.txt) | Architecture §§4–6, 11; plan MSC-006, MSC-007, MSC-025–027, MSC-030, MSC-112, MSC-113, MSC-118 | Recheck actual binding/SDK revisions and modern transport; do not import legacy P2P, source fork, app IDs, flags or native files. |
+| Native Steam, secure bridge and packaging | [Co-op guide](references/online-coop.txt) | Architecture §§4–6, 11; plan MSC-006, MSC-007, MSC-025–027, MSC-030, MSC-112, MSC-113, MSC-118 | **Owner decision 2026-10-31 (MSC-026):** follow the guide's path with published `steamworks.js` 0.4.0, friends-only lobbies and legacy P2P (deprecated by Valve, not presented as modern; the MSC-025 NetworkingMessages addon is the fallback). Do not import its source fork, vendored binaries, app IDs, `disable-direct-composition` or native files. |
 | Join/invite, authority, replication, host saves, recovery and platform QA | [Co-op guide](references/online-coop.txt) | PRD §§6–8, 10; architecture §§5–7, 11; MSC-003–004, MSC-021–024, MSC-028–030, MSC-036, MSC-081, MSC-086, MSC-089, MSC-091–097, MSC-103, MSC-107–109, MSC-114–115, MSC-119 | Host campaign policy wins; timers, Cloud timestamp rules, personal stats, public browsing, overlay/Deck claims are not automatically adopted. MSC-115 uses real crew/session staging, not fabricated multiplayer footage. |
 | Voice policy, conditional native/audio implementation, mic/input/UI or voice QA | [Steam Voice guide](references/steam-voice-steps.md) | PRD §10; visual §9; architecture §11; gate MSC-003, MSC-004, MSC-010; native MSC-025–027; service MSC-088; UI/input MSC-083–086, MSC-089; cleanup/security MSC-094–095; load/QA/package MSC-103, MSC-107–109, MSC-112–113, MSC-116 | **Voice is CONDITIONAL / NOT YET APPROVED.** V0 policy approval and V1 real feasibility must precede service implementation. No proximity/global/always-on mode, keybinding, rate/codec or third-party fork is approved by this reference. |
 | Debug evidence, camera/HUD helpers, packaged gameplay footage and trailer/store preparation | [Trailer capture guide](references/TRAILER_CAPTURE_INSTRUCTIONS.md) | PRD §10; visual §9; architecture §11; MSC-019, MSC-113, MSC-115, MSC-116, MSC-119 | HeadArrow examples, shot count, durations, capture settings and output names are historical guidance, not requirements. Capture only existing features after explicit authorization; no silent recording of human voice. |
@@ -85,14 +85,14 @@ Martian Scrap Co/                 Project root
 |-- index.html, vite.config.ts   Vite entry and config (MSC-005)
 |-- electron-builder.yml         Packaging allowlist, asarUnpack and fuses (MSC-007)
 |-- package.json, pnpm-lock.yaml, pnpm-workspace.yaml, tsconfig.json
-|-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006)
+|-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006); steam/ lifecycle over steamworks.js (MSC-026)
 |-- src/                         Renderer TypeScript: domain, content, simulation, net (co-op protocol, transport ports), input, i18n (EN/ES), models (styled procedural), platform adapter, test-yard scene
 |-- tests/                       Vitest unit tests
 `-- tools/                       validate-docs.ps1, check.mjs runner, run-electron-dev.mjs
 
 |-- art/sculpt/                 Model review renders, comparison sheets and sculpt records
 
-Generated, not committed: dist/, dist-electron/, release/. Not created yet: native/, assets-source/.
+Generated, not committed: dist/, dist-electron/, release/. Not created yet: native/ (fallback only), assets-source/.
 ```
 
 The folder omits final punctuation for normal Windows compatibility; the product display name remains **Martian Scrap Co.**
@@ -113,6 +113,8 @@ pnpm run check           # all local checks with bounded logs in .check-logs/ (-
 pnpm run electron:start  # build, then open the desktop app
 pnpm run electron:dev    # Electron against a running `pnpm run dev` server
 pnpm run package         # build + electron-builder Windows folder in release/win-unpacked/
+# Steam (optional): no App ID is built in (A1). A Steam launch supplies it; locally set MSC_STEAM_APP_ID. MSC_NO_STEAM=1 disables Steam.
+# Steam check without a window: electron . --steam-smoke (or the packaged exe with --steam-smoke) prints one JSON line.
 # Benchmark: append ?benchmark=baseline|dense to the dev URL, or run the packaged exe with --benchmark=dense --benchmark-seconds=20
 powershell.exe -NoProfile -File .	oolsalidate-docs.ps1
 ```

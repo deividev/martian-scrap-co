@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      steamworks.js:
+        specifier: 0.4.0
+        version: 0.4.0
     devDependencies:
       '@dimforge/rapier3d-compat':
         specifier: 0.21.0
@@ -1530,6 +1534,10 @@ packages:
 
   std-env@4.3.0:
     resolution: {integrity: sha512-OtU/EgQ1kIm5KwqQpBC6ZEMXrZRui11w8zgfTWp8cdO9B8OaPsbA8bTHO2P+HNo1VlUTGMVBwPhydu6poeXiag==}
+
+  steamworks.js@0.4.0:
+    resolution: {integrity: sha512-O5TTRs7ucCRql4IA/kYUIQYeghTsXqf3rAm81sC22RDId264LQYqQjuaMEUSqL60I5LdULiGu0W2/A+ZDcKBKA==}
+    engines: {node: '>= 14'}
 
   string-width@4.2.3:
     resolution: {integrity: sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==}
@@ -3370,6 +3378,10 @@ snapshots:
   stat-mode@1.0.0: {}
 
   std-env@4.3.0: {}
+
+  steamworks.js@0.4.0:
+    dependencies:
+      '@types/node': 24.19.2
 
   string-width@4.2.3:
     dependencies:

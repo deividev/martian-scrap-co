@@ -2,6 +2,8 @@
 
 **Task:** [MSC-025](../04-phased-agent-task-plan.md#msc-025--audit-native-binding-and-choose-modern-candidate) · **Date:** 2026-10-31 · **Phase:** 3 — Co-op authority and native feasibility · **Depends on:** MSC-024
 
+> **Owner decision 2026-10-31:** the owner adopted `steamworks.js` 0.4.0 with legacy P2P instead of the custom addon proposed below; see [MSC-026](MSC-026-steam-transport-spike.md). The proposal remains the recorded fallback if gate T1 shows legacy P2P is inadequate.
+
 Source inspection of the candidate Steamworks bindings for Electron, to choose a modern transport (`ISteamNetworkingMessages` or `ISteamNetworkingSockets`) instead of the deprecated `ISteamNetworking` P2P API. This is **source and package inspection only**: nothing was installed, built or run, and no Steam client, App ID or SDK download was used. Native proof belongs to MSC-026–027 (gate T1).
 
 ## Context used
@@ -39,8 +41,8 @@ The npm tarball of `steamworks.js` 0.4.0 contains prebuilt `win32-x64-msvc`, `li
 | `+connect_lobby` on launch (game closed) | — reads `process.argv` | — | — | — |
 | **NetworkingMessages** send with chosen reliability and channel | ❌ legacy P2P only | ⚠️ fixed channel 0; flags `RELIABLE_NO_NAGLE & AUTO_RESTART_BROKEN_SESSION` evaluate to 0 = **unreliable** for every message | ❌ not found | ✅ `send_message_to_user(identity, flags, data, channel)` |
 | NetworkingMessages receive | ❌ | ⚠️ channel 0, at most 10 per call | ❌ | ✅ any channel, caller-chosen batch |
-| Session request filter (accept only lobby members) | ❌ (accepts legacy P2P sessions) | ❌ | — | ✅ `session_request_callback` + `accept`/`reject` |
-| Session failure callback | ❌ | ❌ | — | ✅ `session_failed_callback` |
+| Session request filter (accept only lobby members) | ✅ legacy: `P2PSessionRequest` callback + `acceptP2PSession` (corrected at MSC-026) | ❌ | — | ✅ `session_request_callback` + `accept`/`reject` |
+| Session failure callback | ✅ legacy: `P2PSessionConnectFail` (corrected at MSC-026) | ❌ | — | ✅ `session_failed_callback` |
 | **NetworkingSockets** P2P (`ConnectP2P`, listen socket, poll group) | ❌ | ❌ | ✅ | ✅ |
 | Deprecated `ISteamNetworking` P2P | ✅ (only transport) | ✅ | ❌ | ✅ (marked deprecated) |
 | Prebuilt win64 binary without a local toolchain | ✅ | ✅ | ✅ (koffi prebuilds) | ❌ needs Rust + MSVC |
@@ -85,7 +87,10 @@ Not exported: stats, achievements, cloud, workshop, input, leaderboards, legacy 
 - **SDK and App ID:** `steamworks-rs` vendors SDK headers and the win64 redistributable for building, but distributing the game requires the Steamworks SDK terms through the partner account and this game's own App ID — **blocker A1** (MSC-004). Valve's public test App ID 480 could let a local MSC-026 smoke start before A1, but using it is an owner decision, not assumed here; no private ID from the co-op guide is used.
 - **Maintenance:** a few hundred lines of Rust plus CI-less local builds; each `steamworks-rs`/SDK update needs a rebuild and the native smoke test. Pin the crate by version and record it in the dependency register when MSC-026 adopts it.
 
-## Owner decisions needed before MSC-026
+## Owner decisions needed before MSC-026 (resolved 2026-10-31)
+
+Resolved: the owner chose `steamworks.js` 0.4.0 instead of items 1–2 (no Rust install). Item 3 (A1 or test App ID 480) remains open.
+
 
 1. Approve (or replace) the proposed candidate: own addon on `steamworks-rs` 0.13.1 with NetworkingMessages.
 2. Approve installing the Rust toolchain (free) on the reference PC.

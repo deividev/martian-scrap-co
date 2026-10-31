@@ -2,7 +2,7 @@
 
 **Before any work, read [AGENT.md](AGENT.md).** It is the canonical project summary, constraints and work policy. This entry point adds no separate policy. Follow the user's scoped request; opening the folder does not authorize implementation.
 
-The project is currently a planning-only package for a complete first-person Mars recycling game: solo/up to four online players, host-owned shared campaign, satisfying physical processing and a buried surface-station finale. Three.js + Electron is chosen; sequential execution of the 120 tasks started on 2026-10-29; see each task's Status in the task plan.
+The project is currently a planning-only package for a complete first-person Mars recycling game: solo/up to four online players, host-owned shared campaign, satisfying physical processing and a buried surface-station finale. Three.js + Electron is chosen; sequential execution of the 120 tasks started on 2026-10-29; see each task's Status in the task plan. Steam co-op uses the published `steamworks.js` 0.4.0 binding with lobbies and legacy P2P (owner decision 2026-10-31, MSC-026); see AGENT.md routing.
 
 ## Read order
 

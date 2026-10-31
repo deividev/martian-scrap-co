@@ -1,7 +1,7 @@
-import type { AppInfo, PlatformAdapter, PlatformBridge } from './types';
+import type { AppInfo, PlatformAdapter, PlatformBridge, SteamBridge } from './types';
 
 const BROWSER_CAPABILITIES = Object.freeze({ desktopShell: false, steam: false, nativeSaves: false });
-// Steam and native saves are added by their own tasks (MSC-025+, MSC-036); until then they stay false.
+// Native saves arrive with MSC-036. Steam is optional at runtime, so it is reported by `getSteam()`, not here.
 const ELECTRON_CAPABILITIES = Object.freeze({ desktopShell: true, steam: false, nativeSaves: false });
 
 export function isAppInfo(value: unknown): value is AppInfo {
@@ -15,12 +15,14 @@ export function isAppInfo(value: unknown): value is AppInfo {
 /** Picks the Electron adapter when the preload bridge exists, otherwise an honest browser adapter. */
 export function createPlatformAdapter(
   bridge: PlatformBridge | undefined = globalThis.window?.martianPlatform,
+  steam: SteamBridge | undefined = globalThis.window?.martianSteam,
 ): PlatformAdapter {
   if (!bridge) {
     return {
       kind: 'browser',
       capabilities: BROWSER_CAPABILITIES,
       getAppInfo: () => Promise.resolve(null),
+      getSteam: () => Promise.resolve(null),
     };
   }
   return {
@@ -29,6 +31,11 @@ export function createPlatformAdapter(
     getAppInfo: async () => {
       const info: unknown = await bridge.getAppInfo();
       return isAppInfo(info) ? info : null;
+    },
+    getSteam: async () => {
+      if (!steam) return null;
+      const status = await steam.status();
+      return status.available ? steam : null;
     },
   };
 }
