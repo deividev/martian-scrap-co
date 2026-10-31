@@ -1,0 +1,6 @@
+# Dependencies allowed to run install scripts: only Electron, which downloads its binary.
+onlyBuiltDependencies:
+  - electron
+# The Squirrel installer is not used (MSC-007 packages a folder), so its script stays off.
+ignoredBuiltDependencies:
+  - electron-winstaller

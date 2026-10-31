@@ -1,5 +1,5 @@
 // Local CI-equivalent runner: runs every check in order, keeps a bounded log per step and
-// exits non-zero if any step fails. Usage: `npm run check` or `npm run check -- --package`.
+// exits non-zero if any step fails. Usage: `pnpm run check` or `pnpm run check --package`.
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -9,22 +9,22 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const logDir = path.join(root, '.check-logs');
 const MAX_LOG_CHARS = 20_000;
 const MAX_CONSOLE_LINES = 40;
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 
 const steps = [
-  { name: 'format', command: npm, args: ['run', 'format:check'] },
-  { name: 'lint', command: npm, args: ['run', 'lint'] },
-  { name: 'typecheck', command: npm, args: ['run', 'typecheck'] },
-  { name: 'test', command: npm, args: ['test'] },
-  { name: 'build', command: npm, args: ['run', 'build:renderer'] },
-  { name: 'build-electron', command: npm, args: ['run', 'build:electron'] },
+  { name: 'format', command: pnpm, args: ['run', 'format:check'] },
+  { name: 'lint', command: pnpm, args: ['run', 'lint'] },
+  { name: 'typecheck', command: pnpm, args: ['run', 'typecheck'] },
+  { name: 'test', command: pnpm, args: ['test'] },
+  { name: 'build', command: pnpm, args: ['run', 'build:renderer'] },
+  { name: 'build-electron', command: pnpm, args: ['run', 'build:electron'] },
   { name: 'docs', command: 'powershell.exe', args: ['-NoProfile', '-File', path.join('tools', 'validate-docs.ps1')] },
 ];
 if (process.argv.includes('--package')) {
   steps.push({
     name: 'package',
-    command: npm,
-    args: ['exec', '--', 'electron-builder', '--win', '--config', 'electron-builder.yml'],
+    command: pnpm,
+    args: ['exec', 'electron-builder', '--win', '--config', 'electron-builder.yml'],
   });
 }
 

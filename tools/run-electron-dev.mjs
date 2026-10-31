@@ -1,4 +1,4 @@
-// Starts Electron against the running Vite dev server (`npm run dev` in another terminal).
+// Starts Electron against the running Vite dev server (`pnpm run dev` in another terminal).
 import { spawn } from 'node:child_process';
 import electronPath from 'electron';
 
