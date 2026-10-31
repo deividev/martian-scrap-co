@@ -13,6 +13,7 @@ import {
   type WorldEvent,
 } from '../../net/protocol';
 import type { HostTransport, PeerId } from '../../net/transport';
+import { encodeSnapshot } from '../../net/snapshot';
 import { ClaimRegistry, type HolderId } from '../handling/claims';
 
 /** The host plays in slot 0 and never travels over the transport. */
@@ -35,6 +36,15 @@ export interface WorldAuthority {
   /** A released object needs a safe resting place (MSC-003 P3: removed or departed players). */
   settleReleased(target: EntityId): void;
   apply(intent: WorldIntent, slot: number): WorldOutcome;
+  /** The world state a joining player loads (JSON-serializable), consistent with the router's current revision. */
+  snapshot(): unknown;
+}
+
+/** What a joining guest receives: the world, who holds what, at one revision. */
+export interface SessionSnapshot {
+  readonly revision: number;
+  readonly holders: readonly (readonly [EntityId, number])[];
+  readonly world: unknown;
 }
 
 export interface HostRouterOptions {
@@ -67,6 +77,10 @@ interface Member {
   canSpend: boolean;
   intentsThisStep: number;
   invalidFrames: number;
+  /** False until the guest confirms it loaded a snapshot and caught up; until then nothing it asks for applies. */
+  ready: boolean;
+  /** The snapshot being sent to this guest, kept to answer requests for missing chunks. */
+  snapshot: { readonly id: number; readonly revision: number; readonly chunks: readonly string[] } | undefined;
 }
 
 export interface PurchaseRequest {
@@ -76,6 +90,7 @@ export interface PurchaseRequest {
 }
 
 const holderOf = (slot: number): HolderId => `player-${slot}`;
+const slotOfHolder = (holder: HolderId): number => Number(holder.slice('player-'.length));
 
 /**
  * Host command router (MSC-022). Every guest frame is decoded, bound to a current member, rate-limited and checked
@@ -100,7 +115,7 @@ export class HostRouter {
   readonly #maxInvalidFrames: number;
   readonly #maxIntentsPerStep: number;
   readonly #purchaseListeners: ((request: PurchaseRequest) => void)[] = [];
-  readonly #snapshotListeners: ((slot: number) => void)[] = [];
+  #nextSnapshot = 1;
   /** Answers per transaction, keyed by sender identity so one player's ids never answer another's. */
   readonly #answered = new Map<string, { result: RouteResult; replies: HostMessage[] }>();
   readonly #resultCacheSize: number;
@@ -146,9 +161,9 @@ export class HostRouter {
     this.#purchaseListeners.push(listener);
   }
 
-  /** A guest asked to recover from a gap older than the event log; it needs a snapshot (MSC-024). */
-  onSnapshotNeeded(listener: (slot: number) => void): void {
-    this.#snapshotListeners.push(listener);
+  /** Whether a guest has loaded the world and may act. */
+  isReady(slot: number): boolean {
+    return this.#memberAt(slot)?.ready ?? false;
   }
 
   /** Call once per simulation step: per-guest intent budgets start over. */
@@ -272,15 +287,34 @@ export class HostRouter {
       this.#forget(peer);
       return { status: 'dropped' };
     }
+    if (message.type === 'snapshot-request') {
+      this.#sendSnapshot(member);
+      return { status: 'dropped' };
+    }
+    if (message.type === 'snapshot-missing') {
+      if (member.snapshot?.id !== message.snapshot) return { status: 'dropped' };
+      for (const index of new Set(message.indices)) this.#sendChunk(member, index);
+      return { status: 'dropped' };
+    }
+    if (message.type === 'ready') {
+      // Ready only for the snapshot it was sent, at a revision the host has actually reached.
+      if (member.snapshot && message.revision >= member.snapshot.revision && message.revision <= this.#revision) {
+        member.ready = true;
+        member.snapshot = undefined;
+      }
+      return { status: 'dropped' };
+    }
     if (message.type === 'resync') {
-      this.#resync(member, message.fromRevision);
+      if (member.ready) this.#resync(member, message.fromRevision);
       return { status: 'dropped' };
     }
     if (message.type === 'pose') {
-      this.#storePose(member.slot, message.tick, message.pose);
+      if (member.ready) this.#storePose(member.slot, message.tick, message.pose);
       return { status: 'dropped' };
     }
     const intent = message;
+    // A guest still loading the world acts on nothing it has seen; refused without being remembered.
+    if (!member.ready) return this.#reject(member, intent.txn, 'joining');
     return this.#once(`${member.peer}|${intent.txn}`, member, () => {
       member.intentsThisStep += 1;
       if (member.intentsThisStep > this.#maxIntentsPerStep) return this.#reject(member, intent.txn, 'rate-limited');
@@ -310,11 +344,21 @@ export class HostRouter {
     const slot = previous && free.includes(previous.slot) ? previous.slot : this.#freshSlot(free);
     if (slot === undefined) return this.#refuse(peer, 'full');
     const generation = (previous?.generation ?? 0) + 1;
-    const member: Member = { peer, slot, generation, canSpend: false, intentsThisStep: 0, invalidFrames: 0 };
+    const member: Member = {
+      peer,
+      slot,
+      generation,
+      canSpend: false,
+      intentsThisStep: 0,
+      invalidFrames: 0,
+      ready: false,
+      snapshot: undefined,
+    };
     this.#pending.delete(peer);
     this.#members.set(peer, member);
     this.#history.set(peer, { slot, generation });
     this.#welcome(member);
+    this.#sendSnapshot(member);
     return { status: 'dropped' };
   }
 
@@ -357,10 +401,45 @@ export class HostRouter {
     const oldest = this.#log[0]?.revision ?? this.#revision + 1;
     if (fromRevision > this.#revision) return;
     if (fromRevision + 1 < oldest) {
-      for (const listener of this.#snapshotListeners) listener(member.slot);
+      // Too old to replay: the guest reloads the world and is not ready until it catches up again.
+      this.#sendSnapshot(member);
       return;
     }
     for (const event of this.#log) if (event.revision > fromRevision) this.#send(member.peer, event);
+  }
+
+  /**
+   * Sends the world at the current revision. Events committed afterwards reach the guest as usual, after the snapshot
+   * on the same ordered channel, so it can apply them on top once every chunk arrived intact.
+   */
+  #sendSnapshot(member: Member): void {
+    const state: SessionSnapshot = {
+      revision: this.#revision,
+      holders: this.claims.entries().map(([target, holder]) => [target, slotOfHolder(holder)] as const),
+      world: this.#world.snapshot(),
+    };
+    const encoded = encodeSnapshot(state);
+    const id = this.#nextSnapshot;
+    this.#nextSnapshot += 1;
+    member.ready = false;
+    member.snapshot = { id, revision: this.#revision, chunks: encoded.chunks };
+    this.#send(member.peer, {
+      type: 'snapshot-begin',
+      session: this.session,
+      snapshot: id,
+      revision: this.#revision,
+      bytes: encoded.bytes,
+      chunks: encoded.chunks.length,
+      checksum: encoded.checksum,
+    });
+    for (let index = 0; index < encoded.chunks.length; index += 1) this.#sendChunk(member, index);
+  }
+
+  #sendChunk(member: Member, index: number): void {
+    const snapshot = member.snapshot;
+    const data = snapshot?.chunks[index];
+    if (!snapshot || data === undefined) return;
+    this.#send(member.peer, { type: 'snapshot-chunk', session: this.session, snapshot: snapshot.id, index, data });
   }
 
   #reject(member: Member | undefined, txn: TransactionId, reason: RejectReason): RouteResult {

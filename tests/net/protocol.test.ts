@@ -33,6 +33,9 @@ const clientMessages: ClientMessage[] = [
   { type: 'pose', ...binding, tick: 9, pose },
   { type: 'resync', ...binding, fromRevision: 3 },
   { type: 'leave', ...binding },
+  { type: 'snapshot-request', ...binding },
+  { type: 'snapshot-missing', ...binding, snapshot: 2, indices: [0, 5] },
+  { type: 'ready', ...binding, revision: 12 },
 ];
 
 const hostMessages: HostMessage[] = [
@@ -51,6 +54,8 @@ const hostMessages: HostMessage[] = [
   { type: 'reject', session, txn, reason: 'claimed-by-other', revision: 3 },
   { type: 'poses', session, tick: 9, players: [{ slot: 0, pose }] },
   { type: 'closed', reason: 'host-left' },
+  { type: 'snapshot-begin', session, snapshot: 2, revision: 12, bytes: 9001, chunks: 2, checksum: 123456 },
+  { type: 'snapshot-chunk', session, snapshot: 2, index: 1, data: 'QUJD' },
 ];
 
 describe('protocol messages', () => {

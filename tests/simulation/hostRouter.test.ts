@@ -11,6 +11,7 @@ import {
   type SessionId,
 } from '../../src/net/protocol';
 import type { ClientTransport, PeerId } from '../../src/net/transport';
+import { SnapshotCatcher } from '../support/snapshotCatcher';
 import {
   HOST_SLOT,
   HostRouter,
@@ -63,6 +64,10 @@ class FakeWorld implements WorldAuthority {
     }
     return { ok: false, reason: 'unavailable' };
   }
+
+  snapshot(): unknown {
+    return { pieces: [...this.pieces], bales: [...this.bales], credits: this.credits };
+  }
 }
 
 /** A guest that keeps the replicated view: revision, holders and what the host said to it. */
@@ -75,6 +80,8 @@ class Guest {
   readonly rejects: string[] = [];
   readonly events: number[] = [];
   closed: string | undefined;
+  ready = false;
+  readonly #snapshots = new SnapshotCatcher();
   #txn = 0;
 
   constructor(
@@ -97,6 +104,14 @@ class Guest {
     if (message.type === 'welcome') {
       Object.assign(this, { slot: message.slot, generation: message.generation, session: message.session });
       this.revision = message.revision;
+    } else if (message.type === 'snapshot-begin' || message.type === 'snapshot-chunk') {
+      const loaded = this.#snapshots.feed(message);
+      if (!loaded || !this.session) return;
+      this.revision = loaded.revision;
+      this.holders.clear();
+      for (const [target, holder] of loaded.holders) this.holders.set(target, holder);
+      this.ready = true;
+      this.raw({ type: 'ready', session: this.session, generation: this.generation, revision: this.revision });
     } else if (message.type === 'event') {
       if (message.revision <= this.revision) return;
       this.revision = message.revision;
@@ -427,7 +442,7 @@ describe('host router: permissions, removal and recovery', () => {
     expect(back.holders.size).toBe(0);
   });
 
-  it('answers a resync from the event log, or asks for a snapshot when the gap is older', () => {
+  it('answers a resync from the event log, or sends a new snapshot when the gap is older', () => {
     const network = new LocalNetwork();
     const router = new HostRouter(network.host(), { session: SESSION, world: new FakeWorld(), eventLogSize: 2 });
     const a = new Guest(network.connect('steam-1'), 'a');
@@ -435,15 +450,19 @@ describe('host router: permissions, removal and recovery', () => {
     for (const n of [1, 2, 3]) router.submit({ kind: 'claim', target: id(n) }, transactionId(`txn-h${n}`));
     network.flush();
     expect(a.revision).toBe(3);
-    const needed: number[] = [];
-    router.onSnapshotNeeded((slot) => needed.push(slot));
     a.revision = 1;
     a.raw({ type: 'resync', session: SESSION, generation: a.generation, fromRevision: 1 });
     network.flush();
     expect(a.revision).toBe(3);
-    expect(needed).toEqual([]);
+    // Revision 1 left the two-event log: the guest reloads the world and is not ready until it confirms.
+    a.ready = false;
+    a.revision = 0;
     a.raw({ type: 'resync', session: SESSION, generation: a.generation, fromRevision: 0 });
+    expect(router.isReady(a.slot)).toBe(true);
     network.flush();
-    expect(needed).toEqual([1]);
+    expect(a.ready).toBe(true);
+    expect(a.revision).toBe(3);
+    expect(a.holders.size).toBe(3);
+    expect(router.isReady(a.slot)).toBe(true);
   });
 });

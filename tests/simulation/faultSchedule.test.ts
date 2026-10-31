@@ -11,6 +11,7 @@ import {
   type WorldEvent,
 } from '../../src/net/protocol';
 import type { ClientTransport } from '../../src/net/transport';
+import { SnapshotCatcher } from '../support/snapshotCatcher';
 import {
   HostRouter,
   type Pose,
@@ -67,6 +68,15 @@ class World implements WorldAuthority {
     }
     return { ok: false, reason: 'unavailable' };
   }
+
+  snapshot(): unknown {
+    return {
+      pieces: [...this.pieces],
+      assemblies: [...this.assemblies],
+      bales: [...this.bales],
+      credits: this.credits,
+    };
+  }
 }
 
 /**
@@ -98,9 +108,13 @@ class Guest {
     transport.send(channel, raw);
   }
 
+  /** Welcomed and caught up: the snapshot loaded and the host told. */
   get welcomed(): boolean {
-    return this.slot >= 0;
+    return this.ready;
   }
+
+  ready = false;
+  readonly #snapshots = new SnapshotCatcher();
 
   get idle(): boolean {
     return this.#waiting.size === 0;
@@ -111,6 +125,18 @@ class Guest {
       this.slot = message.slot;
       this.generation = message.generation;
       this.revision = message.revision;
+    } else if (message.type === 'snapshot-begin' || message.type === 'snapshot-chunk') {
+      const loaded = this.#snapshots.feed(message);
+      if (!loaded) return;
+      this.revision = loaded.revision;
+      this.ready = true;
+      const { channel, raw } = encodeMessage({
+        type: 'ready',
+        session: SESSION,
+        generation: this.generation,
+        revision: this.revision,
+      });
+      this.transport.send(channel, raw);
     } else if (message.type === 'event') {
       if (message.txn) this.#answer(message.txn);
       if (message.revision <= this.revision) return;
@@ -357,9 +383,18 @@ describe('fault schedule (MSC-023)', () => {
     // The player comes back and resends the same transaction from before the disconnect.
     const back = network.connect('steam-1');
     const answers: string[] = [];
+    const snapshots = new SnapshotCatcher();
     back.onMessage((channel, raw) => {
       const decoded = decodeHostMessage(raw, channel);
-      if (decoded.ok) answers.push(decoded.message.type);
+      if (!decoded.ok) return;
+      answers.push(decoded.message.type);
+      const loaded = snapshots.feed(decoded.message);
+      if (loaded) {
+        back.send(
+          'reliable',
+          encodeMessage({ type: 'ready', session: SESSION, generation: 2, revision: loaded.revision }).raw,
+        );
+      }
     });
     back.send('reliable', encodeMessage({ type: 'hello', protocol: PROTOCOL_VERSION, build: '0.0.0' }).raw);
     network.flush();
@@ -377,6 +412,6 @@ describe('fault schedule (MSC-023)', () => {
     network.flush();
     expect(world.credits).toBe(BALE_PRICE);
     expect(world.sold).toHaveLength(1);
-    expect(answers).toEqual(['welcome', 'event']);
+    expect(answers).toEqual(['welcome', 'snapshot-begin', 'snapshot-chunk', 'event']);
   });
 });

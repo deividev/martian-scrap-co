@@ -14,7 +14,7 @@ import {
  * depends on Steam or any other transport. Bump `PROTOCOL_VERSION` whenever a message shape changes, so mismatched
  * builds are refused before they can interact.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** Players per session, host included (PRD-016). */
 export const MAX_PLAYERS = 4;
@@ -23,6 +23,15 @@ export type Channel = 'reliable' | 'disposable';
 
 /** Encoded size limits in UTF-8 bytes. Snapshots travel in their own bounded chunks (MSC-024), not as one message. */
 export const MESSAGE_LIMITS = Object.freeze({ reliable: 16 * 1024, disposable: 1024 });
+
+/**
+ * Late-join snapshots (MSC-024): the world state at one revision, as UTF-8 JSON split into base64 chunks that each
+ * fit one reliable message. A snapshot larger than `maxBytes` is never sent or assembled.
+ */
+export const SNAPSHOT_LIMITS = Object.freeze({ maxBytes: 4 * 1024 * 1024, chunkBase64: 12_000, maxChunks: 1024 });
+
+/** Chunk indices a guest may ask to have sent again in one message. */
+export const MAX_MISSING_PER_REQUEST = 64;
 
 /** Pieces or fragments named in one intent or event. */
 export const MAX_IDS_PER_MESSAGE = 64;
@@ -107,6 +116,8 @@ export const REJECT_REASONS = [
   /** Sent to the host for approval instead of being applied (guest purchase without "Can spend"). */
   'awaiting-host',
   'rate-limited',
+  /** The guest has not finished loading the world yet (MSC-024): nothing it asks for can apply. */
+  'joining',
   'invalid',
 ] as const;
 export type RejectReason = (typeof REJECT_REASONS)[number];
@@ -137,6 +148,25 @@ const clientMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('pose'), ...bindingShape, tick: revisionSchema, pose: poseSchema }),
   z.strictObject({ type: z.literal('resync'), ...bindingShape, fromRevision: revisionSchema }),
   z.strictObject({ type: z.literal('leave'), ...bindingShape }),
+  /** Asks for a fresh snapshot (first join failed, expired or was corrupt, or a gap is too old to replay). */
+  z.strictObject({ type: z.literal('snapshot-request'), ...bindingShape }),
+  z.strictObject({
+    type: z.literal('snapshot-missing'),
+    ...bindingShape,
+    snapshot: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    indices: z
+      .array(
+        z
+          .number()
+          .int()
+          .min(0)
+          .max(SNAPSHOT_LIMITS.maxChunks - 1),
+      )
+      .min(1)
+      .max(MAX_MISSING_PER_REQUEST),
+  }),
+  /** The guest has the world at `revision` and is caught up; only now may it act. */
+  z.strictObject({ type: z.literal('ready'), ...bindingShape, revision: revisionSchema }),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
@@ -172,6 +202,31 @@ const hostMessageSchema = z.discriminatedUnion('type', [
     players: z.array(z.strictObject({ slot: slotSchema, pose: poseSchema })).max(MAX_PLAYERS),
   }),
   z.strictObject({ type: z.literal('closed'), reason: z.enum(CLOSE_REASONS) }),
+  z.strictObject({
+    type: z.literal('snapshot-begin'),
+    session: sessionIdSchema,
+    snapshot: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    revision: revisionSchema,
+    bytes: z.number().int().min(2).max(SNAPSHOT_LIMITS.maxBytes),
+    chunks: z.number().int().min(1).max(SNAPSHOT_LIMITS.maxChunks),
+    /** FNV-1a 32-bit checksum of the UTF-8 bytes: catches corruption and mixed-up chunks, not tampering. */
+    checksum: z.number().int().min(0).max(0xffffffff),
+  }),
+  z.strictObject({
+    type: z.literal('snapshot-chunk'),
+    session: sessionIdSchema,
+    snapshot: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    index: z
+      .number()
+      .int()
+      .min(0)
+      .max(SNAPSHOT_LIMITS.maxChunks - 1),
+    data: z
+      .string()
+      .min(1)
+      .max(SNAPSHOT_LIMITS.chunkBase64)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+  }),
 ]);
 export type HostMessage = z.infer<typeof hostMessageSchema>;
 
@@ -214,7 +269,16 @@ export const decodeClientMessage = (raw: string, channel: Channel): DecodeResult
 export const decodeHostMessage = (raw: string, channel: Channel): DecodeResult<HostMessage> =>
   decodeWith(hostMessageSchema as z.ZodType<HostMessage>, raw, channel);
 
-const CLIENT_TYPES = { hello: true, intent: true, pose: true, resync: true, leave: true } as const;
+const CLIENT_TYPES = {
+  hello: true,
+  intent: true,
+  pose: true,
+  resync: true,
+  leave: true,
+  'snapshot-request': true,
+  'snapshot-missing': true,
+  ready: true,
+} as const;
 
 /** Serializes a message after checking it against its schema and size limit, so a host never sends what it would refuse. */
 export function encodeMessage(message: ClientMessage | HostMessage): {

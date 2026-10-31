@@ -21,6 +21,11 @@ export class ClaimRegistry {
     return true;
   }
 
+  /** Every current claim (snapshots for joining players). */
+  entries(): [EntityId, HolderId][] {
+    return [...this.#holders];
+  }
+
   /** Only the current holder can release; returns whether a claim was released. */
   release(id: EntityId, holder: HolderId): boolean {
     if (this.#holders.get(id) !== holder) return false;
