@@ -6,6 +6,7 @@ import { IPC_CHANNELS, isTrustedSenderUrl, resolveDevServerUrl, validateInvoke, 
 import { resolveAppPaths } from './paths.js';
 import { startSteam } from './steam/steamService.js';
 import { connectLobbyFromArgv, isSteamId, resolveSteamConfig } from './steam/steamPolicy.js';
+import { resolveDevP2pTest, runDevP2pTest } from './steam/devP2pTest.js'; // DEV-ONLY: remove before release
 
 const appPaths = resolveAppPaths({
   appPath: app.getAppPath(),
@@ -187,6 +188,17 @@ async function runSteamSmoke(): Promise<void> {
 void app.whenReady().then(() => {
   if (process.argv.includes('--steam-smoke')) {
     void runSteamSmoke();
+    return;
+  }
+  // DEV-ONLY two-account P2P check (MSC_DEV_STEAM_TEST=1 + MSC_STEAM_APP_ID): remove before release.
+  const devP2pTest = resolveDevP2pTest(process.argv, process.env);
+  if (devP2pTest) {
+    const log = (line: unknown): void => void process.stdout.write(`${JSON.stringify(line)}\n`);
+    const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+    void runDevP2pTest(steam, devP2pTest, { log, now: () => performance.now(), sleep }).finally(() => {
+      steam.shutdown();
+      app.quit();
+    });
     return;
   }
   hardenSession();

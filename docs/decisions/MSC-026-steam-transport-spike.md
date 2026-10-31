@@ -38,6 +38,16 @@ Not wired yet (later tasks): menus/invite button and session start in the game U
 
 **Not yet proven:** P2P send/receive on the reliable and disposable channels, overlay invite, `+connect_lobby`/`GameLobbyJoinRequested` and rich presence as seen by a friend. These need a second Steam account on another device (**blocker A2**, shared with MSC-027). The real App ID remains **blocker A1**; App ID 480 is used only for local tests and never shipped.
 
+## DEV-ONLY two-account P2P test (temporary)
+
+To gather the missing message evidence with a second real account (A2), the owner asked for a test mode usable only during development and removed later. It runs **only when both `MSC_DEV_STEAM_TEST=1` and a local `MSC_STEAM_APP_ID` are set**, so a real Steam launch (which supplies its own App ID and no variables) never reaches it.
+
+- [devP2pTest.ts](../../electron/steam/devP2pTest.ts): `--steam-p2p-test=host` creates a friends-only lobby and prints its lobby id; `--steam-p2p-test=join:<lobby id>` joins it. Each side then sends 20 numbered pings on the reliable and disposable channels, answers the peer's pings, and prints one JSON result line: `ok` needs all reliable pings answered and received both ways (disposable loss is reported, not failed), plus reliable round-trip median/max and dropped packets. No SteamIDs are printed; no window opens.
+- [host.bat](../../tools/dev-p2p/host.bat) and [join.bat](../../tools/dev-p2p/join.bat), copied next to the packaged exe, set test App ID 480 and the dev variable for that process only and show the result lines live. The other player must be a Steam friend with Steam signed in.
+- Observed 2026-10-31: unit tests cover the gate, a full two-sided exchange, disposable loss and the no-peer timeout; packaged `host.bat` with Steam signed in prints the lobby id live. The join side and the real exchange are not yet observed.
+
+**Removal before release (MSC-118):** delete `electron/steam/devP2pTest.ts`, `tests/electron/devP2pTest.test.ts`, `tools/dev-p2p/` and the lines marked `DEV-ONLY` in `electron/main.ts`.
+
 ## Deviations from the guide
 
 - No source fork, vendored binary, `postinstall` copy script, App ID, leaderboards, Discord, public or code lobbies, relay server or Proton flags: only friends-only invite lobbies (MSC-003).

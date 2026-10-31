@@ -115,6 +115,7 @@ pnpm run electron:dev    # Electron against a running `pnpm run dev` server
 pnpm run package         # build + electron-builder Windows folder in release/win-unpacked/
 # Steam (optional): no App ID is built in (A1). A Steam launch supplies it; locally set MSC_STEAM_APP_ID. MSC_NO_STEAM=1 disables Steam.
 # Steam check without a window: electron . --steam-smoke (or the packaged exe with --steam-smoke) prints one JSON line.
+# DEV-ONLY two-account P2P test (remove before release, MSC-118): copy tools/dev-p2p/host.bat and join.bat next to the packaged exe.
 # Benchmark: append ?benchmark=baseline|dense to the dev URL, or run the packaged exe with --benchmark=dense --benchmark-seconds=20
 powershell.exe -NoProfile -File .	oolsalidate-docs.ps1
 ```

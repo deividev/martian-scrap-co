@@ -1865,7 +1865,7 @@ Depends on: MSC-117
 
 Output: Prepared app/depot/controller/cloud/achievement checklist using legitimate new-game IDs.
 
-Acceptance: No reference app ID or unapproved account mutation; signing/disclosure/access blockers explicit. App IDs, source fork/settings, public discovery, leaderboard/Discord scope and account mutations are not transferred. Any requested reporting access uses legitimate new-game identity and separately authorized current supported/permitted routes; source IDs/cookie paths/API claims/services are not adopted.
+Acceptance: No reference app ID or unapproved account mutation; signing/disclosure/access blockers explicit. The DEV-ONLY two-account P2P test from MSC-026 (`electron/steam/devP2pTest.ts`, its test, `tools/dev-p2p/` and the `DEV-ONLY` lines in `electron/main.ts`) is removed before release, and test App ID 480 appears nowhere in shipped configuration. App IDs, source fork/settings, public discovery, leaderboard/Discord scope and account mutations are not transferred. Any requested reporting access uses legitimate new-game identity and separately authorized current supported/permitted routes; source IDs/cookie paths/API claims/services are not adopted.
 
 Check: Owner compares prepared settings with current official Steam documentation. Report Context used/Deviations and verify only owner-approved new-game configuration/policy. Verify current primary documentation/permissions and source formats before integration; do not read credentials or fetch live partner data merely to follow this plan.
 
