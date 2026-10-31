@@ -46,7 +46,14 @@ export interface HostRouterOptions {
   readonly maxInvalidFrames?: number;
   /** Intents accepted from one guest per simulation step; the rest are rejected as rate-limited. */
   readonly maxIntentsPerStep?: number;
+  /**
+   * Answered transactions remembered for repeats (MSC-023). A repeat older than this is decided again; the world then
+   * refuses anything already consumed, so it still cannot duplicate an output.
+   */
+  readonly resultCacheSize?: number;
 }
+
+export type Pose = Extract<ClientMessage, { type: 'pose' }>['pose'];
 
 export type RouteResult =
   | { readonly status: 'committed'; readonly revision: number }
@@ -94,6 +101,13 @@ export class HostRouter {
   readonly #maxIntentsPerStep: number;
   readonly #purchaseListeners: ((request: PurchaseRequest) => void)[] = [];
   readonly #snapshotListeners: ((slot: number) => void)[] = [];
+  /** Answers per transaction, keyed by sender identity so one player's ids never answer another's. */
+  readonly #answered = new Map<string, { result: RouteResult; replies: HostMessage[] }>();
+  readonly #resultCacheSize: number;
+  /** Replies produced while one intent is decided, for the result cache. */
+  #replies: HostMessage[] | undefined;
+  /** Latest pose per slot; an older pose arriving late never replaces a newer one. */
+  readonly #poses = new Map<number, { tick: number; pose: Pose }>();
   #revision = 0;
   #locked = false;
 
@@ -104,6 +118,7 @@ export class HostRouter {
     this.#eventLogSize = options.eventLogSize ?? 256;
     this.#maxInvalidFrames = options.maxInvalidFrames ?? 8;
     this.#maxIntentsPerStep = options.maxIntentsPerStep ?? 32;
+    this.#resultCacheSize = options.resultCacheSize ?? 4096;
     transport.onPeerJoined((peer) => this.#pending.add(peer));
     transport.onMessage((peer, channel, raw) => {
       const decoded = decodeClientMessage(raw, channel);
@@ -141,9 +156,55 @@ export class HostRouter {
     for (const member of this.#members.values()) member.intentsThisStep = 0;
   }
 
-  /** The host's own action, decided by the same rules as a guest's. */
+  /** The host's own action, decided by the same rules as a guest's; a repeated transaction id returns its first result. */
   submit(intent: Intent, txn: TransactionId): RouteResult {
-    return this.#decide(HOST_SLOT, txn, this.#revision, intent, undefined);
+    return this.#once(`host|${txn}`, undefined, () => this.#decide(HOST_SLOT, txn, this.#revision, intent, undefined));
+  }
+
+  /** The host's own pose, sent with the guests' poses. */
+  setHostPose(tick: number, pose: Pose): void {
+    this.#storePose(HOST_SLOT, tick, pose);
+  }
+
+  /** Sends every member the latest poses, on the disposable channel: a lost or late pose is simply superseded. */
+  broadcastPoses(tick: number): void {
+    const players = [...this.#poses].map(([slot, entry]) => ({ slot, pose: entry.pose }));
+    const { channel, raw } = encodeMessage({ type: 'poses', session: this.session, tick, players });
+    for (const member of this.#members.values()) this.#transport.send(member.peer, channel, raw);
+  }
+
+  /** The latest pose the host holds for a slot. */
+  poseOf(slot: number): { tick: number; pose: Pose } | undefined {
+    return this.#poses.get(slot);
+  }
+
+  #storePose(slot: number, tick: number, pose: Pose): void {
+    const current = this.#poses.get(slot);
+    if (!current || tick > current.tick) this.#poses.set(slot, { tick, pose });
+  }
+
+  /**
+   * Decides a transaction once (MSC-023). A repeat (a retry, a duplicated packet, a resend after reconnecting) gets
+   * the first answer again and changes nothing. Rate-limited refusals are not remembered, so a retry can succeed.
+   */
+  #once(key: string, member: Member | undefined, decide: () => RouteResult): RouteResult {
+    const known = this.#answered.get(key);
+    if (known) {
+      if (member) for (const reply of known.replies) this.#send(member.peer, reply);
+      return known.result;
+    }
+    this.#replies = [];
+    const result = decide();
+    const replies = this.#replies;
+    this.#replies = undefined;
+    if (result.status !== 'rejected' || result.reason !== 'rate-limited') {
+      this.#answered.set(key, { result, replies });
+      if (this.#answered.size > this.#resultCacheSize) {
+        const oldest = this.#answered.keys().next();
+        if (!oldest.done) this.#answered.delete(oldest.value);
+      }
+    }
+    return result;
   }
 
   /** Host-only (MSC-003 P1): close or reopen the session to new joins. */
@@ -215,10 +276,16 @@ export class HostRouter {
       this.#resync(member, message.fromRevision);
       return { status: 'dropped' };
     }
-    if (message.type === 'pose') return { status: 'dropped' };
-    member.intentsThisStep += 1;
-    if (member.intentsThisStep > this.#maxIntentsPerStep) return this.#reject(member, message.txn, 'rate-limited');
-    return this.#decide(member.slot, message.txn, message.basis, message.intent, member);
+    if (message.type === 'pose') {
+      this.#storePose(member.slot, message.tick, message.pose);
+      return { status: 'dropped' };
+    }
+    const intent = message;
+    return this.#once(`${member.peer}|${intent.txn}`, member, () => {
+      member.intentsThisStep += 1;
+      if (member.intentsThisStep > this.#maxIntentsPerStep) return this.#reject(member, intent.txn, 'rate-limited');
+      return this.#decide(member.slot, intent.txn, intent.basis, intent.intent, member);
+    });
   }
 
   #hello(peer: PeerId, message: Extract<ClientMessage, { type: 'hello' }>): RouteResult {
@@ -297,8 +364,9 @@ export class HostRouter {
   }
 
   #reject(member: Member | undefined, txn: TransactionId, reason: RejectReason): RouteResult {
-    if (member)
-      this.#send(member.peer, { type: 'reject', session: this.session, txn, reason, revision: this.#revision });
+    const message: HostMessage = { type: 'reject', session: this.session, txn, reason, revision: this.#revision };
+    this.#replies?.push(message);
+    if (member) this.#send(member.peer, message);
     return { status: 'rejected', reason };
   }
 
@@ -354,6 +422,7 @@ export class HostRouter {
       event,
     };
     this.#log.push(message);
+    this.#replies?.push(message);
     if (this.#log.length > this.#eventLogSize) this.#log.shift();
     const { channel, raw } = encodeMessage(message);
     for (const member of this.#members.values()) this.#transport.send(member.peer, channel, raw);

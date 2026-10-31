@@ -4,7 +4,24 @@ import type { ClientTransport, CloseReason, HostTransport, PeerId } from './tran
 /** Messages waiting for one endpoint before reliable traffic overflows (the connection closes) or poses drop. */
 const DEFAULT_MAX_QUEUED = 512;
 
-type Delivery =
+/**
+ * Deterministic fault injection (MSC-023). Times are in network ticks (`advance`). Reliable traffic may be delayed or
+ * duplicated but always arrives in send order per connection, as a reliable transport guarantees; disposable traffic
+ * may also be lost and, through independent delays, reordered.
+ */
+export interface FaultPlan {
+  readonly seed: number;
+  /** Extra ticks before a reliable message arrives, inclusive range. */
+  readonly reliableDelay?: readonly [number, number];
+  /** Extra ticks before a disposable message arrives, inclusive range; different delays reorder poses. */
+  readonly disposableDelay?: readonly [number, number];
+  /** Probability that a disposable message is lost. */
+  readonly disposableLoss?: number;
+  /** Probability that a message is delivered twice (a retransmission or an application retry). */
+  readonly duplicate?: number;
+}
+
+type Payload =
   | {
       readonly to: 'host';
       readonly kind: 'message';
@@ -23,6 +40,8 @@ type Delivery =
     }
   | { readonly to: 'guest'; readonly peer: PeerId; readonly kind: 'closed'; readonly reason: CloseReason };
 
+type Delivery = Payload & { readonly due: number };
+
 interface Guest {
   readonly peer: PeerId;
   open: boolean;
@@ -32,22 +51,44 @@ interface Guest {
   readonly closedHandlers: ((reason: CloseReason) => void)[];
 }
 
+/** Small deterministic generator (mulberry32), so a fault schedule replays exactly from its seed. */
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /**
  * In-memory transport for tests and local development (MSC-021). Nothing is delivered until `flush`, which hands
- * queued messages over strictly in send order, so a scenario replays identically every run. Reliable messages
- * always arrive in order; disposable ones are dropped when a receiver's queue is full. This is not network evidence:
- * real connectivity is proven only on the Steam path (gate T1).
+ * over every message due at the current tick in send order, so a scenario replays identically every run; `advance`
+ * moves time on for delayed traffic (`FaultPlan`, MSC-023). Reliable messages always arrive in order; disposable
+ * ones are dropped when a receiver's queue is full. This is not network evidence: real connectivity is proven only
+ * on the Steam path (gate T1).
  */
 export class LocalNetwork {
   readonly #queue: Delivery[] = [];
   readonly #guests = new Map<PeerId, Guest>();
   readonly #maxQueued: number;
+  readonly #faults: FaultPlan | undefined;
+  readonly #random: () => number;
+  /** Latest due tick per connection direction, so reliable traffic never overtakes earlier traffic. */
+  readonly #linkDue = new Map<string, number>();
   #host: HostEndpoint | undefined;
   #nextPeer = 1;
   #dropped = 0;
+  #lost = 0;
+  #duplicated = 0;
+  #now = 0;
 
-  constructor(options: { maxQueued?: number } = {}) {
+  constructor(options: { maxQueued?: number; faults?: FaultPlan } = {}) {
     this.#maxQueued = options.maxQueued ?? DEFAULT_MAX_QUEUED;
+    this.#faults = options.faults;
+    this.#random = seededRandom(options.faults?.seed ?? 1);
   }
 
   /** Disposable messages dropped because a receiver's queue was full. */
@@ -55,8 +96,22 @@ export class LocalNetwork {
     return this.#dropped;
   }
 
+  /** Disposable messages lost by fault injection. */
+  get lost(): number {
+    return this.#lost;
+  }
+
+  /** Messages delivered twice by fault injection. */
+  get duplicated(): number {
+    return this.#duplicated;
+  }
+
   get pending(): number {
     return this.#queue.length;
+  }
+
+  get now(): number {
+    return this.#now;
   }
 
   /** Opens the hosting endpoint; one host per network. */
@@ -77,21 +132,46 @@ export class LocalNetwork {
     if (this.#guests.get(peer)?.open) throw new Error(`${peer} is already connected`);
     const guest: Guest = { peer, open: true, lingering: false, messageHandlers: [], closedHandlers: [] };
     this.#guests.set(peer, guest);
-    this.#queue.push({ to: 'host', kind: 'joined', peer });
+    this.#push({ to: 'host', kind: 'joined', peer }, 'reliable');
     return new ClientEndpoint(this, guest);
   }
 
-  /** Delivers queued messages in order, including any sent by handlers meanwhile. Returns how many were delivered. */
+  /**
+   * Delivers every message due by now, in order, including any sent by handlers meanwhile. Returns how many were
+   * delivered.
+   */
   flush(maxDeliveries = 100_000): number {
     let delivered = 0;
-    while (this.#queue.length > 0 && delivered < maxDeliveries) {
-      const delivery = this.#queue.shift();
-      if (!delivery) break;
+    while (delivered < maxDeliveries) {
+      const next = this.#queue[0];
+      if (!next || next.due > this.#now) break;
+      this.#queue.shift();
       delivered += 1;
-      if (delivery.to === 'host') this.#host?.deliver(delivery);
-      else this.#deliverToGuest(delivery);
+      if (next.to === 'host') this.#host?.deliver(next);
+      else this.#deliverToGuest(next);
     }
     return delivered;
+  }
+
+  /** Moves time on by `ticks`, delivering what becomes due at each tick. */
+  advance(ticks = 1): number {
+    let delivered = this.flush();
+    for (let i = 0; i < ticks; i += 1) {
+      this.#now += 1;
+      delivered += this.flush();
+    }
+    return delivered;
+  }
+
+  /** Advances until nothing is queued (or `maxTicks` pass); returns the ticks taken. */
+  settle(maxTicks = 10_000): number {
+    let ticks = 0;
+    this.flush();
+    while (this.#queue.length > 0 && ticks < maxTicks) {
+      this.advance();
+      ticks += 1;
+    }
+    return ticks;
   }
 
   /** @internal */
@@ -103,7 +183,7 @@ export class LocalNetwork {
       else this.dropGuest(peer, 'overflow');
       return;
     }
-    this.#queue.push({ to: 'host', kind: 'message', peer, channel, raw });
+    this.#pushMessage({ to: 'host', kind: 'message', peer, channel, raw });
   }
 
   /** @internal */
@@ -114,7 +194,7 @@ export class LocalNetwork {
       else this.dropGuest(peer, 'overflow');
       return;
     }
-    this.#queue.push({ to: 'guest', peer, kind: 'message', channel, raw });
+    this.#pushMessage({ to: 'guest', peer, kind: 'message', channel, raw });
   }
 
   /** @internal Closes a guest connection: the guest learns why, and the host sees it leave. */
@@ -135,8 +215,8 @@ export class LocalNetwork {
         this.#queue.splice(i, 1);
       }
     }
-    this.#queue.push({ to: 'guest', peer, kind: 'closed', reason });
-    if (this.#host?.open) this.#queue.push({ to: 'host', kind: 'left', peer, reason });
+    this.#push({ to: 'guest', peer, kind: 'closed', reason }, 'reliable');
+    if (this.#host?.open) this.#push({ to: 'host', kind: 'left', peer, reason }, 'reliable');
   }
 
   /** @internal */
@@ -149,6 +229,40 @@ export class LocalNetwork {
     return [...this.#guests.values()].filter((guest) => guest.open).map((guest) => guest.peer);
   }
 
+  #delay(range: readonly [number, number] | undefined): number {
+    if (!range) return 0;
+    const [min, max] = range;
+    return min + Math.floor(this.#random() * (max - min + 1));
+  }
+
+  /** Queues a payload by due tick: reliable traffic keeps send order per direction, disposable is independent. */
+  #push(payload: Payload, channel: Channel): void {
+    const faults = this.#faults;
+    let due = this.#now + this.#delay(channel === 'reliable' ? faults?.reliableDelay : faults?.disposableDelay);
+    if (channel === 'reliable') {
+      const link = `${payload.to}:${payload.peer}`;
+      due = Math.max(due, this.#linkDue.get(link) ?? 0);
+      this.#linkDue.set(link, due);
+    }
+    // Ordered by due tick, then by send order.
+    let index = this.#queue.length;
+    while (index > 0 && (this.#queue[index - 1]?.due ?? 0) > due) index -= 1;
+    this.#queue.splice(index, 0, { ...payload, due });
+  }
+
+  #pushMessage(payload: Extract<Payload, { kind: 'message' }>): void {
+    const faults = this.#faults;
+    if (faults && payload.channel === 'disposable' && this.#random() < (faults.disposableLoss ?? 0)) {
+      this.#lost += 1;
+      return;
+    }
+    this.#push(payload, payload.channel);
+    if (faults && this.#random() < (faults.duplicate ?? 0)) {
+      this.#duplicated += 1;
+      this.#push(payload, payload.channel);
+    }
+  }
+
   #queuedFor(to: 'host' | 'guest', peer?: PeerId): number {
     let count = 0;
     for (const delivery of this.#queue) {
@@ -158,7 +272,7 @@ export class LocalNetwork {
     return count;
   }
 
-  #deliverToGuest(delivery: Extract<Delivery, { to: 'guest' }>): void {
+  #deliverToGuest(delivery: Extract<Payload, { to: 'guest' }>): void {
     const guest = this.#guests.get(delivery.peer);
     if (!guest) return;
     if (delivery.kind === 'closed') {
@@ -216,7 +330,7 @@ class HostEndpoint implements HostTransport {
     this.open = false;
   }
 
-  deliver(delivery: Extract<Delivery, { to: 'host' }>): void {
+  deliver(delivery: Extract<Payload, { to: 'host' }>): void {
     if (!this.open) return;
     if (delivery.kind === 'message')
       for (const handler of this.#messageHandlers) handler(delivery.peer, delivery.channel, delivery.raw);
