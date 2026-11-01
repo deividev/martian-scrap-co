@@ -87,10 +87,10 @@ Martian Scrap Co/                 Project root
 |-- index.html, vite.config.ts   Vite entry and config (MSC-005)
 |-- electron-builder.yml         Packaging allowlist, asarUnpack and fuses (MSC-007)
 |-- package.json, pnpm-lock.yaml, pnpm-workspace.yaml, tsconfig.json
-|-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006); steam/ lifecycle over steamworks.js (MSC-026); save files (MSC-036)
-|-- src/                         Renderer TypeScript: domain, content, simulation, net (co-op protocol, transport ports), input, i18n (EN/ES), models (styled procedural), platform adapter, persistence (campaign saves), audio (placeholder cues), test-yard scene
+|-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006); steam/ lifecycle over steamworks.js (MSC-026); save files (MSC-036); data folder; dev-only playtest log (MSC-039)
+|-- src/                         Renderer TypeScript: domain, content, simulation, net (co-op protocol, transport ports), input, i18n (EN/ES), models (styled procedural), platform adapter, persistence (campaign saves), audio (placeholder cues), dev (playtest recorder, dev-only), test-yard scene
 |-- tests/                       Vitest unit tests
-`-- tools/                       validate-docs.ps1, check.mjs runner, run-electron-dev.mjs
+`-- tools/                       validate-docs.ps1, check.mjs runner, run-electron-dev.mjs, dev-p2p/ and dev-playtest/ (dev-only launchers)
 
 |-- art/sculpt/                 Model review renders, comparison sheets and sculpt records
 
@@ -122,6 +122,9 @@ pnpm run bake:mountain --resettle  # only re-run the joint settling passes on th
 # Steam (optional): no App ID is built in (A1). A Steam launch supplies it; locally set MSC_STEAM_APP_ID. MSC_NO_STEAM=1 disables Steam.
 # Steam check without a window: electron . --steam-smoke (or the packaged exe with --steam-smoke) prints one JSON line.
 # DEV-ONLY two-account P2P test (remove before release, MSC-118): copy tools/dev-p2p/host.bat and join.bat next to the packaged exe.
+# DEV-ONLY playtest log (MSC-039, remove before release): copy tools/dev-playtest/playtest.bat and new-tester.bat next to the packaged exe;
+#   playtest.bat starts the game with MSC_PLAYTEST_LOG=1 (logs in Documents\Martian Scrap Co playtest logs); new-tester.bat T1 keeps a tester's save.
+#   Game data lives in %APPDATA%\Martian Scrap Co (no trailing dot; older saves are copied from "Martian Scrap Co." once).
 # Benchmark: append ?benchmark=baseline|dense to the dev URL, or run the packaged exe with --benchmark=dense --benchmark-seconds=20
 powershell.exe -NoProfile -File .	oolsalidate-docs.ps1
 ```

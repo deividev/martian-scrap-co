@@ -16,17 +16,32 @@ The optional group session in §6 (several people watching one player and swappi
 
 ## 2. Before the session (owner)
 
-1. **Build:** run `pnpm run package` and use `release/win-unpacked/`. Testers can play on the owner's PC, or the folder can be copied to theirs (USB or a drive the owner already has; no new service). **Do not copy** `tools/dev-p2p/host.bat` or `join.bat`; they are a dev-only test. Steam is not needed for this session.
-2. **Fresh save per tester.** There is no in-game reset yet (P-14). Before each tester, rename the saves folder so it is kept as a backup: `%APPDATA%\Martian Scrap Co\saves` → `saves-T1`, `saves-T2`, … The game creates a new one. If that path does not exist, launch the game once, open the pause menu (Esc), and check that it says progress saves automatically. Then look under `%APPDATA%` for the folder with a `saves` subfolder.
-3. **Defaults:** keep volumes at their defaults (master 80%, effects 100%, interface 80%). Set the language each tester prefers (L, or the pause menu).
-4. **Controller:** an Xbox-style controller, connected before launch, for the controller run (§5, P-22).
-5. **Privacy:** call testers T1, T2, … in every note; no real names. Recording the screen needs each tester's OK. **Do not record voices or the room microphone** unless that person explicitly agrees to it.
-6. **Kit:** this script, one observation sheet per tester (§8), a clock or phone timer.
+1. **Build:** run `pnpm run package` and use `release/win-unpacked/`. Copy `tools/dev-playtest/playtest.bat` and `new-tester.bat` next to `Martian Scrap Co.exe`. Testers can play on the owner's PC, or the folder can be copied to theirs (USB or a drive the owner already has; no new service). **Do not copy** `tools/dev-p2p/host.bat` or `join.bat`; they are a different dev-only test. Steam is not needed for this session.
+2. **Start the game with `playtest.bat`** (double-click), not the exe. It turns on the dev-only **automatic playtest log**. The game then writes the measurable data to `Documents\Martian Scrap Co playtest logs`, one file per session, and nothing leaves the computer. The log contains:
+   - the time of every milestone M1–M12 (§5.2);
+   - every job shown in "Current job", with how long it lasted, and a line when the same job lasts 3 minutes (a likely stuck point);
+   - sales, purchases, refused purchases, unloads, bales, cuts and error notices;
+   - menus opened and closed, device switches (useful for the controller-only run), volume changes and muting;
+   - the state when the game opens (for the reopen check) and a summary every minute.
+
+   The person observing therefore only writes what the game cannot see (§3). Started from the exe directly, the game logs nothing.
+3. **Fresh save per tester.** There is no in-game reset yet (P-14). Close the game, then run `new-tester.bat T1` (with the label of the tester who just played). It keeps their save as `saves-T1` in `%APPDATA%\Martian Scrap Co` and the next launch starts a new campaign. The first launch of this build also copies any older save from the previous `Martian Scrap Co.` folder (a name ending in a dot, which Explorer cannot open).
+4. **Defaults:** keep volumes at their defaults (master 80%, effects 100%, interface 80%). Set the language each tester prefers (L, or the pause menu).
+5. **Controller:** an Xbox-style controller, connected before launch, for the controller run (§5, P-22).
+6. **Privacy:** call testers T1, T2, … in every note; no real names. Recording the screen needs each tester's OK. **Do not record voices or the room microphone** unless that person explicitly agrees to it.
+7. **Kit:** this script, one observation sheet per tester (§8), a clock or phone timer.
 
 ## 3. Roles
 
 - **Facilitator (the owner):** reads the briefing, keeps time, and gives help **only** through the help ladder in §4.
-- **Observer (optional, another person):** fills in the sheet. If there is no observer, the facilitator fills it in, ideally from a screen recording afterwards.
+- **Observer (for example the brother, or the owner while the brother plays):** fills in only what the automatic log cannot see:
+  - what the tester says, and the "what now?" answers;
+  - every help-ladder step, with its time;
+  - confusion, boredom and reactions to sounds;
+  - the interview.
+
+  Milestone times are optional on paper: the log records them. If there is no observer, the facilitator fills this in.
+- **Who plays:** the owner already knows the game, so the owner's own play does not count as newcomer evidence (P-11, milestones). It still counts for the controller-only run, close and reopen, and the sound checks.
 - **Tester:** plays and thinks aloud.
 
 ## 4. Rules during play
@@ -107,9 +122,9 @@ With two to four people in the same room and one PC: one plays, the others watch
 
 ## 7. After the session
 
-1. Rename that tester's saves folder (§2.2) before the next tester.
+1. Close the game and run `new-tester.bat T#` (§2.3) before the next tester.
 2. Fill in the totals on the sheet: milestones reached, help-ladder steps used, confusions, repetitive moments, bugs.
-3. Give the sheets (or a photo of them, or plain notes) to the agent. The agent writes the results into `docs/playtests/MSC-039-results.md` with anonymous tester IDs. It updates the MSC-039 Outcome, closes the pending items that have evidence (with date), and adds new items for each problem found. MSC-040 (the owner's slice and scope approval) uses these results.
+3. Give the sheets (or a photo of them, or plain notes) and the files from `Documents\Martian Scrap Co playtest logs` to the agent, saying which file belongs to which tester. The agent writes the results into `docs/playtests/MSC-039-results.md` with anonymous tester IDs. It updates the MSC-039 Outcome, closes the pending items that have evidence (with date), and adds new items for each problem found. MSC-040 (the owner's slice and scope approval) uses these results.
 
 **How to read the results (MSC-039 acceptance):**
 - **Pass signals:** M1–M5 reached without step 4 of the help ladder; the "what now?" answers mostly match the game; no step needed two people; the muted segment lost no essential information; reopening kept the progress.

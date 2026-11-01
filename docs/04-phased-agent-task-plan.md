@@ -717,6 +717,17 @@ Status: In progress
 
 Outcome: 2026-11-01 — [Playtest script](playtests/MSC-039-slice-playtest-script.md) prepared for the owner to run with their brother and friends. It covers solo newcomer sessions, timed milestones, "what now?" probes, a help ladder, a muted segment, close-and-reopen, a controller-only run and a short interview, plus an observation sheet. It gathers evidence for pending items P-08, P-10, P-11, P-13, P-22 and P-27. No session has been run yet. Co-op role switching cannot be tested until the game connects players (P-04); it is recorded as not run, never as passed.
 
+Dev-only playtest log (owner request 2026-11-01): it records the measurable part of the script automatically, so the observer only notes words, help and the interview. It is on only when the desktop build starts with `MSC_PLAYTEST_LOG=1` (`tools/dev-playtest/playtest.bat`), or with `?playtest=1` on the dev page. It writes JSON lines to `Documents\Martian Scrap Co playtest logs`, game state only, local only. Lines cover:
+- milestones M1–M12 with times;
+- each job with its duration, and a line when one job lasts 3 minutes;
+- sales, purchases, refused purchases, unloads, bales, cuts and notices;
+- menus, device switches, volume and muting;
+- saves, the opened state, and a summary every minute.
+
+`tools/dev-playtest/new-tester.bat T#` keeps a tester's save and starts a new campaign. While building it, the app data folder `Martian Scrap Co.` turned out to end in a dot, which Explorer cannot open. Data now lives in `Martian Scrap Co`, and saves are copied over once and never overwritten.
+
+Checks: 12 new tests (recorder milestones on the full route, the 3-minute line, device/mute/notice/save lines, the sink is off unless enabled, file log on/off, malformed entries dropped, per-call cap, bounded IPC, data folder name and one-time save copy). The browser page with `?playtest=1` logged the session start, the job, a save and the pause milestone. `new-tester.bat` was checked on a temporary folder: it renames, refuses a duplicate label, handles a missing save and shows usage. `pnpm run check` 7/7. An earlier packaged run, before the folder change, wrote the log file with the variable set and nothing without it. The packaged launch with the new folder is **not checked** (P-34): launching the packaged game from the agent's shell crashed Windows twice, so the owner checks it by opening the game normally.
+
 ### MSC-040 — Approve slice and scope before catalog work
 
 Depends on: MSC-039

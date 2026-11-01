@@ -56,6 +56,13 @@ describe('validateInvoke', () => {
     expect(validateInvoke(IPC_CHANNELS.getAppInfo, ['x'.repeat(MAX_IPC_PAYLOAD_BYTES)]).ok).toBe(false);
   });
 
+  it('accepts dev playtest entries only as a bounded array', () => {
+    expect(validateInvoke(IPC_CHANNELS.playtestStatus, []).ok).toBe(true);
+    expect(validateInvoke(IPC_CHANNELS.playtestAppend, [[{ t: 1, type: 'job' }]]).ok).toBe(true);
+    expect(validateInvoke(IPC_CHANNELS.playtestAppend, ['text']).ok).toBe(false);
+    expect(validateInvoke(IPC_CHANNELS.playtestAppend, [['x'.repeat(70 * 1024)]]).ok).toBe(false);
+  });
+
   it('exposes a bounded payload limit', () => {
     expect(MAX_IPC_PAYLOAD_BYTES).toBeGreaterThan(0);
     expect(MAX_IPC_PAYLOAD_BYTES).toBeLessThanOrEqual(64 * 1024);

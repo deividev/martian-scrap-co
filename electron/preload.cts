@@ -1,7 +1,7 @@
 // Sandboxed preload: CommonJS, no Node APIs, no relative runtime imports.
 // Exposes one frozen, typed method per approved channel; raw ipcRenderer never reaches the page.
 import electron = require('electron');
-import type { AppInfo, PlatformBridge, SteamBridge } from '../src/platform/types.js';
+import type { AppInfo, PlatformBridge, PlaytestBridge, SteamBridge } from '../src/platform/types.js';
 
 const bridge: PlatformBridge = Object.freeze({
   getAppInfo: (): Promise<AppInfo> => electron.ipcRenderer.invoke('app:get-info'),
@@ -25,3 +25,11 @@ const steam: SteamBridge = Object.freeze({
 });
 
 electron.contextBridge.exposeInMainWorld('martianSteam', steam);
+
+// DEV-ONLY playtest log (MSC-039): main decides whether it is on (MSC_PLAYTEST_LOG=1) and owns the file.
+const playtest: PlaytestBridge = Object.freeze({
+  status: () => electron.ipcRenderer.invoke('playtest:status'),
+  append: (entries: readonly object[]) => electron.ipcRenderer.invoke('playtest:append', entries),
+});
+
+electron.contextBridge.exposeInMainWorld('martianPlaytest', playtest);

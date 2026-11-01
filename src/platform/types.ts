@@ -16,6 +16,15 @@ export interface PlatformBridge {
   writeSave(text: string): Promise<unknown>;
 }
 
+/**
+ * DEV-ONLY playtest log bridge (`window.martianPlaytest`, MSC-039). Always exposed by the preload, but main writes
+ * nothing unless the app was started with MSC_PLAYTEST_LOG=1. To be removed or kept disabled for release (MSC-118).
+ */
+export interface PlaytestBridge {
+  status(): Promise<unknown>;
+  append(entries: readonly object[]): Promise<unknown>;
+}
+
 /** SteamIDs travel as decimal strings; the renderer never sees raw Steam handles. */
 export interface SteamLobbyInfo {
   readonly id: string;
@@ -89,5 +98,6 @@ declare global {
   interface Window {
     martianPlatform?: PlatformBridge;
     martianSteam?: SteamBridge;
+    martianPlaytest?: PlaytestBridge;
   }
 }

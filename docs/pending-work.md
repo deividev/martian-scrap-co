@@ -6,7 +6,7 @@ Everything an implementation left to add, test or decide, so nothing is lost bet
 
 **Kinds:** *Play check* (seen in real play), *Co-op* (needs the real two-account transport), *Owner* (owner decision or hardware/account), *Feature* (still to build), *Release* (must happen before shipping).
 
-Last updated: 2026-11-01 (MSC-039 playtest script ready: P-08, P-10, P-11, P-13, P-22 and P-27 are gathered with [it](playtests/MSC-039-slice-playtest-script.md)).
+Last updated: 2026-11-01 (dev-only playtest log and data folder fix; MSC-039 playtest script ready: P-08, P-10, P-11, P-13, P-22 and P-27 are gathered with [it](playtests/MSC-039-slice-playtest-script.md)).
 
 ## Open
 
@@ -43,7 +43,11 @@ Last updated: 2026-11-01 (MSC-039 playtest script ready: P-08, P-10, P-11, P-13,
 | P-29 | MSC-038 | Feature | Replace the synthesized placeholder cues with the approved audio pilot (offline recipes, validated WAV, human audition) and add a music bus. | MSC-045–046 | MSC-047, MSC-078 |
 | P-30 | MSC-038 | Feature | Volumes cycle with confirm; offer left/right adjustment (and a direct mute) once menus support horizontal steps. | — | MSC-084, MSC-088 |
 | P-31 | MSC-038 | Feature | Clicking the view when the window cannot take pointer lock (hidden or unfocused pane) leaves an unhandled `WrongDocumentError` promise in the console; catch it like the menu's recapture does. | — | MSC-089 |
-| P-32 | MSC-039 | Owner | Run the slice playtest with the brother and friends using the script, then hand the sheets over for the results record. | — | MSC-039 |
+| P-32 | MSC-039 | Owner | Run the slice playtest with the brother and friends using the script, then hand the sheets and playtest log files over for the results record. | — | MSC-039 |
+| P-33 | MSC-039 | Release | Remove or compile out the dev-only playtest log (`electron/playtestLog.ts`, `src/dev/`, the `playtest:*` IPC channels and preload bridge, `tools/dev-playtest/`) and never ship the batch files. | — | MSC-118 |
+| P-34 | MSC-039 | Owner | First launch of the new build by the owner: the save is copied from the old `Martian Scrap Co.` folder to `Martian Scrap Co` and resumes, and `playtest.bat` writes a log file to `Documents\Martian Scrap Co playtest logs`. Both were checked only with tests: launching the packaged game from the agent's shell crashed Windows twice (2026-11-01). | — | MSC-039 |
+| P-35 | MSC-039 | Feature | The playtest log's last lines (and the `session-end` line) can be lost when the window closes, because the renderer's final send is not awaited; main could flush on quit. Same root as P-18. | — | MSC-092 |
+| P-36 | MSC-039 | Release | The old `%APPDATA%\Martian Scrap Co.` folder (trailing dot) stays on dev machines after the save copy; delete it with a tool that supports it, or leave it. Shipped builds never create it. | — | MSC-114 |
 
 ## Closed
 

@@ -100,6 +100,8 @@ import { MenuView, type MenuViewState } from './menuView';
 import { loadAudioSettings, saveAudioSettings, stepVolume, type VolumeChannel } from '../audio/audioMix';
 import { detectCues, type CueSnapshot } from '../audio/placeholderCues';
 import { SoundBoard } from '../audio/soundBoard';
+import { PlaytestRecorder, type PlaytestSnapshot } from '../dev/playtestRecorder';
+import { openPlaytestSink } from '../dev/playtestSink';
 
 export interface TestYardHud {
   readonly hint: HTMLElement | null;
@@ -862,6 +864,38 @@ export async function createTestYardScene(
     };
   };
   let lastCues = cueSnapshot();
+
+  // DEV-ONLY playtest log (MSC-039): on only with MSC_PLAYTEST_LOG=1 (desktop) or ?playtest=1 (dev page).
+  const playtestSink = await openPlaytestSink();
+  const playtestSnapshot = (): PlaytestSnapshot => ({
+    collected: container.count,
+    intake: intake.count,
+    pressKind: compactor.state.kind,
+    bales: bales.size,
+    holdingBale: grip.held !== null && bales.has(grip.held),
+    credits: sharedCredits.balance,
+    collectorTier: collector.selector.tier + 1,
+    revealed: stationReveal.revealed,
+    clearing: stationReveal.status().progress,
+    cuts: cutCounter,
+    cartLoads: cart.loads.length,
+    cartPushed: cart.pusher() !== undefined,
+    equipped: loadout.equipped,
+    menu: menu?.kind ?? null,
+    device,
+    muted: sound.settings.master === 0,
+    job: jobText(),
+    notice: notice?.key ?? null,
+    noticeSerial,
+    saveRevision: campaign.saver.revision,
+  });
+  const playtest = playtestSink ? new PlaytestRecorder((entry) => playtestSink.push(entry), performance.now()) : null;
+  let lastPlaytestFlush = 0;
+  const endPlaytest = (): void => {
+    playtest?.end(performance.now());
+    playtestSink?.flush();
+  };
+  window.addEventListener('pagehide', endPlaytest);
   const VOLUME_CONTROLS: Readonly<Record<string, VolumeChannel>> = {
     volumeMaster: 'master',
     volumeSfx: 'sfx',
@@ -931,6 +965,7 @@ export async function createTestYardScene(
       };
     } else if (!bought.ok && bought.reason === 'insufficient-credits') {
       sound.play('error');
+      playtest?.note(performance.now(), 'purchase-failed', { price: offer.price, balance: sharedCredits.balance });
       menu.message = {
         notice: { key: 'shop.insufficient', params: { credits: offer.price, balance: sharedCredits.balance } },
         tone: 'error',
@@ -953,6 +988,7 @@ export async function createTestYardScene(
       const settings = stepVolume(sound.settings, channel);
       sound.setSettings(settings);
       saveAudioSettings(localStore, settings);
+      playtest?.note(performance.now(), 'volume', { channel, level: settings[channel] });
       sound.play('uiConfirm');
     }
   };
@@ -1051,6 +1087,13 @@ export async function createTestYardScene(
   const step = PHYSICS_CONVENTIONS.fixedStepSeconds;
   const euler = new Euler(0, 0, 0, 'YXZ');
 
+  playtest?.begin(performance.now(), playtestSnapshot(), {
+    campaign: campaign.opened.kind,
+    language: i18n.locale,
+    saveRevision: campaign.saver.revision,
+    log: playtestSink?.target,
+  });
+  if (playtestSink) console.info('Playtest log on:', playtestSink.target);
   renderer.setAnimationLoop((now) => {
     const frameStart = performance.now();
     sampleFrame('interval', now - previous);
@@ -1593,6 +1636,13 @@ export async function createTestYardScene(
     const cues = cueSnapshot();
     for (const cue of detectCues(lastCues, cues)) sound.play(cue);
     lastCues = cues;
+    if (playtest && playtestSink) {
+      playtest.observe(now, playtestSnapshot());
+      if (now - lastPlaytestFlush > 2000) {
+        lastPlaytestFlush = now;
+        playtestSink.flush();
+      }
+    }
     canvas.dataset['audio'] = JSON.stringify({ state: sound.state, settings: sound.settings, played: sound.played() });
     canvas.dataset['menu'] = menu ? JSON.stringify({ kind: menu.kind, focused: menu.focus.focused }) : '';
     canvas.dataset['save'] = JSON.stringify({
@@ -1807,6 +1857,8 @@ export async function createTestYardScene(
     window.removeEventListener('pagehide', requestSave);
     document.removeEventListener('pointerlockchange', onPointerLockChange);
     menuView.dispose();
+    window.removeEventListener('pagehide', endPlaytest);
+    endPlaytest();
     window.removeEventListener('keydown', unlockSound);
     window.removeEventListener('pointerdown', unlockSound);
     sound.dispose();

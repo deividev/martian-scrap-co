@@ -13,6 +13,9 @@ export const IPC_CHANNELS = Object.freeze({
   steamPoll: 'steam:poll',
   loadSave: 'save:load',
   writeSave: 'save:write',
+  /** DEV-ONLY playtest log (MSC-039); main ignores it unless MSC_PLAYTEST_LOG=1. */
+  playtestStatus: 'playtest:status',
+  playtestAppend: 'playtest:append',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -23,6 +26,9 @@ export const MAX_SAVE_PAYLOAD_BYTES = 9 * 1024 * 1024;
 
 /** `steam:send` carries one protocol message (up to 16 KiB of UTF-8) plus JSON escaping and the target id. */
 const STEAM_SEND_PAYLOAD_BYTES = 6 * 16 * 1024 + 256;
+
+/** One batch of dev playtest log entries (MSC-039). */
+const PLAYTEST_APPEND_PAYLOAD_BYTES = 64 * 1024;
 
 const ALLOWED_CHANNELS: ReadonlySet<string> = new Set(Object.values(IPC_CHANNELS));
 
@@ -39,11 +45,14 @@ const CHANNEL_ARITY: Readonly<Record<IpcChannel, number>> = {
   'steam:poll': 0,
   'save:load': 0,
   'save:write': 1,
+  'playtest:status': 0,
+  'playtest:append': 1,
 };
 
 const CHANNEL_MAX_BYTES: Readonly<Partial<Record<IpcChannel, number>>> = {
   'steam:send': STEAM_SEND_PAYLOAD_BYTES,
   'save:write': MAX_SAVE_PAYLOAD_BYTES,
+  'playtest:append': PLAYTEST_APPEND_PAYLOAD_BYTES,
 };
 
 export type IpcValidation =
@@ -68,6 +77,9 @@ export function validateInvoke(channel: string, args: readonly unknown[]): IpcVa
   const limit = CHANNEL_MAX_BYTES[channel] ?? MAX_IPC_PAYLOAD_BYTES;
   if (encoded === undefined || encoded.length > limit) {
     return { ok: false, reason: `${channel} payload exceeds ${limit} bytes` };
+  }
+  if (channel === 'playtest:append' && !Array.isArray(args[0])) {
+    return { ok: false, reason: 'playtest:append expects an array of entries' };
   }
   if (channel === 'save:write' && typeof args[0] !== 'string') {
     return { ok: false, reason: 'save:write expects the save text' };

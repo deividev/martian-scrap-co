@@ -9,6 +9,14 @@ import { startSteam } from './steam/steamService.js';
 import { connectLobbyFromArgv, isSteamId, resolveSteamConfig } from './steam/steamPolicy.js';
 import { resolveDevP2pTest, runDevP2pTest } from './steam/devP2pTest.js'; // DEV-ONLY: remove before release
 import { createFileSlots } from './saveFiles.js';
+import { createPlaytestLog, isPlaytestLogEnabled } from './playtestLog.js'; // DEV-ONLY: remove before release
+import { migrateLegacySaves, resolveUserDataDir } from './userData.js';
+
+// Before anything touches userData: a folder name without the final dot (see userData.ts), saves carried over once.
+app.setPath('userData', resolveUserDataDir(app.getPath('appData')));
+const legacySaves = migrateLegacySaves(app.getPath('appData'));
+if (legacySaves === 'copied') console.info('Saves copied from the legacy "Martian Scrap Co." folder');
+if (legacySaves === 'failed') console.error('Could not copy saves from the legacy "Martian Scrap Co." folder');
 
 const appPaths = resolveAppPaths({
   appPath: app.getAppPath(),
@@ -127,6 +135,15 @@ function registerIpc(): void {
     queue = next.catch(() => undefined);
     return next;
   };
+  // DEV-ONLY playtest log (MSC-039): writes only when started with MSC_PLAYTEST_LOG=1. It goes to Documents, which
+  // Explorer opens directly (the userData folder name ends in a dot, see the pending work register).
+  const playtestLog = createPlaytestLog(
+    isPlaytestLogEnabled(process.env),
+    path.join(app.getPath('documents'), 'Martian Scrap Co playtest logs'),
+  );
+  if (playtestLog.status().enabled) console.info('Playtest log on:', playtestLog.status().file);
+  handle(IPC_CHANNELS.playtestStatus, () => playtestLog.status());
+  handle(IPC_CHANNELS.playtestAppend, (entries) => playtestLog.append(entries));
   handle(IPC_CHANNELS.loadSave, (): Promise<RecoverResult> => serialized(() => recoverSave(slots)));
   handle(IPC_CHANNELS.writeSave, (text): Promise<CommitResult | { ok: false; reason: 'failed' }> =>
     serialized(async () => {
