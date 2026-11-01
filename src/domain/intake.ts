@@ -133,6 +133,11 @@ export class BaseIntake {
     return [...this.#bins.values()].filter((bin) => bin.length > 0).flatMap((bin) => summarize(bin));
   }
 
+  /** Every waiting piece, bin by bin in arrival order (a save). */
+  items(): ContainerItem[] {
+    return [...this.#bins.values()].flat();
+  }
+
   /** Removes the oldest `count` pieces of one material (the compactor reserving a load). */
   take(material: ContentId, count: number): ContainerItem[] {
     const bin = this.#bins.get(material) ?? [];

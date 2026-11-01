@@ -86,7 +86,7 @@ Martian Scrap Co/                 Project root
 |-- electron-builder.yml         Packaging allowlist, asarUnpack and fuses (MSC-007)
 |-- package.json, pnpm-lock.yaml, pnpm-workspace.yaml, tsconfig.json
 |-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006)
-|-- src/                         Renderer TypeScript: domain, content, simulation, input, i18n (EN/ES), models (styled procedural), platform adapter, test-yard scene
+|-- src/                         Renderer TypeScript: domain, content, simulation, input, i18n (EN/ES), models (styled procedural), platform adapter, persistence (campaign saves), test-yard scene
 |-- tests/                       Vitest unit tests
 `-- tools/                       validate-docs.ps1, check.mjs runner, run-electron-dev.mjs
 

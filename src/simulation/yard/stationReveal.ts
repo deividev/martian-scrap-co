@@ -52,6 +52,11 @@ export class StationReveal {
     return this.#revealed;
   }
 
+  /** Restores a reveal recorded in a save (it is permanent). */
+  markRevealed(): void {
+    this.#revealed = true;
+  }
+
   /** `locate` returns where a covering piece is now, or null once it no longer exists (collected, sold, cut). */
   update(locate: (id: EntityId) => Vec3 | null): StationRevealStatus {
     let remaining = 0;

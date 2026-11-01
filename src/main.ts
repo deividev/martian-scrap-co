@@ -40,6 +40,7 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
+const platform = createPlatformAdapter();
 const query = new URLSearchParams(window.location.search);
 const benchmark = query.get('benchmark');
 const modelName = query.get('model');
@@ -63,19 +64,22 @@ if (modelName) {
       canvas.dataset['sceneError'] = error instanceof Error ? error.message : String(error);
     });
 } else {
-  createTestYardScene(canvas, {
-    hint: document.querySelector<HTMLElement>('#input-hint'),
-    i18n,
-    feedback: document.querySelector<HTMLElement>('#target-feedback'),
-    container: document.querySelector<HTMLElement>('#hud'),
-    tip: document.querySelector<HTMLElement>('#yard-tip'),
-  }).catch((error: unknown) => {
+  createTestYardScene(
+    canvas,
+    {
+      hint: document.querySelector<HTMLElement>('#input-hint'),
+      i18n,
+      feedback: document.querySelector<HTMLElement>('#target-feedback'),
+      container: document.querySelector<HTMLElement>('#hud'),
+      tip: document.querySelector<HTMLElement>('#yard-tip'),
+    },
+    platform.saves,
+  ).catch((error: unknown) => {
     canvas.dataset['sceneError'] = error instanceof Error ? error.message : String(error);
     console.error('Scene failed to start', error);
   });
 }
 
-const platform = createPlatformAdapter();
 const status = document.querySelector<HTMLElement>('#platform-status');
 let appInfo: Awaited<ReturnType<typeof platform.getAppInfo>> = null;
 function updatePlatformStatus(): void {

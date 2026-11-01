@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   IPC_CHANNELS,
   MAX_IPC_PAYLOAD_BYTES,
+  MAX_SAVE_PAYLOAD_BYTES,
   isAllowedChannel,
   isTrustedSenderUrl,
   resolveDevServerUrl,
@@ -31,6 +32,15 @@ describe('validateInvoke', () => {
     const cyclic: Record<string, unknown> = {};
     cyclic['self'] = cyclic;
     expect(validateInvoke(IPC_CHANNELS.getAppInfo, [cyclic]).ok).toBe(false);
+  });
+
+  it('accepts campaign save text only on the save channel, within its own bound', () => {
+    expect(validateInvoke(IPC_CHANNELS.loadSave, []).ok).toBe(true);
+    expect(validateInvoke(IPC_CHANNELS.writeSave, ['{"format":"x"}']).ok).toBe(true);
+    expect(validateInvoke(IPC_CHANNELS.writeSave, [{ path: 'C:/Windows' }]).ok).toBe(false);
+    expect(validateInvoke(IPC_CHANNELS.writeSave, ['a', 'b']).ok).toBe(false);
+    expect(validateInvoke(IPC_CHANNELS.writeSave, ['x'.repeat(MAX_SAVE_PAYLOAD_BYTES)]).ok).toBe(false);
+    expect(validateInvoke(IPC_CHANNELS.getAppInfo, ['x'.repeat(MAX_IPC_PAYLOAD_BYTES)]).ok).toBe(false);
   });
 
   it('exposes a bounded payload limit', () => {

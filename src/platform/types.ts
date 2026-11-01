@@ -10,6 +10,10 @@ export interface AppInfo {
 /** The only API the preload exposes to the renderer (`window.martianPlatform`). */
 export interface PlatformBridge {
   getAppInfo(): Promise<AppInfo>;
+  /** Recovers the host campaign save from its fixed folder (MSC-036); validated again by the renderer. */
+  loadSave(): Promise<unknown>;
+  /** Commits one campaign save revision atomically; the main process validates the text first. */
+  writeSave(text: string): Promise<unknown>;
 }
 
 /** Native capabilities. A missing capability is reported as `false`, never faked. */
@@ -23,6 +27,7 @@ export interface PlatformCapabilities {
 export interface PlatformAdapter {
   readonly kind: 'electron' | 'browser';
   readonly capabilities: PlatformCapabilities;
+
   /** Resolves to `null` when the platform cannot provide app details. */
   getAppInfo(): Promise<AppInfo | null>;
 }

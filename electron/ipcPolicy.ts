@@ -3,17 +3,27 @@
 /** Every channel the renderer may invoke. Anything else is rejected. */
 export const IPC_CHANNELS = Object.freeze({
   getAppInfo: 'app:get-info',
+  loadSave: 'save:load',
+  writeSave: 'save:write',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
 export const MAX_IPC_PAYLOAD_BYTES = 16 * 1024;
+/** A campaign save is the one large payload (MSC-036); it matches `MAX_SAVE_TEXT_LENGTH` plus JSON quoting. */
+export const MAX_SAVE_PAYLOAD_BYTES = 9 * 1024 * 1024;
 
 const ALLOWED_CHANNELS: ReadonlySet<string> = new Set(Object.values(IPC_CHANNELS));
 
 /** Number of arguments each channel accepts. */
 const CHANNEL_ARITY: Readonly<Record<IpcChannel, number>> = {
   'app:get-info': 0,
+  'save:load': 0,
+  'save:write': 1,
+};
+
+const CHANNEL_MAX_BYTES: Readonly<Partial<Record<IpcChannel, number>>> = {
+  'save:write': MAX_SAVE_PAYLOAD_BYTES,
 };
 
 export type IpcValidation =
@@ -35,8 +45,12 @@ export function validateInvoke(channel: string, args: readonly unknown[]): IpcVa
   } catch {
     return { ok: false, reason: `${channel} payload is not serializable` };
   }
-  if (encoded === undefined || encoded.length > MAX_IPC_PAYLOAD_BYTES) {
-    return { ok: false, reason: `${channel} payload exceeds ${MAX_IPC_PAYLOAD_BYTES} bytes` };
+  const limit = CHANNEL_MAX_BYTES[channel] ?? MAX_IPC_PAYLOAD_BYTES;
+  if (encoded === undefined || encoded.length > limit) {
+    return { ok: false, reason: `${channel} payload exceeds ${limit} bytes` };
+  }
+  if (channel === 'save:write' && typeof args[0] !== 'string') {
+    return { ok: false, reason: 'save:write expects the save text' };
   }
   return { ok: true, channel };
 }

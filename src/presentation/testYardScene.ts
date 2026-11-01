@@ -27,8 +27,19 @@ import {
   createSortingBayModel,
 } from '../models/machineModels';
 import { SCRAP_COLORS, STYLE, createRoverFragmentModel, createStationMarkerModel, paint } from '../models/styledModels';
-import type { Vec3 } from '../simulation/physics/physicsPort';
+import type { PhysicsBodyHandle, Vec3 } from '../simulation/physics/physicsPort';
 import { StationReveal } from '../simulation/yard/stationReveal';
+import { CampaignSaver, type SaveOutcome } from '../persistence/campaignSaver';
+import type { CampaignStore } from '../persistence/campaignStore';
+import {
+  applyScrapDelta,
+  parseYardSave,
+  poseOf,
+  poseParts,
+  scrapDelta,
+  type ItemRecord,
+  type YardSave,
+} from '../simulation/yard/yardSave';
 import { FIRST_PASS_CONTENT } from '../content/firstPass';
 import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
@@ -131,13 +142,48 @@ function blockColor(name: string): string {
  * cuttable rover, dressed in the approved stylized Mars look with crew robots. Debug data is exposed on the
  * canvas dataset.
  */
-export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYardHud): Promise<() => void> {
+export async function createTestYardScene(
+  canvas: HTMLCanvasElement,
+  hud: TestYardHud,
+  saves: CampaignStore | null = null,
+): Promise<() => void> {
   const { hint, feedback: feedbackLabel, i18n } = hud;
   const nameOf = (keys: readonly string[] | undefined, fallback: string): string =>
     keys && keys.length > 0 ? keys.map((key) => i18n.tKey(key, fallback)).join(' + ') : fallback;
   const materialName = (id: string, fallback: string): string => i18n.tKey(`material.${id}`, fallback);
   const content = parseContentPack(FIRST_PASS_CONTENT);
   if (!content.ok) throw new Error(`Invalid content: ${content.errors.join('; ')}`);
+  // MSC-036: the host's campaign save is opened first, so the yard is built already restored. A save the game
+  // cannot use (newer version, unreadable, another layout) is left untouched and this session is not saved.
+  const campaign = await CampaignSaver.open(saves, 'host');
+  let startNotice: Notice | null = null;
+  let loadedSave: YardSave | null = null;
+  switch (campaign.opened.kind) {
+    case 'resumed': {
+      const parsed = parseYardSave(campaign.opened.payload);
+      if (parsed.ok) {
+        loadedSave = parsed.save;
+        startNotice = {
+          key: campaign.opened.source === 'backup' ? 'save.fromBackup' : 'save.resumed',
+          params: { revision: campaign.opened.revision },
+        };
+      } else {
+        console.warn('Campaign save not applied:', parsed.error);
+        campaign.saver.refuse();
+        startNotice = { key: 'save.incompatible' };
+      }
+      break;
+    }
+    case 'locked':
+      startNotice = { key: 'save.locked' };
+      break;
+    case 'unreadable':
+      startNotice = { key: 'save.unreadable' };
+      break;
+    case 'new':
+    case 'unsaved':
+      break;
+  }
   const renderer = new WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -223,11 +269,35 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   // Owner follow-up R4: the giant mountain is real pieces (large, medium and small) with real colliders, settled
   // offline with the game's physics (it includes the starter spill at its foot).
   const mountainLayout = createScrapMountainLayout(allocator);
+  // Every authored id is allocated up front, in a fixed order, so a rebuilt yard has the same ids as the saved one.
+  const authoredScrap = [createTestYardScrap(allocator), ...mountainLayout.smallClusters];
+  const propSpecs = createTestYardProps(allocator);
+  const breakableSpecs = createTestYardBreakables(allocator);
+  const cartId = allocator.allocate();
+  const layout: YardSave['layout'] = {
+    startSequence: allocator.nextSequence,
+    mountainPieces: mountainLayout.pieces.length,
+    smallPieces: mountainLayout.smallClusters.reduce((sum, cluster) => sum + cluster.pieces.length, 0),
+  };
+  const sameLayout =
+    loadedSave?.layout.startSequence === layout.startSequence &&
+    loadedSave.layout.mountainPieces === layout.mountainPieces &&
+    loadedSave.layout.smallPieces === layout.smallPieces;
+  if (loadedSave && !sameLayout) {
+    console.warn('Campaign save made for another yard layout; not applied', loadedSave.layout, layout);
+    campaign.saver.refuse();
+    startNotice = { key: 'save.incompatible' };
+  }
+  const restore = sameLayout ? loadedSave : null;
   /** Small mountain pieces hold colliders within this radius of the player, meters (dense mountain, sim budget). */
   const MOUNTAIN_SOLIDS = { radius: 10, hysteresis: 4, perFrame: 120 } as const;
-  const scrap = new ScrapField(world, [createTestYardScrap(allocator), ...mountainLayout.smallClusters]);
+  const scrap = new ScrapField(
+    world,
+    restore ? { clusters: applyScrapDelta(authoredScrap, restore.scrap) } : authoredScrap,
+  );
   scrap.streamSolids([TEST_YARD_SPAWN], MOUNTAIN_SOLIDS.radius, MOUNTAIN_SOLIDS.hysteresis);
   const mountain = new ScrapMountain(world, mountainLayout.pieces);
+  if (restore) mountain.restore(restore.mountain);
   const mountainView = new MountainView(
     scene,
     mountain,
@@ -237,12 +307,16 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   scrap.activateCluster('test-yard-pile');
   const scrapView = new ScrapPileView(scene, scrap, world);
   const container = new PortableContainer();
+  for (const item of restore?.container ?? []) container.add(item);
   const collector = new MagneticCollector(content.pack, scrap, world, {
     remaining: () => container.capacity - container.count,
     isEmpty: () => container.count === 0,
     canAccept: (id) => container.canAccept(id),
     accept: (item) => void container.add(item),
   });
+  while (collector.selector.tier < Math.min(restore?.upgrades.collectorTier ?? 0, collector.selector.maxTier)) {
+    collector.selector.upgrade();
+  }
   let feedback: TargetFeedback = { state: 'none' };
   const loadout = new ToolLoadout(
     [COLLECTOR, CUTTER],
@@ -250,7 +324,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   );
   // Test-yard stand-in: the cutter is granted up front until the shared-credit store sells it.
   loadout.grant(CUTTER);
-  let cutterTier = 0;
+  let cutterTier = Math.min(restore?.upgrades.cutterTier ?? 0, CUTTER_SPEED_TIERS.length - 1);
   const cutting = new CutProgress();
   const toolName = (id: string): string => i18n.tKey(`tool.${id}`, id);
   const gameHud = hud.container ? new GameHud(hud.container) : null;
@@ -268,17 +342,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     };
   };
 
-  const props = new MediumPropSet(world, createTestYardProps(allocator));
+  const props = new MediumPropSet(world, propSpecs);
   const claims = new ClaimRegistry();
   const grip = new GripController(world, props, claims, 'player-0');
-  const breakables = new Breakables(
-    props,
-    scrap,
-    world,
-    claims,
-    () => allocator.allocate(),
-    createTestYardBreakables(allocator),
-  );
+  const breakables = new Breakables(props, scrap, world, claims, () => allocator.allocate(), breakableSpecs);
   // Every material has its own bin; ceramic never arrives by container but would be routed the same way.
   const intake = new BaseIntake();
   // Static base models are batched into a few meshes (draw-call budget).
@@ -313,6 +380,11 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   // MSC-032: the compactor presses full bins into one-material bales on its output pad.
   const bales = new Map<EntityId, Bale>();
   const compactor = new Compactor(intake, [...content.pack.materials.keys()], () => allocator.allocate());
+  if (restore) {
+    const kept = intake.receive(restore.bins).kept;
+    if (kept.length > 0) console.warn(`Restored bins could not hold ${kept.length} pieces`);
+    if (restore.compactorBale) compactor.resumeBlocked(restore.compactorBale);
+  }
   const compactorModel = createCompactorModel();
   compactorModel.position.set(TEST_YARD_COMPACTOR.position.x, 0, TEST_YARD_COMPACTOR.position.z);
   compactorModel.rotation.y = Math.PI;
@@ -342,7 +414,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       );
     });
   // MSC-033: the sale machine turns a bale into shared credits almost at once (host-owned ledger).
-  const sharedCredits = new SharedCredits();
+  const sharedCredits = new SharedCredits(restore?.credits ?? 0);
   const saleTerminal = new SaleTerminal(
     sharedCredits,
     (material) => content.pack.materials.get(material)?.saleValuePerUnit,
@@ -360,7 +432,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     (collectorTiers[tier] ?? [])
       .map((id) => materialName(id, content.pack.materials.get(id)?.displayName ?? id))
       .join(i18n.t('list.and'));
-  let purchaseCounter = 0;
+  let purchaseCounter = restore?.transactions.buy ?? 0;
   const terminalModel = createSaleTerminalModel();
   terminalModel.position.set(TEST_YARD_SALE_TERMINAL.position.x, 0, TEST_YARD_SALE_TERMINAL.position.z);
   terminalModel.rotation.y = Math.PI;
@@ -375,7 +447,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     },
     halfExtents: TEST_YARD_SALE_TERMINAL.halfExtents,
   });
-  let saleCounter = 0;
+  let saleCounter = restore?.transactions.sale ?? 0;
   /** Last credit change shown beside the balance: positive for a sale, negative for a purchase. */
   let lastGain: { credits: number; until: number } | null = null;
   let wasSucking = false;
@@ -384,7 +456,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   let lastTouch = 0;
   /** Mountain wake tuning (owner check 2026-10-30; placeholders within the MSC-019 budgets). */
   const MOUNTAIN_WAKE = { settleDistance: 7, activeBudget: 260, touchReach: 0.65 } as const;
-  const cart = new Cart(world, props, claims, allocator.allocate(), { x: 2, y: 0.4, z: 5 });
+  const cart = new Cart(world, props, claims, cartId, { x: 2, y: 0.4, z: 5 });
   // MSC-035: the first station marker, buried at the mountain foot, shows once its cover is mostly cleared.
   const stationReveal = new StationReveal(
     TEST_YARD_STATION_MARKER,
@@ -413,6 +485,13 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   waypoint.visible = false;
   scene.add(waypoint);
   let revealedAt: number | null = null;
+  // The exposed module becomes solid only once revealed, so it never pushes against the settled pile around it.
+  const solidifyMarker = (): void =>
+    void world.addBox({
+      kind: 'fixed',
+      position: { x: TEST_YARD_STATION_MARKER.position.x, y: 0.9, z: TEST_YARD_STATION_MARKER.position.z },
+      halfExtents: { x: 1.2, y: 0.9, z: 0.9 },
+    });
   /** Where a covering piece is now: null once collected, sold or cut apart. */
   const locateCover = (id: EntityId): Vec3 | null => {
     const state = mountain.state(id);
@@ -442,7 +521,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   const rover = new AssemblyBody(
     world,
     props,
-    new AssemblyState(TEST_YARD_ROVER, () => allocator.allocate()),
+    new AssemblyState(TEST_YARD_ROVER, () => allocator.allocate(), restore?.rover.snapshot),
     TEST_YARD_ROVER_LAYOUT,
   );
   const fragmentMeshes = new Map(
@@ -465,7 +544,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       return [joint.id, marker] as const;
     }),
   );
-  let cutCounter = 0;
+  let cutCounter = restore?.transactions.cut ?? 0;
   const cutAnchors = new Set<string>();
   const fragmentParts = (ids: readonly string[]) =>
     TEST_YARD_ROVER.fragments.filter((fragment) => ids.includes(fragment.id));
@@ -507,6 +586,129 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     for (const freed of left.freed) partToProp(freed);
     return partToProp(left.piece);
   };
+  // MSC-036: put back what the save recorded on top of the freshly built yard.
+  if (restore) {
+    for (const fragmentId of restore.rover.cutAnchors) {
+      const removed = rover.removeIsolatedAnchor();
+      if (removed?.fragmentId === fragmentId) cutAnchors.add(fragmentId);
+    }
+    for (const chunk of rover.state.chunks()) {
+      if (props.get(chunk.entityId)) {
+        breakables.registerExisting(chunk.entityId, cutYields(fragmentParts(chunk.fragments)));
+      }
+    }
+    const kept = new Map(restore.props.map((entry) => [entry.id, poseParts(entry.pose)]));
+    for (const id of restore.mountain.released) {
+      const piece = mountain.piece(id);
+      if (piece && kept.has(id)) partToProp(piece);
+    }
+    for (const bale of restore.bales) {
+      const pose = kept.get(bale.id);
+      if (!pose) continue;
+      bales.set(bale.id, bale);
+      props.add(
+        {
+          id: bale.id,
+          materialId: bale.materialId,
+          displayName: 'Bale',
+          position: pose.position,
+          halfExtents: BALE_HALF_EXTENTS,
+          massKg: Math.max(bale.massKg, 1),
+        },
+        pose.rotation,
+      );
+    }
+    // Authored props, rover chunks and parts not listed were consumed (broken, cut, compacted or sold).
+    for (const prop of props.all()) {
+      const pose = kept.get(prop.id);
+      if (pose) world.setBodyPose(prop.body, pose.position, pose.rotation);
+      else {
+        props.remove(prop.id);
+        breakables.forget(prop.id);
+      }
+    }
+    const cartPose = poseParts(restore.cart.pose);
+    world.setBodyPose(cart.body, cartPose.position, cartPose.rotation);
+    for (const id of restore.cart.loads) cart.load(id);
+    if (restore.campaign.stationMarkerRevealed) {
+      stationReveal.markRevealed();
+      solidifyMarker();
+    }
+    allocator.advanceTo(restore.nextEntitySequence);
+  }
+  const itemRecord = (item: ItemRecord): ItemRecord => ({
+    id: item.id,
+    materialId: item.materialId,
+    massKg: item.massKg,
+  });
+  const poseOfBody = (body: PhysicsBodyHandle) => poseOf(world.bodyPosition(body), world.bodyRotation(body));
+  /** Durable outcomes only (architecture §7); runs when a save starts, so it sees the latest state. */
+  const captureSave = (): YardSave => ({
+    layout,
+    nextEntitySequence: allocator.nextSequence,
+    transactions: { sale: saleCounter, buy: purchaseCounter, cut: cutCounter },
+    credits: sharedCredits.balance,
+    upgrades: { collectorTier: collector.selector.tier, cutterTier },
+    campaign: { stationMarkerRevealed: stationReveal.revealed },
+    container: container.items().map(itemRecord),
+    bins: [...compactor.reserved(), ...intake.items()].map(itemRecord),
+    compactorBale: compactor.state.kind === 'blocked' ? compactor.state.bale : null,
+    bales: [...bales.values()],
+    props: props.all().map((prop) => ({ id: prop.id, pose: poseOfBody(prop.body) })),
+    cart: { pose: poseOfBody(cart.body), loads: [...cart.loads] },
+    mountain: mountain.changed(),
+    scrap: scrapDelta(authoredScrap, scrap.snapshot()),
+    rover: { snapshot: rover.state.snapshot(), cutAnchors: [...cutAnchors] },
+  });
+  /** Cheap summary of durable progress; when it changes a save follows within a few seconds. */
+  const progressSignature = (): string => {
+    const field = scrap.metrics();
+    return [
+      sharedCredits.balance,
+      collector.selector.tier,
+      cutterTier,
+      container.count,
+      intake.count,
+      compactor.state.kind,
+      bales.size,
+      props.all().length,
+      mountain.version,
+      field.removed,
+      field.dormant + field.active + field.removed,
+      rover.state.chunks().length,
+      cutAnchors.size,
+      stationReveal.revealed,
+    ].join(':');
+  };
+  let saveState: { revision: number; last: string; captureMs: number } = {
+    revision: campaign.saver.revision,
+    last: 'none',
+    captureMs: 0,
+  };
+  let savedSignature = '';
+  let lastSaveAt = -Infinity;
+  let lastSaveCheck = 0;
+  let saveFailureShown = false;
+  const reportSave = (outcome: SaveOutcome): void => {
+    saveState = { ...saveState, revision: campaign.saver.revision, last: outcome.ok ? 'ok' : outcome.reason };
+    if (!outcome.ok && outcome.reason !== 'read-only' && !saveFailureShown) {
+      saveFailureShown = true;
+      notice = { key: 'save.failed' };
+      noticeUntil = performance.now() + 5000;
+    }
+  };
+  const requestSave = (): void => {
+    if (!campaign.saver.writable) return;
+    const timedCapture = (): YardSave => {
+      const started = performance.now();
+      const save = captureSave();
+      saveState = { ...saveState, captureMs: Math.round(performance.now() - started) };
+      return save;
+    };
+    void campaign.saver.save(timedCapture).then(reportSave);
+  };
+  // Best effort when the page closes; regular saves keep the loss to a few seconds of progress after a crash.
+  window.addEventListener('pagehide', requestSave);
   const propLabel = (id: EntityId): string => {
     const part = releasedParts.get(id);
     if (part) return mountainName(part);
@@ -575,8 +777,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     blocked: { key: 'place.blocked' },
     'overlaps-player': { key: 'place.overlapsPlayer' },
   };
-  let notice: Notice | null = null;
-  let noticeUntil = 0;
+  let notice: Notice | null = startNotice;
+  let noticeUntil = startNotice ? performance.now() + 6000 : 0;
   const closer = (a: TargetPick | null, b: TargetPick | null): TargetPick | null =>
     !a ? b : !b ? a : a.angle <= b.angle ? a : b;
   const forwardOf = (yaw: number, pitch: number) => ({
@@ -1026,6 +1228,16 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     for (const material of bayMaterials) {
       sortingBay.userData.bay.setFill(material, intake.binCount(material) / intake.binCapacity);
     }
+    // MSC-036: a durable change (sale, purchase, unload, bale, cut, reveal…) is saved within a few seconds.
+    if (now - lastSaveCheck > 1000) {
+      lastSaveCheck = now;
+      const signature = progressSignature();
+      if (signature !== savedSignature && now - lastSaveAt > 4000) {
+        savedSignature = signature;
+        lastSaveAt = now;
+        requestSave();
+      }
+    }
     if (now - lastRevealCheck > 500) {
       lastRevealCheck = now;
       const reveal = stationReveal.update(locateCover);
@@ -1033,12 +1245,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         revealedAt = now;
         notice = { key: 'station.revealed' };
         noticeUntil = now + 5000;
-        // The exposed module becomes solid only now, so it never pushes against the settled pile around it.
-        world.addBox({
-          kind: 'fixed',
-          position: { x: TEST_YARD_STATION_MARKER.position.x, y: 0.9, z: TEST_YARD_STATION_MARKER.position.z },
-          halfExtents: { x: 1.2, y: 0.9, z: 0.9 },
-        });
+        solidifyMarker();
       }
     }
     waypoint.visible = collector.selector.tier >= 1 && !stationReveal.revealed;
@@ -1147,6 +1354,11 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     canvas.dataset['credits'] = String(sharedCredits.balance);
     canvas.dataset['collectorTier'] = String(collector.selector.tier + 1);
     canvas.dataset['stationMarker'] = JSON.stringify(stationReveal.status());
+    canvas.dataset['save'] = JSON.stringify({
+      campaign: campaign.opened.kind,
+      writable: campaign.saver.writable,
+      ...saveState,
+    });
     canvas.dataset['compactor'] = JSON.stringify({ state: compactor.state.kind, bales: [...bales.keys()] });
     canvas.dataset['bins'] = JSON.stringify(Object.fromEntries(intake.batches().map((b) => [b.materialId, b.count])));
     canvas.dataset['selector'] = JSON.stringify({
@@ -1351,6 +1563,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     detachKeyboard();
     canvas.removeEventListener('click', lockPointer);
     window.removeEventListener('resize', resize);
+    window.removeEventListener('pagehide', requestSave);
     world.dispose();
     renderer.dispose();
   };

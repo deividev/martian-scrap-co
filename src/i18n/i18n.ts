@@ -174,6 +174,27 @@ export const STRINGS = {
     en: 'Station beacon uncovered! The buried station starts to show under the mountain.',
     es: '¡Baliza de la estación al descubierto! La estación enterrada empieza a asomar bajo la montaña.',
   },
+  'save.resumed': { en: 'Campaign restored (save {revision}).', es: 'Partida restaurada (guardado {revision}).' },
+  'save.fromBackup': {
+    en: 'The latest save was damaged: the previous valid save was restored (save {revision}).',
+    es: 'El último guardado estaba dañado: se ha restaurado el anterior válido (guardado {revision}).',
+  },
+  'save.locked': {
+    en: 'This campaign was saved by a newer version of the game. It was not loaded and will not be overwritten; this session is not saved.',
+    es: 'Esta partida se guardó con una versión más nueva del juego. No se ha cargado ni se sobrescribirá; esta sesión no se guarda.',
+  },
+  'save.unreadable': {
+    en: 'The campaign save could not be read. It was left untouched; this session is not saved.',
+    es: 'No se ha podido leer el guardado de la partida. Se ha dejado intacto; esta sesión no se guarda.',
+  },
+  'save.incompatible': {
+    en: 'The campaign save does not match this test yard. It was left untouched; this session is not saved.',
+    es: 'El guardado de la partida no corresponde a este patio de pruebas. Se ha dejado intacto; esta sesión no se guarda.',
+  },
+  'save.failed': {
+    en: 'The campaign could not be saved; progress since the last save may be lost.',
+    es: 'No se ha podido guardar la partida; el progreso desde el último guardado puede perderse.',
+  },
   'job.buyUpgrade': {
     en: 'The crew can afford collector level {tier}: buy it at the sale machine ({credits} C)',
     es: 'El equipo puede comprar el colector nivel {tier}: cómpralo en la máquina de venta ({credits} C)',

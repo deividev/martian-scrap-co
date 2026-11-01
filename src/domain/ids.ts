@@ -66,6 +66,15 @@ export class EntityIdAllocator {
     return this.#next;
   }
 
+  /** Continues a restored world: moves the sequence forward to a saved value, never backwards. */
+  advanceTo(nextSequence: number): void {
+    if (!Number.isSafeInteger(nextSequence) || nextSequence > MAX_ENTITY_SEQUENCE + 1) {
+      throw new RangeError(`Invalid entity sequence: ${nextSequence}`);
+    }
+    if (nextSequence < this.#next) throw new RangeError(`Entity sequence ${nextSequence} would reuse ids`);
+    this.#next = nextSequence;
+  }
+
   allocate(): EntityId {
     if (this.#next > MAX_ENTITY_SEQUENCE) throw new RangeError('Entity id space exhausted');
     const id = `ent-${this.#next.toString(36)}` as EntityId;

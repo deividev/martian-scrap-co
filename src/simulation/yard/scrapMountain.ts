@@ -251,6 +251,20 @@ export class ScrapMountain {
     return { released, removed };
   }
 
+  /** Applies a saved `changed()` to a freshly built pile (no cascade: freed parts are listed in the save). */
+  restore(changed: { readonly released: readonly EntityId[]; readonly removed: readonly EntityId[] }): void {
+    for (const [ids, next] of [
+      [changed.released, 'released'],
+      [changed.removed, 'removed'],
+    ] as const) {
+      for (const id of ids) {
+        if (this.#state.get(id) !== 'embedded') throw new Error(`Save refers to unknown mountain part ${id}`);
+        this.#take(id, next);
+      }
+    }
+    this.#version += 1;
+  }
+
   #leave(id: EntityId, next: Exclude<MountainPieceState, 'embedded'>): MountainLeave | null {
     const piece = this.#specs.get(id);
     if (!piece || this.#state.get(id) !== 'embedded' || !this.exposed(id)) return null;

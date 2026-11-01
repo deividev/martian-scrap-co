@@ -5,6 +5,8 @@ import type { AppInfo, PlatformBridge } from '../src/platform/types.js';
 
 const bridge: PlatformBridge = Object.freeze({
   getAppInfo: (): Promise<AppInfo> => electron.ipcRenderer.invoke('app:get-info'),
+  loadSave: (): Promise<unknown> => electron.ipcRenderer.invoke('save:load'),
+  writeSave: (text: string): Promise<unknown> => electron.ipcRenderer.invoke('save:write', text),
 });
 
 electron.contextBridge.exposeInMainWorld('martianPlatform', bridge);

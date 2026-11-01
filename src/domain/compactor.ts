@@ -73,6 +73,18 @@ export class Compactor {
     return this.#state.kind === 'blocked' ? this.#state.bale.pieceIds : this.#load.map((item) => item.id);
   }
 
+  /** Pieces reserved for a load not pressed yet (a save keeps them as bin pieces). */
+  reserved(): readonly ContainerItem[] {
+    return this.#state.kind === 'loading' || this.#state.kind === 'processing' ? [...this.#load] : [];
+  }
+
+  /** Restores a finished bale that was waiting inside an idle machine (loading a save). */
+  resumeBlocked(bale: Bale): boolean {
+    if (this.#state.kind !== 'idle') return false;
+    this.#state = { kind: 'blocked', bale };
+    return true;
+  }
+
   /**
    * Advances the machine. Returns the bale on the tick it leaves through the exit, else null. `exitClear`
    * says whether the output pad is free for a new bale.

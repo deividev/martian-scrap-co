@@ -1,9 +1,11 @@
 import { BrowserWindow, app, ipcMain, session, type IpcMainInvokeEvent, type WebContents } from 'electron';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { commitSave, recoverSave, type CommitResult, type RecoverResult } from '../src/persistence/saveSlots.js';
 import type { AppInfo } from '../src/platform/types.js';
-import { IPC_CHANNELS, isTrustedSenderUrl, resolveDevServerUrl, validateInvoke } from './ipcPolicy.js';
+import { IPC_CHANNELS, isTrustedSenderUrl, resolveDevServerUrl, validateInvoke, type IpcChannel } from './ipcPolicy.js';
 import { resolveAppPaths } from './paths.js';
+import { createFileSlots } from './saveFiles.js';
 
 const appPaths = resolveAppPaths({
   appPath: app.getAppPath(),
@@ -70,21 +72,45 @@ function hardenSession(): void {
   }
 }
 
-function registerIpc(): void {
-  ipcMain.handle(IPC_CHANNELS.getAppInfo, (event: IpcMainInvokeEvent, ...args: unknown[]): AppInfo => {
+function handleTrusted(channel: IpcChannel, run: (args: readonly unknown[]) => unknown): void {
+  ipcMain.handle(channel, (event: IpcMainInvokeEvent, ...args: unknown[]) => {
     if (!isTrustedSenderUrl(event.senderFrame?.url, devServerOrigin, indexFileUrl)) {
       throw new Error('IPC rejected: untrusted sender');
     }
-    const validation = validateInvoke(IPC_CHANNELS.getAppInfo, args);
+    const validation = validateInvoke(channel, args);
     if (!validation.ok) throw new Error(`IPC rejected: ${validation.reason}`);
-    return {
-      name: app.getName(),
-      version: app.getVersion(),
-      platform: process.platform,
-      electron: process.versions.electron,
-      chrome: process.versions.chrome,
-    };
+    return run(args);
   });
+}
+
+function registerIpc(): void {
+  handleTrusted(IPC_CHANNELS.getAppInfo, (): AppInfo => ({
+    name: app.getName(),
+    version: app.getVersion(),
+    platform: process.platform,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+  }));
+  // MSC-036: host campaign saves live in one fixed folder under userData; the renderer passes text, never paths.
+  const slots = createFileSlots(path.join(app.getPath('userData'), 'saves'));
+  // One save operation at a time, in order.
+  let queue: Promise<unknown> = Promise.resolve();
+  const serialized = <T>(run: () => Promise<T>): Promise<T> => {
+    const next = queue.then(run, run);
+    queue = next.catch(() => undefined);
+    return next;
+  };
+  handleTrusted(IPC_CHANNELS.loadSave, (): Promise<RecoverResult> => serialized(() => recoverSave(slots)));
+  handleTrusted(IPC_CHANNELS.writeSave, (args): Promise<CommitResult | { ok: false; reason: 'failed' }> =>
+    serialized(async () => {
+      try {
+        return await commitSave(slots, String(args[0]));
+      } catch (error) {
+        console.error('Save failed', error);
+        return { ok: false, reason: 'failed' };
+      }
+    }),
+  );
 }
 
 function createMainWindow(): BrowserWindow {
