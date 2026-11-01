@@ -34,6 +34,8 @@ Co-op roles are freely interchangeable: no classes or exclusive abilities. Money
 
 Require the user's scoped implementation instruction before game code, scaffolding, package setup, installed skills or account changes. Work dependency-ready units; preserve approved decisions and unrelated edits. On a failed gate, stop dependent work and report bounded evidence. Never silently drop co-op/Deck requirements, add paid dependencies or claim tests/quality that were not observed.
 
+Every implementation records what it leaves to add, test or decide in the [pending work register](docs/pending-work.md) and closes items only with observed evidence; in the same commit it updates the task's Status/Outcome and any affected document (this guide's command list and structure, PRD/architecture status, decision records, dependency register), so documents and code stay aligned.
+
 Prove native Steam feasibility early (adopted transport: steamworks.js lobbies + legacy P2P, MSC-026): packaged real Steam launch, two legitimate accounts/devices on different networks, invitations, late join/rejoin and transaction integrity; then representative four-player load and real Deck tests **before full content production**. Human-approved 3D/audio pilots precede catalogs. Details and consequences are in the architecture and task plan, not guaranteed by a dependency install.
 
 Use concise replies in the user's current language. Ask at most one question, then stop. Artifacts default to professional English unless explicitly requested otherwise. Verify technical claims. No `Co-Authored-By` or AI attribution in commits; use conventional commits only when committing is separately authorized. This package mandates no SDD, global orchestration installation, native review activation, deployment or global configuration edits.
@@ -80,7 +82,7 @@ Martian Scrap Co/                 Project root
 |-- AGENT.md                     Canonical context and policy
 |-- AGENTS.md                    Codex entry: read AGENT.md
 |-- CLAUDE.md                    Claude entry: imports AGENT.md
-|-- docs/                        Four planning documents, decisions/ records, dependency register
+|-- docs/                        Four planning documents, decisions/ records, dependency register, pending work register
 |-- references/                  Six PNGs, three prompt MDs, four raw supplied guides
 |-- index.html, vite.config.ts   Vite entry and config (MSC-005)
 |-- electron-builder.yml         Packaging allowlist, asarUnpack and fuses (MSC-007)
