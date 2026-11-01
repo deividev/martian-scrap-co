@@ -82,7 +82,7 @@ Martian Scrap Co/                 Project root
 |-- AGENT.md                     Canonical context and policy
 |-- AGENTS.md                    Codex entry: read AGENT.md
 |-- CLAUDE.md                    Claude entry: imports AGENT.md
-|-- docs/                        Four planning documents, decisions/ records, dependency register, pending work register
+|-- docs/                        Four planning documents, decisions/ records, dependency register, pending work register, playtests/ scripts and results
 |-- references/                  Six PNGs, three prompt MDs, four raw supplied guides
 |-- index.html, vite.config.ts   Vite entry and config (MSC-005)
 |-- electron-builder.yml         Packaging allowlist, asarUnpack and fuses (MSC-007)

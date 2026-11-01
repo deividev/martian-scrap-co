@@ -713,7 +713,9 @@ Check: Observe independent solo and group routes without coaching beyond script.
 
 Requirements: PRD-002–004, PRD-014, PRD-022.
 
-Status: Planned
+Status: In progress
+
+Outcome: 2026-11-01 — [Playtest script](playtests/MSC-039-slice-playtest-script.md) prepared for the owner to run with their brother and friends. It covers solo newcomer sessions, timed milestones, "what now?" probes, a help ladder, a muted segment, close-and-reopen, a controller-only run and a short interview, plus an observation sheet. It gathers evidence for pending items P-08, P-10, P-11, P-13, P-22 and P-27. No session has been run yet. Co-op role switching cannot be tested until the game connects players (P-04); it is recorded as not run, never as passed.
 
 ### MSC-040 — Approve slice and scope before catalog work
 

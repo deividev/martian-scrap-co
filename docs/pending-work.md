@@ -6,7 +6,7 @@ Everything an implementation left to add, test or decide, so nothing is lost bet
 
 **Kinds:** *Play check* (seen in real play), *Co-op* (needs the real two-account transport), *Owner* (owner decision or hardware/account), *Feature* (still to build), *Release* (must happen before shipping).
 
-Last updated: 2026-11-01 (every open item scheduled into a task; MSC-038 placeholder sound).
+Last updated: 2026-11-01 (MSC-039 playtest script ready: P-08, P-10, P-11, P-13, P-22 and P-27 are gathered with [it](playtests/MSC-039-slice-playtest-script.md)).
 
 ## Open
 
@@ -43,6 +43,7 @@ Last updated: 2026-11-01 (every open item scheduled into a task; MSC-038 placeho
 | P-29 | MSC-038 | Feature | Replace the synthesized placeholder cues with the approved audio pilot (offline recipes, validated WAV, human audition) and add a music bus. | MSC-045–046 | MSC-047, MSC-078 |
 | P-30 | MSC-038 | Feature | Volumes cycle with confirm; offer left/right adjustment (and a direct mute) once menus support horizontal steps. | — | MSC-084, MSC-088 |
 | P-31 | MSC-038 | Feature | Clicking the view when the window cannot take pointer lock (hidden or unfocused pane) leaves an unhandled `WrongDocumentError` promise in the console; catch it like the menu's recapture does. | — | MSC-089 |
+| P-32 | MSC-039 | Owner | Run the slice playtest with the brother and friends using the script, then hand the sheets over for the results record. | — | MSC-039 |
 
 ## Closed
 
