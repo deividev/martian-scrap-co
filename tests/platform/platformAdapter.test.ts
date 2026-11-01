@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPlatformAdapter, isAppInfo } from '../../src/platform/platformAdapter';
-import type { AppInfo } from '../../src/platform/types';
+import type { AppInfo, SteamBridge, SteamStatus } from '../../src/platform/types';
 
 const INFO: AppInfo = {
   name: 'martian-scrap-co',
@@ -29,6 +29,17 @@ describe('createPlatformAdapter', () => {
   it('drops malformed bridge responses', async () => {
     const adapter = createPlatformAdapter({ getAppInfo: () => Promise.resolve({ name: 42 } as unknown as AppInfo) });
     await expect(adapter.getAppInfo()).resolves.toBeNull();
+  });
+
+  it('hands out the Steam bridge only when Steam initialized', async () => {
+    const platform = { getAppInfo: () => Promise.resolve(INFO) };
+    const steam = (status: SteamStatus) => ({ status: () => Promise.resolve(status) }) as unknown as SteamBridge;
+    const live = steam({ available: true, self: '76561198000000001', lobby: null });
+    await expect(createPlatformAdapter(platform, live).getSteam()).resolves.toBe(live);
+    const off = steam({ available: false, reason: 'init-failed' });
+    await expect(createPlatformAdapter(platform, off).getSteam()).resolves.toBeNull();
+    await expect(createPlatformAdapter(platform, undefined).getSteam()).resolves.toBeNull();
+    await expect(createPlatformAdapter(undefined, live).getSteam()).resolves.toBeNull();
   });
 });
 

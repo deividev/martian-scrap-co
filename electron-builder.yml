@@ -14,12 +14,22 @@ files:
   - dist-electron/electron/**/*
   - package.json
   - '!**/*.map'
+  # steamworks.js (MSC-026) is the only runtime dependency; ship only its loader and the win64 binary + DLL.
+  - '!**/node_modules/{@types,undici-types}/**'
+  - '!**/node_modules/steamworks.js/dist/{linux64,osx}/**'
+  - '!**/node_modules/steamworks.js/**/*.{d.ts,lib,md}'
 
 # Native modules (.node, Steam DLLs) must load from disk, not from inside the asar archive.
 asar: true
 asarUnpack:
   - native/**
   - '**/*.node'
+  - '**/node_modules/steamworks.js/dist/win64/**'
+
+# Also place steam_api64.dll next to the executable (co-op guide §3.3): a missing DLL silently means "no Steam".
+extraFiles:
+  - from: node_modules/steamworks.js/dist/win64/steam_api64.dll
+    to: steam_api64.dll
 
 electronLanguages:
   - en-US

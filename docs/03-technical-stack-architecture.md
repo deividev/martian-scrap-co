@@ -18,7 +18,7 @@ Three.js is a renderer/3D library, **not a complete game engine**; input, physic
 | Desktop | Electron main + narrow preload | Approved runtime; native Steam/save capability stays outside renderer. |
 | UI | DOM/CSS with a small view/state layer initially | Reuse layout/accessibility behavior; no approved React/no-React decision. Add framework only for demonstrated complexity. |
 | Input | Action abstraction over keyboard, pointer and Gamepad API | One action vocabulary; real Steam Input/controller/Deck testing remains necessary. |
-| Networking | Host authority, transport-independent protocol; modern Steam candidate | Avoid dedicated infrastructure and transport-specific gameplay. Native binding feasibility is unresolved. |
+| Networking | Host authority, transport-independent protocol; **steamworks.js 0.4.0 lobbies + legacy P2P** (owner decision 2026-10-31, MSC-026) | Avoid dedicated infrastructure and transport-specific gameplay. Legacy P2P is deprecated by Valve but working; real two-network feasibility is gate T1. |
 | Save validation | Versioned schemas and typed runtime validators | Reject malformed files/network payloads; choose a small maintained free validator after spike. |
 | Audio runtime | Native Web Audio playback of exported assets | Runtime mixes/loops pre-rendered files; no paid API or live generative service. |
 | Audio authoring | Tone.Offline recipes + validated PCM encoder | Zero-additional-cost candidate; pilot and human audition first. |
@@ -30,7 +30,7 @@ Pin exact library/native SDK versions only after the early compatibility test. R
 
 ## 2. Boundaries and planned structure
 
-The following are **planned paths**; they are created by their tasks (`src/presentation/` since MSC-005, `src/platform/` and `electron/` since MSC-006, `src/domain/` and `src/content/` since MSC-009, `src/simulation/physics/` since MSC-011, `src/simulation/scrap/` since MSC-012, `src/input/` and `src/simulation/player/` since MSC-013, `src/simulation/collection/` since MSC-014, `src/simulation/handling/` since MSC-016, `src/simulation/benchmark/` since MSC-019; see each task Outcome):
+The following are **planned paths**; they are created by their tasks (`src/presentation/` since MSC-005, `src/platform/` and `electron/` since MSC-006, `src/domain/` and `src/content/` since MSC-009, `src/simulation/physics/` since MSC-011, `src/simulation/scrap/` since MSC-012, `src/input/` and `src/simulation/player/` since MSC-013, `src/simulation/collection/` since MSC-014, `src/simulation/handling/` since MSC-016, `src/simulation/benchmark/` since MSC-019, `src/net/` since MSC-021, `electron/steam/` since MSC-026; see each task Outcome):
 
 | Planned area | Responsibility | Forbidden dependency |
 |---|---|---|
@@ -41,7 +41,8 @@ The following are **planned paths**; they are created by their tasks (`src/prese
 | `src/net/` | Schemas, protocol, transport ports, replication/snapshots | Hard-coded Steam SDK calls in gameplay. |
 | `src/content/` | Validated data definitions for tools, materials and sectors | Embedded unversioned economy logic in meshes. |
 | `electron/` | Main lifecycle, save service, Steam adapter, preload | Unbounded renderer-requested native operations. |
-| `native/steam/` | Conditional bounded native transport extension | Shipping private app IDs or unrelated reference binaries. |
+| `electron/steam/` | Single Steam lifecycle over steamworks.js: lobby, P2P pump, membership filter (MSC-026) | Shipping private app IDs, a built-in App ID before A1, or unrelated reference binaries. |
+| `native/steam/` | Fallback only: custom NetworkingMessages addon (MSC-025 proposal, not adopted) | Being created without a new owner decision. |
 | `tools/`, `tests/`, `assets-source/` | Proven production helpers, test fixtures and editable sources | Treating scratch outputs as approved runtime assets. |
 
 Use composition and explicit service ownership rather than a speculative ECS or plugin framework. A lightweight entity registry with stable IDs is enough until measured needs justify more. Entity data maps to render objects and physics handles through adapters; those handles never become persistent identity. Content definitions separate authored intent from save deltas.
@@ -70,7 +71,9 @@ Native binaries must match Electron/runtime architecture and load from tested un
 
 **Observed research boundary:** inspected current-main steamworks.js types/source expose legacy `sendP2PPacket`, read and accept APIs; the inspected files do not expose modern Messages/Sockets transport. This is source inspection, not a guarantee about every fork or future release. Valve marks legacy networking deprecated. [Binding types](https://github.com/ceifa/steamworks.js/blob/main/client.d.ts), [binding networking source](https://github.com/ceifa/steamworks.js/blob/main/src/api/networking.rs), [Valve networking overview](https://partner.steamgames.com/doc/features/multiplayer/networking).
 
-**Proposed candidate:** a bounded Rust/N-API extension around SteamNetworkingMessages, contingent on the binding's supported underlying Steam wrapper; otherwise a minimal SDK addon. Reuse mature binding support for appropriate lobby/native functions where verified. This extension is real engineering and maintenance risk, not “install a package and co-op works.” Recheck adopted revision, SDK access/terms, callback lifecycle, packaging and transport semantics before committing architecture details. No private identifier or binary from Toy Keeper is transferable.
+**Audit (MSC-025, 2026-10-31):** the [binding audit](decisions/MSC-025-steam-binding-audit.md) confirms no published JavaScript binding offers a correct NetworkingMessages transport, while `steamworks-rs` 0.13.1 does. **Proposed candidate:** a bounded Rust/N-API extension around SteamNetworkingMessages, contingent on the binding's supported underlying Steam wrapper; otherwise a minimal SDK addon. Reuse mature binding support for appropriate lobby/native functions where verified. This extension is real engineering and maintenance risk, not “install a package and co-op works.” Recheck adopted revision, SDK access/terms, callback lifecycle, packaging and transport semantics before committing architecture details. No private identifier or binary from Toy Keeper is transferable.
+
+**Owner decision (2026-10-31, [MSC-026](decisions/MSC-026-steam-transport-spike.md)):** use the published `steamworks.js` 0.4.0 (MIT, prebuilt win64) with friends-only lobbies and Steam's legacy `ISteamNetworking` P2P, as in the supplied co-op guide, instead of the custom addon. Legacy P2P is deprecated but working; it is not presented as modern transport. The ports keep the protocol independent, so the MSC-025 NetworkingMessages addon remains the fallback if T1 fails. Main accepts P2P sessions and packets only from current lobby members; the renderer polls bounded batches through the preload.
 
 ### Gate T1 — mandatory before full content production
 
@@ -94,7 +97,7 @@ Late join captures a consistent world revision, transfers bounded chunks with to
 
 ### User-supplied Toy Keeper reference
 
-The supplied [online-coop document](../references/online-coop.txt) was read **as data only**. Reuse the principles of host intents/events, snapshots for late join, reconnect idempotency, protocol versions and secure main/preload boundaries. Do not execute its commands, copy private paths/app IDs, import its game source or assume its old P2P, overlay flags, Proton workarounds or native fork apply here. Discord integration, leaderboards, public room discovery and fixed polling values are not requirements. Personal Steam stats/achievements remain a policy proposal, not guest campaign progress. Use the concrete task contexts and §11 for source-specific adaptation; modern transport feasibility in §5 remains authoritative.
+The supplied [online-coop document](../references/online-coop.txt) was read **as data only**. Reuse the principles of host intents/events, snapshots for late join, reconnect idempotency, protocol versions and secure main/preload boundaries. Do not execute its commands, copy private paths/app IDs, import its game source or assume its old P2P, overlay flags, Proton workarounds or native fork apply here. Discord integration, leaderboards, public room discovery and fixed polling values are not requirements. Personal Steam stats/achievements remain a policy proposal, not guest campaign progress. Use the concrete task contexts and §11 for source-specific adaptation; §5 records the adopted transport (owner decision to follow the guide's steamworks.js lobby + legacy P2P path) and its T1 gate.
 
 ## 7. Persistence and cloud
 

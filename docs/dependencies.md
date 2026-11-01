@@ -18,9 +18,11 @@ Adopted third-party packages with exact versions, licenses and the compatibility
 | prettier | 3.9.9 | MIT | dev | MSC-008 | Formatter for code/config; Markdown and `references/` are excluded to keep authored and archived layout. |
 | zod | 4.6.7 | MIT | dev (bundled) | MSC-009 | Runtime validator for content packs (later saves and network payloads). Zero dependencies; strict objects reject unknown fields. Kept in devDependencies while only the Vite-bundled renderer uses it; move to dependencies when the main process validates saves (MSC-036). |
 | @dimforge/rapier3d-compat | 0.21.0 | Apache-2.0 | dev (bundled) | MSC-011 | Physics engine (rigid bodies, queries, joints). The compat build embeds WASM, requiring `'wasm-unsafe-eval'` in CSP. Identical probe results in Node, browser and packaged Electron. |
+| steamworks.js | 0.4.0 | MIT | **runtime** (packaged) | MSC-026 | Owner decision 2026-10-31: published Steamworks binding (steamworks-rs, SDK 1.60) with prebuilt win64 `.node` and Valve's `steam_api64.dll` redistributable; lobbies, overlay, rich presence and legacy `ISteamNetworking` P2P. No install scripts. Only the loader and win64 files are packaged (unpacked from the asar); its `@types/node: *` dependency is excluded. Shipping the DLL follows the Steamworks SDK terms through the partner account (A1). |
 | typescript | 6.0.3 | Apache-2.0 | dev | MSC-005 | Strict mode. **7.0.2 is the npm `latest`, but typescript-eslint 8.72.1 supports only `>=4.8.4 <6.1.0`**, so 6.0.3 keeps MSC-008 linting viable. Revisit when typescript-eslint supports 7.x. |
 
 ## Review notes
 
 - `npm install` reported 0 known vulnerabilities on 2026-10-29.
+- 2026-10-31: the project switched from npm to **pnpm 10.28.2** (`packageManager` field). `pnpm import` converted the npm lockfile, so every resolved version stayed the same; only Electron may run its install script (`pnpm-workspace.yaml`), and the unused Squirrel installer script stays off.
 - The production bundle is about 528 kB minified (131 kB gzip), dominated by three; Vite's 500 kB chunk warning is expected and acceptable for a desktop Electron build. Code splitting is revisited when real content exists.

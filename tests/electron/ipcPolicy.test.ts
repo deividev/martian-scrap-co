@@ -33,6 +33,19 @@ describe('validateInvoke', () => {
     expect(validateInvoke(IPC_CHANNELS.getAppInfo, [cyclic]).ok).toBe(false);
   });
 
+  it('checks the arity of Steam channels', () => {
+    expect(validateInvoke(IPC_CHANNELS.steamJoinLobby, ['109775241021923456']).ok).toBe(true);
+    expect(validateInvoke(IPC_CHANNELS.steamJoinLobby, []).ok).toBe(false);
+    expect(validateInvoke(IPC_CHANNELS.steamSend, ['76561198000000001', 'reliable']).ok).toBe(false);
+  });
+
+  it('lets steam:send carry a full 16 KiB message but nothing unbounded', () => {
+    const full = 'x'.repeat(16 * 1024);
+    expect(validateInvoke(IPC_CHANNELS.steamSend, ['76561198000000001', 'reliable', full]).ok).toBe(true);
+    expect(validateInvoke(IPC_CHANNELS.steamSend, ['76561198000000001', 'reliable', full.repeat(7)]).ok).toBe(false);
+    expect(validateInvoke(IPC_CHANNELS.getAppInfo, []).ok).toBe(true);
+  });
+
   it('exposes a bounded payload limit', () => {
     expect(MAX_IPC_PAYLOAD_BYTES).toBeGreaterThan(0);
     expect(MAX_IPC_PAYLOAD_BYTES).toBeLessThanOrEqual(64 * 1024);

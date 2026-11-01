@@ -2,8 +2,11 @@ import { BrowserWindow, app, ipcMain, session, type IpcMainInvokeEvent, type Web
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { AppInfo } from '../src/platform/types.js';
-import { IPC_CHANNELS, isTrustedSenderUrl, resolveDevServerUrl, validateInvoke } from './ipcPolicy.js';
+import { IPC_CHANNELS, isTrustedSenderUrl, resolveDevServerUrl, validateInvoke, type IpcChannel } from './ipcPolicy.js';
 import { resolveAppPaths } from './paths.js';
+import { startSteam } from './steam/steamService.js';
+import { connectLobbyFromArgv, isSteamId, resolveSteamConfig } from './steam/steamPolicy.js';
+import { resolveDevP2pTest, runDevP2pTest } from './steam/devP2pTest.js'; // DEV-ONLY: remove before release
 
 const appPaths = resolveAppPaths({
   appPath: app.getAppPath(),
@@ -35,6 +38,18 @@ function modelViewQuery(argv: readonly string[]): Record<string, string> {
   return { model: match[1], view: match[2], ...(match[3] ? { color: match[3] } : {}) };
 }
 const startupQuery = { ...benchmarkQuery(process.argv), ...modelViewQuery(process.argv) };
+
+// Steam is optional and owned here (MSC-026). It starts before `ready` so the overlay switches can depend on it.
+const steam = startSteam(resolveSteamConfig(process.env), connectLobbyFromArgv(process.argv));
+if (steam.status().available) {
+  // The overlay injects into the process that presents frames, so the GPU must run in-process (co-op guide §7.1).
+  // Background throttling would freeze the overlay and co-op traffic while it covers the window.
+  // `disable-direct-composition` is deliberately NOT added: it disables vsync (guide §7.2).
+  app.commandLine.appendSwitch('in-process-gpu');
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+  app.commandLine.appendSwitch('disable-background-timer-throttling');
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+}
 
 // Production pages carry their own CSP meta tag (vite.config.ts); dev responses get this header.
 const DEV_CSP = [
@@ -70,21 +85,36 @@ function hardenSession(): void {
   }
 }
 
-function registerIpc(): void {
-  ipcMain.handle(IPC_CHANNELS.getAppInfo, (event: IpcMainInvokeEvent, ...args: unknown[]): AppInfo => {
+function handle(channel: IpcChannel, listener: (...args: unknown[]) => unknown): void {
+  ipcMain.handle(channel, (event: IpcMainInvokeEvent, ...args: unknown[]) => {
     if (!isTrustedSenderUrl(event.senderFrame?.url, devServerOrigin, indexFileUrl)) {
       throw new Error('IPC rejected: untrusted sender');
     }
-    const validation = validateInvoke(IPC_CHANNELS.getAppInfo, args);
+    const validation = validateInvoke(channel, args);
     if (!validation.ok) throw new Error(`IPC rejected: ${validation.reason}`);
-    return {
-      name: app.getName(),
-      version: app.getVersion(),
-      platform: process.platform,
-      electron: process.versions.electron,
-      chrome: process.versions.chrome,
-    };
+    return listener(...args);
   });
+}
+
+function registerIpc(): void {
+  handle(IPC_CHANNELS.getAppInfo, (): AppInfo => ({
+    name: app.getName(),
+    version: app.getVersion(),
+    platform: process.platform,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+  }));
+  handle(IPC_CHANNELS.steamStatus, () => steam.status());
+  handle(IPC_CHANNELS.steamCreateLobby, () => steam.createLobby());
+  handle(IPC_CHANNELS.steamJoinLobby, (lobbyId) => (isSteamId(lobbyId) ? steam.joinLobby(lobbyId) : null));
+  handle(IPC_CHANNELS.steamLeaveLobby, () => steam.leaveLobby());
+  handle(IPC_CHANNELS.steamSetJoinable, (joinable) => typeof joinable === 'boolean' && steam.setJoinable(joinable));
+  handle(IPC_CHANNELS.steamInvite, () => steam.openInviteDialog());
+  handle(IPC_CHANNELS.steamSend, (to, channel, raw) => {
+    if (!isSteamId(to) || (channel !== 'reliable' && channel !== 'disposable') || typeof raw !== 'string') return false;
+    return steam.send(to, channel, raw);
+  });
+  handle(IPC_CHANNELS.steamPoll, () => steam.poll());
 }
 
 function createMainWindow(): BrowserWindow {
@@ -104,6 +134,8 @@ function createMainWindow(): BrowserWindow {
       webviewTag: false,
       spellcheck: false,
       devTools: !app.isPackaged,
+      // Keep frames and co-op traffic flowing while the Steam overlay covers the window (guide §7.1).
+      backgroundThrottling: !steam.status().available,
     },
   });
   window.once('ready-to-show', () => window.show());
@@ -128,7 +160,47 @@ app.on('web-contents-created', (_event, contents) => {
 
 app.enableSandbox();
 
+/**
+ * `--steam-smoke` (MSC-026 check): without opening a window, report Steam init, identity, a friends-only lobby
+ * round trip and a clean shutdown as one JSON line on stdout, then quit. SteamIDs are reported only as present.
+ */
+async function runSteamSmoke(): Promise<void> {
+  const report: Record<string, unknown> = { status: steam.status() };
+  const initial = steam.status();
+  if (initial.available) {
+    report['status'] = { available: true, self: 'present' };
+    const lobby = await steam.createLobby();
+    report['lobbyCreated'] = lobby !== null;
+    report['ownerIsSelf'] = lobby?.owner === initial.self;
+    report['members'] = lobby?.members.length ?? 0;
+    report['joinableToggle'] = steam.setJoinable(false) && steam.setJoinable(true);
+    steam.leaveLobby();
+    const after = steam.status();
+    report['leftLobby'] = after.available && after.lobby === null;
+  }
+  steam.shutdown();
+  report['shutdown'] = true;
+  process.stdout.write(`${JSON.stringify({ steamSmoke: report })}
+`);
+  app.quit();
+}
+
 void app.whenReady().then(() => {
+  if (process.argv.includes('--steam-smoke')) {
+    void runSteamSmoke();
+    return;
+  }
+  // DEV-ONLY two-account P2P check (MSC_DEV_STEAM_TEST=1 + MSC_STEAM_APP_ID): remove before release.
+  const devP2pTest = resolveDevP2pTest(process.argv, process.env);
+  if (devP2pTest) {
+    const log = (line: unknown): void => void process.stdout.write(`${JSON.stringify(line)}\n`);
+    const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+    void runDevP2pTest(steam, devP2pTest, { log, now: () => performance.now(), sleep }).finally(() => {
+      steam.shutdown();
+      app.quit();
+    });
+    return;
+  }
   hardenSession();
   registerIpc();
   createMainWindow();
@@ -136,6 +208,8 @@ void app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
 });
+
+app.on('will-quit', () => steam.shutdown());
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

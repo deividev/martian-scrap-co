@@ -3,17 +3,36 @@
 /** Every channel the renderer may invoke. Anything else is rejected. */
 export const IPC_CHANNELS = Object.freeze({
   getAppInfo: 'app:get-info',
+  steamStatus: 'steam:status',
+  steamCreateLobby: 'steam:create-lobby',
+  steamJoinLobby: 'steam:join-lobby',
+  steamLeaveLobby: 'steam:leave-lobby',
+  steamSetJoinable: 'steam:set-joinable',
+  steamInvite: 'steam:invite',
+  steamSend: 'steam:send',
+  steamPoll: 'steam:poll',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
 export const MAX_IPC_PAYLOAD_BYTES = 16 * 1024;
 
+/** `steam:send` carries one protocol message (up to 16 KiB of UTF-8) plus JSON escaping and the target id. */
+const STEAM_SEND_PAYLOAD_BYTES = 6 * 16 * 1024 + 256;
+
 const ALLOWED_CHANNELS: ReadonlySet<string> = new Set(Object.values(IPC_CHANNELS));
 
 /** Number of arguments each channel accepts. */
 const CHANNEL_ARITY: Readonly<Record<IpcChannel, number>> = {
   'app:get-info': 0,
+  'steam:status': 0,
+  'steam:create-lobby': 0,
+  'steam:join-lobby': 1,
+  'steam:leave-lobby': 0,
+  'steam:set-joinable': 1,
+  'steam:invite': 0,
+  'steam:send': 3,
+  'steam:poll': 0,
 };
 
 export type IpcValidation =
@@ -35,8 +54,9 @@ export function validateInvoke(channel: string, args: readonly unknown[]): IpcVa
   } catch {
     return { ok: false, reason: `${channel} payload is not serializable` };
   }
-  if (encoded === undefined || encoded.length > MAX_IPC_PAYLOAD_BYTES) {
-    return { ok: false, reason: `${channel} payload exceeds ${MAX_IPC_PAYLOAD_BYTES} bytes` };
+  const limit = channel === IPC_CHANNELS.steamSend ? STEAM_SEND_PAYLOAD_BYTES : MAX_IPC_PAYLOAD_BYTES;
+  if (encoded === undefined || encoded.length > limit) {
+    return { ok: false, reason: `${channel} payload exceeds ${limit} bytes` };
   }
   return { ok: true, channel };
 }
