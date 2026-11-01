@@ -97,6 +97,9 @@ import { PropView } from './propView';
 import { ScrapPileView } from './scrapPileView';
 import { MenuFocus, type MenuControl } from './menuFocus';
 import { MenuView, type MenuViewState } from './menuView';
+import { loadAudioSettings, saveAudioSettings, stepVolume, type VolumeChannel } from '../audio/audioMix';
+import { detectCues, type CueSnapshot } from '../audio/placeholderCues';
+import { SoundBoard } from '../audio/soundBoard';
 
 export interface TestYardHud {
   readonly hint: HTMLElement | null;
@@ -818,6 +821,57 @@ export async function createTestYardScene(
     samples.push(ms);
     if (samples.length > 600) samples.shift();
   };
+  // MSC-038: placeholder cues, driven by state changes (so a replicated change from any player sounds the same).
+  const localStore = ((): Storage | undefined => {
+    try {
+      return window.localStorage;
+    } catch {
+      return undefined;
+    }
+  })();
+  const sound = new SoundBoard(loadAudioSettings(localStore));
+  const unlockSound = (): void => sound.unlock();
+  window.addEventListener('keydown', unlockSound);
+  window.addEventListener('pointerdown', unlockSound);
+  const ERROR_NOTICES = new Set<string>([
+    'sale.failed',
+    'intake.binsFull',
+    'unload.needIntake',
+    'cart.full',
+    'cart.tooHeavy',
+    'cart.claimed',
+    'place.blocked',
+    'place.overlapsPlayer',
+    'save.failed',
+  ]);
+  let noticeSerial = 0;
+  let lastNotice: Notice | null = null;
+  const cueSnapshot = (): CueSnapshot => {
+    if (notice !== lastNotice) {
+      lastNotice = notice;
+      noticeSerial += 1;
+    }
+    return {
+      collected: container.count,
+      pressKind: compactor.state.kind,
+      bales: bales.size,
+      credits: sharedCredits.balance,
+      revealed: stationReveal.revealed,
+      noticeSerial,
+      errorNotice: notice !== null && ERROR_NOTICES.has(notice.key),
+    };
+  };
+  let lastCues = cueSnapshot();
+  const VOLUME_CONTROLS: Readonly<Record<string, VolumeChannel>> = {
+    volumeMaster: 'master',
+    volumeSfx: 'sfx',
+    volumeUi: 'ui',
+  };
+  const volumeLabel = (channel: VolumeChannel): string => {
+    const level = sound.settings[channel];
+    return level === 0 ? i18n.t('menu.muted') : `${Math.round(level * 100)}%`;
+  };
+
   // MSC-037: modal menus with explicit focus and a back path for keyboard, mouse and controller (PRD-022).
   type MenuKind = 'shop' | 'pause';
   interface OpenMenu {
@@ -838,6 +892,7 @@ export async function createTestYardScene(
       return [
         { id: 'resume', enabled: true },
         { id: 'language', enabled: true },
+        ...Object.keys(VOLUME_CONTROLS).map((id) => ({ id, enabled: true })),
       ];
     }
     const offer = nextCollectorOffer();
@@ -848,6 +903,7 @@ export async function createTestYardScene(
   };
   const openMenu = (kind: MenuKind): void => {
     menu = { kind, focus: new MenuFocus(menuControls(kind)), message: null };
+    sound.play('uiConfirm');
     // The pause menu frees the mouse so its buttons can be clicked; the shop keeps the game captured.
     if (kind === 'pause' && isLocked()) document.exitPointerLock();
   };
@@ -874,6 +930,7 @@ export async function createTestYardScene(
         tone: 'success',
       };
     } else if (!bought.ok && bought.reason === 'insufficient-credits') {
+      sound.play('error');
       menu.message = {
         notice: { key: 'shop.insufficient', params: { credits: offer.price, balance: sharedCredits.balance } },
         tone: 'error',
@@ -882,11 +939,21 @@ export async function createTestYardScene(
   };
   const activateMenu = (id: string): void => {
     if (!menu) return;
-    if (id === 'back' || id === 'resume') closeMenu();
-    else if (id === 'buy') buyNextCollector();
+    const channel = VOLUME_CONTROLS[id];
+    if (id === 'back' || id === 'resume') {
+      sound.play('uiBack');
+      closeMenu();
+    } else if (id === 'buy') buyNextCollector();
     else if (id === 'language') {
+      sound.play('uiConfirm');
       if (hud.toggleLanguage) hud.toggleLanguage();
       else i18n.toggle();
+    } else if (channel) {
+      // Confirm steps the volume up and wraps to muted; the confirm cue plays at the new level.
+      const settings = stepVolume(sound.settings, channel);
+      sound.setSettings(settings);
+      saveAudioSettings(localStore, settings);
+      sound.play('uiConfirm');
     }
   };
   const menuView = new MenuView(document.body, (id) => {
@@ -915,9 +982,16 @@ export async function createTestYardScene(
             ? i18n.t('menu.saved', { revision: campaign.saver.revision })
             : i18n.t('menu.notSaved'),
           i18n.t('menu.worldRuns'),
+          i18n.t('menu.placeholderSound'),
         ],
         rows: [],
-        controls: [control('resume', i18n.t('menu.resume')), control('language', i18n.t('menu.language'))],
+        controls: [
+          control('resume', i18n.t('menu.resume')),
+          control('language', i18n.t('menu.language')),
+          control('volumeMaster', i18n.t('menu.volumeMaster', { level: volumeLabel('master') })),
+          control('volumeSfx', i18n.t('menu.volumeSfx', { level: volumeLabel('sfx') })),
+          control('volumeUi', i18n.t('menu.volumeUi', { level: volumeLabel('ui') })),
+        ],
         message,
         footer,
       };
@@ -987,9 +1061,13 @@ export async function createTestYardScene(
     if (menu) {
       menu.focus.setControls(menuControls(menu.kind));
       // The pause button closes a menu as well as back; nothing else in the yard reacts while one is open.
+      const before = menu.focus.focused;
       const event = menu.focus.apply({ ...input, back: input.back || input.pause });
-      if (event.kind === 'back') closeMenu();
-      else if (event.kind === 'activate') activateMenu(event.id);
+      if (event.kind === 'back') {
+        sound.play('uiBack');
+        closeMenu();
+      } else if (event.kind === 'activate') activateMenu(event.id);
+      else if (menu.focus.focused !== before) sound.play('uiMove');
     } else if (input.pause) {
       openMenu('pause');
     }
@@ -1512,6 +1590,10 @@ export async function createTestYardScene(
     canvas.dataset['credits'] = String(sharedCredits.balance);
     canvas.dataset['collectorTier'] = String(collector.selector.tier + 1);
     canvas.dataset['stationMarker'] = JSON.stringify(stationReveal.status());
+    const cues = cueSnapshot();
+    for (const cue of detectCues(lastCues, cues)) sound.play(cue);
+    lastCues = cues;
+    canvas.dataset['audio'] = JSON.stringify({ state: sound.state, settings: sound.settings, played: sound.played() });
     canvas.dataset['menu'] = menu ? JSON.stringify({ kind: menu.kind, focused: menu.focus.focused }) : '';
     canvas.dataset['save'] = JSON.stringify({
       campaign: campaign.opened.kind,
@@ -1725,6 +1807,9 @@ export async function createTestYardScene(
     window.removeEventListener('pagehide', requestSave);
     document.removeEventListener('pointerlockchange', onPointerLockChange);
     menuView.dispose();
+    window.removeEventListener('keydown', unlockSound);
+    window.removeEventListener('pointerdown', unlockSound);
+    sound.dispose();
     world.dispose();
     renderer.dispose();
   };

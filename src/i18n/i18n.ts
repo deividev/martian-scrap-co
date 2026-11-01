@@ -185,6 +185,14 @@ export const STRINGS = {
     en: 'Progress saves automatically in this computer (save {revision}).',
     es: 'El progreso se guarda solo en este ordenador (guardado {revision}).',
   },
+  'menu.volumeMaster': { en: 'Master volume: {level}', es: 'Volumen general: {level}' },
+  'menu.volumeSfx': { en: 'Effects volume: {level}', es: 'Volumen de efectos: {level}' },
+  'menu.volumeUi': { en: 'Interface volume: {level}', es: 'Volumen de interfaz: {level}' },
+  'menu.muted': { en: 'muted', es: 'silenciado' },
+  'menu.placeholderSound': {
+    en: 'Sounds are temporary placeholders. Everything they signal is also shown on screen.',
+    es: 'Los sonidos son provisionales. Todo lo que avisan también se muestra en pantalla.',
+  },
   'menu.notSaved': { en: 'This session is not being saved.', es: 'Esta sesión no se está guardando.' },
   'menu.worldRuns': {
     en: 'The yard keeps running while this menu is open.',

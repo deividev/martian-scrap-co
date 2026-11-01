@@ -34,7 +34,7 @@ Co-op roles are freely interchangeable: no classes or exclusive abilities. Money
 
 Require the user's scoped implementation instruction before game code, scaffolding, package setup, installed skills or account changes. Work dependency-ready units; preserve approved decisions and unrelated edits. On a failed gate, stop dependent work and report bounded evidence. Never silently drop co-op/Deck requirements, add paid dependencies or claim tests/quality that were not observed.
 
-Every implementation records what it leaves to add, test or decide in the [pending work register](docs/pending-work.md) and closes items only with observed evidence; in the same commit it updates the task's Status/Outcome and any affected document (this guide's command list and structure, PRD/architecture status, decision records, dependency register), so documents and code stay aligned.
+Every implementation records what it leaves to add, test or decide in the [pending work register](docs/pending-work.md), scheduled into the task that will do it (**Do in**); before starting a task, check the register for items that name it; it closes items only with observed evidence; in the same commit it updates the task's Status/Outcome and any affected document (this guide's command list and structure, PRD/architecture status, decision records, dependency register), so documents and code stay aligned.
 
 Prove native Steam feasibility early (adopted transport: steamworks.js lobbies + legacy P2P, MSC-026): packaged real Steam launch, two legitimate accounts/devices on different networks, invitations, late join/rejoin and transaction integrity; then representative four-player load and real Deck tests **before full content production**. Human-approved 3D/audio pilots precede catalogs. Details and consequences are in the architecture and task plan, not guaranteed by a dependency install.
 
@@ -88,7 +88,7 @@ Martian Scrap Co/                 Project root
 |-- electron-builder.yml         Packaging allowlist, asarUnpack and fuses (MSC-007)
 |-- package.json, pnpm-lock.yaml, pnpm-workspace.yaml, tsconfig.json
 |-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006); steam/ lifecycle over steamworks.js (MSC-026); save files (MSC-036)
-|-- src/                         Renderer TypeScript: domain, content, simulation, net (co-op protocol, transport ports), input, i18n (EN/ES), models (styled procedural), platform adapter, persistence (campaign saves), test-yard scene
+|-- src/                         Renderer TypeScript: domain, content, simulation, net (co-op protocol, transport ports), input, i18n (EN/ES), models (styled procedural), platform adapter, persistence (campaign saves), audio (placeholder cues), test-yard scene
 |-- tests/                       Vitest unit tests
 `-- tools/                       validate-docs.ps1, check.mjs runner, run-electron-dev.mjs
 

@@ -95,7 +95,7 @@ describe('settled scrap mountain (owner follow-up R4, physics check 2026-10-30)'
     const shifted = moved.filter((distance) => distance > 0.05).length;
     expect(shifted / moved.length).toBeLessThan(0.005);
     expect(Math.max(...moved)).toBeLessThan(1);
-  });
+  }, 20_000); // Heavy physics run: about 4 s alone, slower when the whole suite runs in parallel.
 });
 
 describe('ScrapMountain', () => {
