@@ -162,6 +162,18 @@ export const STRINGS = {
     en: 'Buy collector levels with team credits at the sale machine.',
     es: 'Compra niveles del colector con los créditos del equipo en la máquina de venta.',
   },
+  'job.clearMarker': {
+    en: 'Clear the scrap covering the station beacon at the mountain foot (orange arrow) · {percent}%',
+    es: 'Despeja la chatarra que cubre la baliza de la estación al pie de la montaña (flecha naranja) · {percent} %',
+  },
+  'job.stationFound': {
+    en: 'A piece of the old station is showing: keep clearing the mountain to uncover more',
+    es: 'Asoma una parte de la antigua estación: sigue despejando la montaña para descubrir más',
+  },
+  'station.revealed': {
+    en: 'Station beacon uncovered! The buried station starts to show under the mountain.',
+    es: '¡Baliza de la estación al descubierto! La estación enterrada empieza a asomar bajo la montaña.',
+  },
   'job.buyUpgrade': {
     en: 'The crew can afford collector level {tier}: buy it at the sale machine ({credits} C)',
     es: 'El equipo puede comprar el colector nivel {tier}: cómpralo en la máquina de venta ({credits} C)',

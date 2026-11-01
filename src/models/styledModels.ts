@@ -550,6 +550,51 @@ export function createStationDome(radius: number): Group {
   return dome;
 }
 
+/**
+ * First station marker (MSC-035): a white station service module with the dome's yellow and dark bands, tilted
+ * and half-buried at the mountain foot, with a mast whose beacon (`beacon-lamp`, own material) lights when the
+ * scrap around it is cleared. Same construction language as the station ring; placeholder until the station kit.
+ */
+export function createStationMarkerModel(): Group {
+  const marker = new Group();
+  marker.name = 'station-marker';
+  const white = paint(STYLE.stationWhite, 0.55);
+  const module = new Group();
+  module.rotation.set(0.25, 0, -0.35);
+  marker.add(module);
+  const body = part(new CylinderGeometry(0.9, 0.9, 2.4, 14), white, module, 0, 1.1, 0);
+  body.rotation.z = Math.PI / 2;
+  for (const x of [-1.2, 1.2]) {
+    const cap = part(new SphereGeometry(0.9, 14, 8), white, module, x, 1.1, 0);
+    cap.scale.x = 0.35;
+  }
+  // Yellow rims at both ends make the exposed end read as built, not as a boulder.
+  for (const [x, color] of [
+    [-1.15, STYLE.paintYellow],
+    [-0.75, STYLE.steelDark],
+    [0, STYLE.paintYellow],
+    [0.75, STYLE.steelDark],
+    [1.15, STYLE.paintYellow],
+  ] as const) {
+    const band = part(new TorusGeometry(0.91, 0.06, 4, 20), paint(color, 0.6), module, x, 1.1, 0);
+    band.rotation.y = Math.PI / 2;
+  }
+  part(rounded(0.7, 0.55, 0.12, 0.06), paint(STYLE.steelDark, 0.6), module, 0.35, 1.25, 0.88);
+  // Mast and beacon rise above the pile so the marker is readable from the base.
+  part(new CylinderGeometry(0.07, 0.09, 1.6, 8), paint(STYLE.steelDark, 0.5, 0.3), marker, 0.2, 2.6, 0.1);
+  part(new CylinderGeometry(0.22, 0.22, 0.08, 12), paint(STYLE.paintYellow, 0.5), marker, 0.2, 3.4, 0.1);
+  const lamp = part(
+    new SphereGeometry(0.2, 12, 8),
+    new MeshStandardMaterial({ color: '#4b6b70', emissive: '#2fb5a8', emissiveIntensity: 0, flatShading: true }),
+    marker,
+    0.2,
+    3.6,
+    0.1,
+  );
+  lamp.name = 'beacon-lamp';
+  return marker;
+}
+
 export function createColonyDome(radius: number): Group {
   const dome = new Group();
   const glass = new MeshStandardMaterial({
@@ -572,7 +617,14 @@ export function createColonyDome(radius: number): Group {
 }
 
 /** Named models for the review viewer. */
-export const STYLED_MODEL_NAMES = ['magnet-tool', 'cutter-tool', 'scrap-set', 'rover', 'station-dome'] as const;
+export const STYLED_MODEL_NAMES = [
+  'magnet-tool',
+  'cutter-tool',
+  'scrap-set',
+  'rover',
+  'station-dome',
+  'station-marker',
+] as const;
 export type StyledModelName = (typeof STYLED_MODEL_NAMES)[number];
 
 export function createStyledModel(name: StyledModelName): Object3D {
@@ -583,6 +635,8 @@ export function createStyledModel(name: StyledModelName): Object3D {
       return createCutterToolModel();
     case 'station-dome':
       return createStationDome(3);
+    case 'station-marker':
+      return createStationMarkerModel();
     case 'rover': {
       const group = new Group();
       const layout: Record<string, { p: [number, number, number]; h: [number, number, number] }> = {

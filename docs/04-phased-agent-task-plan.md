@@ -635,7 +635,9 @@ Check: Novice walkthrough identifies next action and visible change.
 
 Requirements: PRD-001–004, PRD-013.
 
-Status: Planned
+Status: In progress
+
+Outcome: 2026-11-01 — Local single-player slice ahead of the MSC-030 gate, like MSC-031–034. The route now runs **collect iron → sort → press → sell → buy the level 2 collector → clear the first station marker**. The marker is a white station service module with yellow and dark bands (same construction language as the station ring) half-buried at the mountain foot within sight of the base (x 6, z −16.5); its mast and end show above the pile. Its cover is every mountain piece that starts within 2.5 m (77 pieces in the current bake: about 38% iron, 36% aluminum and copper, plus medium parts). It is revealed once at most 35% of that cover is still within the radius, whatever the method (vacuumed, carried by cart, cut, knocked away); iron alone cannot reach it, so the route needs the purchased upgrade (a test guards this against the bake). After the upgrade an orange chevron floats over the marker and the job panel says "clear the scrap covering the station beacon … N %"; on reveal the beacon lights teal and pulses, a notice announces it, the module becomes solid and the job panel says a piece of the old station is showing for 30 s. Layout, radius and threshold are placeholders until the slice playtest (MSC-039). Checks: 4 reveal tests (initial cover, collected and moved pieces counted, one-time permanent reveal, iron-only cannot reveal the test-yard marker); in the browser the marker reads from the base path, cover status 77/77; `pnpm run check` 7/7. **Pending:** the novice walkthrough (Check) and seeing the reveal in play, which needs the full route (two sales, upgrade, clearing).
 
 ### MSC-036 — Implement initial durable save and recovery
 

@@ -1,5 +1,6 @@
 import {
   BoxGeometry,
+  ConeGeometry,
   Euler,
   Mesh,
   MeshStandardMaterial,
@@ -25,7 +26,9 @@ import {
   createGratePlateModel,
   createSortingBayModel,
 } from '../models/machineModels';
-import { SCRAP_COLORS, STYLE, createRoverFragmentModel, paint } from '../models/styledModels';
+import { SCRAP_COLORS, STYLE, createRoverFragmentModel, createStationMarkerModel, paint } from '../models/styledModels';
+import type { Vec3 } from '../simulation/physics/physicsPort';
+import { StationReveal } from '../simulation/yard/stationReveal';
 import { FIRST_PASS_CONTENT } from '../content/firstPass';
 import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
@@ -67,6 +70,7 @@ import {
   TEST_YARD_COMPACTOR,
   TEST_YARD_SALE_TERMINAL,
   TEST_YARD_SORTING_BAY,
+  TEST_YARD_STATION_MARKER,
   BALE_HALF_EXTENTS,
   createTestYardBreakables,
   createTestYardProps,
@@ -376,10 +380,53 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   let lastGain: { credits: number; until: number } | null = null;
   let wasSucking = false;
   let lastActivation = 0;
+  let lastRevealCheck = 0;
   let lastTouch = 0;
   /** Mountain wake tuning (owner check 2026-10-30; placeholders within the MSC-019 budgets). */
   const MOUNTAIN_WAKE = { settleDistance: 7, activeBudget: 260, touchReach: 0.65 } as const;
   const cart = new Cart(world, props, claims, allocator.allocate(), { x: 2, y: 0.4, z: 5 });
+  // MSC-035: the first station marker, buried at the mountain foot, shows once its cover is mostly cleared.
+  const stationReveal = new StationReveal(
+    TEST_YARD_STATION_MARKER,
+    StationReveal.coverOf(TEST_YARD_STATION_MARKER, [
+      ...mountainLayout.pieces,
+      ...mountainLayout.smallClusters.flatMap((cluster) => cluster.pieces),
+    ]),
+  );
+  const markerModel = createStationMarkerModel();
+  markerModel.position.set(
+    TEST_YARD_STATION_MARKER.position.x,
+    TEST_YARD_STATION_MARKER.position.y,
+    TEST_YARD_STATION_MARKER.position.z,
+  );
+  markerModel.rotation.y = 0.6;
+  scene.add(markerModel);
+  const beaconLamp = markerModel.getObjectByName('beacon-lamp') as Mesh | undefined;
+  const beaconMaterial = beaconLamp?.material as MeshStandardMaterial | undefined;
+  // Floating orange chevron over the marker once the collector can clear its cover (the next work area).
+  const waypoint = new Mesh(
+    new ConeGeometry(0.45, 0.9, 4),
+    new MeshStandardMaterial({ color: STYLE.paintOrange, emissive: '#ff6a00', emissiveIntensity: 0.9 }),
+  );
+  waypoint.rotation.x = Math.PI;
+  waypoint.position.set(TEST_YARD_STATION_MARKER.position.x, 5.2, TEST_YARD_STATION_MARKER.position.z);
+  waypoint.visible = false;
+  scene.add(waypoint);
+  let revealedAt: number | null = null;
+  /** Where a covering piece is now: null once collected, sold or cut apart. */
+  const locateCover = (id: EntityId): Vec3 | null => {
+    const state = mountain.state(id);
+    if (state === 'embedded') return mountain.piece(id)?.position ?? null;
+    if (state === 'released') {
+      const prop = props.get(id);
+      return prop ? world.bodyPosition(prop.body) : null;
+    }
+    if (state === 'removed') return null;
+    const piece = scrap.piece(id);
+    if (!piece || piece.state === 'removed') return null;
+    const body = scrap.bodyOf(id);
+    return body === undefined ? piece.position : world.bodyPosition(body);
+  };
   const cartGroup = createCartModel(CART_TUNING.halfExtents);
   scene.add(mergeStatic(cartGroup));
   const LOAD_NOTICES: Record<Exclude<LoadResult, { ok: true }>['reason'], Notice | null> = {
@@ -491,6 +538,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       return i18n.t('job.buyUpgrade', { tier: collector.selector.tier + 2, credits: offer.price });
     }
     if (container.count > 0) return i18n.t('job.unload');
+    if (revealedAt !== null && performance.now() - revealedAt < 30_000) return i18n.t('job.stationFound');
+    if (collector.selector.tier >= 1 && !stationReveal.revealed) {
+      return i18n.t('job.clearMarker', { percent: Math.round(stationReveal.status().progress * 100) });
+    }
     const fullest = intake.batches().sort((a, b) => b.count - a.count)[0];
     if (fullest) {
       return i18n.t('job.fillBin', {
@@ -975,6 +1026,24 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     for (const material of bayMaterials) {
       sortingBay.userData.bay.setFill(material, intake.binCount(material) / intake.binCapacity);
     }
+    if (now - lastRevealCheck > 500) {
+      lastRevealCheck = now;
+      const reveal = stationReveal.update(locateCover);
+      if (reveal.justRevealed) {
+        revealedAt = now;
+        notice = { key: 'station.revealed' };
+        noticeUntil = now + 5000;
+        // The exposed module becomes solid only now, so it never pushes against the settled pile around it.
+        world.addBox({
+          kind: 'fixed',
+          position: { x: TEST_YARD_STATION_MARKER.position.x, y: 0.9, z: TEST_YARD_STATION_MARKER.position.z },
+          halfExtents: { x: 1.2, y: 0.9, z: 0.9 },
+        });
+      }
+    }
+    waypoint.visible = collector.selector.tier >= 1 && !stationReveal.revealed;
+    if (waypoint.visible) waypoint.position.y = 5.2 + Math.sin(now / 400) * 0.25;
+    if (beaconMaterial) beaconMaterial.emissiveIntensity = stationReveal.revealed ? 1.4 + Math.sin(now / 300) * 0.6 : 0;
     lampMaterial?.emissive.set(
       press.kind === 'idle' ? STYLE.heliofoil : press.kind === 'blocked' ? '#ff3b2f' : STYLE.paintOrange,
     );
@@ -1077,6 +1146,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     canvas.dataset['intake'] = String(intake.count);
     canvas.dataset['credits'] = String(sharedCredits.balance);
     canvas.dataset['collectorTier'] = String(collector.selector.tier + 1);
+    canvas.dataset['stationMarker'] = JSON.stringify(stationReveal.status());
     canvas.dataset['compactor'] = JSON.stringify({ state: compactor.state.kind, bales: [...bales.keys()] });
     canvas.dataset['bins'] = JSON.stringify(Object.fromEntries(intake.batches().map((b) => [b.materialId, b.count])));
     canvas.dataset['selector'] = JSON.stringify({

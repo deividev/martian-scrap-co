@@ -258,6 +258,18 @@ export const TEST_YARD_SALE_TERMINAL = Object.freeze({
   reach: 2.6,
 });
 
+/**
+ * First station marker (MSC-035): buried at the mountain foot within sight of the base. About three-quarters of
+ * its cover is iron plus aluminum and copper, so clearing it calls for the level 2 collector (and the cart for its
+ * medium parts). Placeholder layout and threshold until the slice playtest (MSC-039).
+ */
+export const TEST_YARD_STATION_MARKER = Object.freeze({
+  // z = mountainFootZ(6, -1.5), written out: backdrop and this module import each other.
+  position: { x: 6, y: -0.4, z: -16.5 },
+  radius: 2.5,
+  revealWhenRemaining: 0.35,
+});
+
 /** Half extents of a bale prop (MSC-032); placeholder size readable in first person. */
 export const BALE_HALF_EXTENTS = Object.freeze({ x: 0.32, y: 0.3, z: 0.3 });
 
