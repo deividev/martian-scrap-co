@@ -6,6 +6,7 @@ export const GAMEPAD_BINDINGS = Object.freeze({
   moveAxes: [0, 1],
   lookAxes: [2, 3],
   jump: 0, // A
+  back: 1, // B (menus)
   interact: 2, // X
   secondary: 3, // Y
   pause: 9, // Start / Menu
@@ -17,6 +18,9 @@ export const GAMEPAD_BINDINGS = Object.freeze({
   previousMaterial: 14, // D-pad left
   nextMaterial: 15, // D-pad right
 });
+
+/** Left-stick tilt that steps menu focus once; it re-arms below the release value (no repeat while held). */
+const MENU_STICK = { press: 0.6, release: 0.3 } as const;
 
 /** The subset of the Gamepad API this source reads; lets tests pass plain objects. */
 export interface GamepadLike {
@@ -35,6 +39,8 @@ export class GamepadSource {
   readonly #provider: GamepadProvider;
   #settings: InputSettings;
   #previous = new Set<number>();
+  /** Last menu step given by the left stick: -1, 0 or 1. */
+  #stickStep: -1 | 0 | 1 = 0;
 
   constructor(settings: InputSettings, provider: GamepadProvider = browserGamepads) {
     this.#settings = settings;
@@ -50,6 +56,7 @@ export class GamepadSource {
     const pad = this.#provider().find((candidate) => candidate?.connected && candidate.mapping === 'standard');
     if (!pad || !Number.isFinite(dt) || dt <= 0) {
       this.#previous.clear();
+      this.#stickStep = 0;
       return EMPTY_FRAME;
     }
     const axis = (index: number | undefined): number => {
@@ -65,6 +72,13 @@ export class GamepadSource {
       if (button.pressed) pressedNow.add(index);
     });
     const edge = (index: number): boolean => pressedNow.has(index) && !this.#previous.has(index);
+    const stickY = -axis(my);
+    let stickNavigate: -1 | 0 | 1 = 0;
+    if (Math.abs(stickY) < MENU_STICK.release) this.#stickStep = 0;
+    else if (this.#stickStep === 0 && Math.abs(stickY) >= MENU_STICK.press) {
+      this.#stickStep = stickY > 0 ? -1 : 1;
+      stickNavigate = this.#stickStep;
+    }
     const frame: ActionFrame = {
       move,
       look: {
@@ -81,6 +95,9 @@ export class GamepadSource {
       upgrade: edge(GAMEPAD_BINDINGS.upgrade),
       toolSlot: null,
       cycleTool: edge(GAMEPAD_BINDINGS.nextTool),
+      navigate: edge(GAMEPAD_BINDINGS.upgrade) ? -1 : edge(GAMEPAD_BINDINGS.nextTool) ? 1 : stickNavigate,
+      confirm: edge(GAMEPAD_BINDINGS.jump) || edge(GAMEPAD_BINDINGS.interact),
+      back: edge(GAMEPAD_BINDINGS.back),
       device: 'gamepad',
     };
     this.#previous = pressedNow;

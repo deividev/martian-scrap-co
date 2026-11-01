@@ -72,6 +72,10 @@ if (modelName) {
       feedback: document.querySelector<HTMLElement>('#target-feedback'),
       container: document.querySelector<HTMLElement>('#hud'),
       tip: document.querySelector<HTMLElement>('#yard-tip'),
+      toggleLanguage: () => {
+        i18n.toggle();
+        applyLanguage();
+      },
     },
     platform.saves,
   ).catch((error: unknown) => {

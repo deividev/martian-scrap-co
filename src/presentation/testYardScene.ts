@@ -51,7 +51,7 @@ import { AssemblyState } from '../domain/assembly';
 import { EntityIdAllocator, contentId, transactionId, type ContentId, type EntityId } from '../domain/ids';
 import { ToolLoadout } from '../domain/toolLoadout';
 import type { I18n, StringKey } from '../i18n/i18n';
-import { mergeFrames, type InputDevice } from '../input/actions';
+import { EMPTY_FRAME, mergeFrames, type InputDevice } from '../input/actions';
 import { GamepadSource } from '../input/gamepadSource';
 import { DEFAULT_INPUT_SETTINGS } from '../input/inputSettings';
 import { KeyboardMouseSource } from '../input/keyboardMouseSource';
@@ -95,6 +95,8 @@ import { FirstPersonTool } from './firstPersonTool';
 import { GameHud, type HudMaterialChip } from './hud';
 import { PropView } from './propView';
 import { ScrapPileView } from './scrapPileView';
+import { MenuFocus, type MenuControl } from './menuFocus';
+import { MenuView, type MenuViewState } from './menuView';
 
 export interface TestYardHud {
   readonly hint: HTMLElement | null;
@@ -103,6 +105,8 @@ export interface TestYardHud {
   /** Root element the gameplay HUD panels are built into. */
   readonly container: HTMLElement | null;
   readonly tip: HTMLElement | null;
+  /** Switches the language everywhere on the page (the pause menu offers it to controller players). */
+  readonly toggleLanguage?: () => void;
 }
 
 const HINT_KEYS: Record<InputDevice, StringKey> = {
@@ -814,6 +818,156 @@ export async function createTestYardScene(
     samples.push(ms);
     if (samples.length > 600) samples.shift();
   };
+  // MSC-037: modal menus with explicit focus and a back path for keyboard, mouse and controller (PRD-022).
+  type MenuKind = 'shop' | 'pause';
+  interface OpenMenu {
+    readonly kind: MenuKind;
+    readonly focus: MenuFocus;
+    message: { readonly notice: Notice; readonly tone: 'error' | 'success' } | null;
+  }
+  let menu: OpenMenu | null = null;
+  let wasLocked = false;
+  const materialsUpTo = (tier: number): string =>
+    collectorTiers
+      .slice(0, tier + 1)
+      .flat()
+      .map((id) => materialName(id, content.pack.materials.get(id)?.displayName ?? id))
+      .join(i18n.t('list.and'));
+  const menuControls = (kind: MenuKind): MenuControl[] => {
+    if (kind === 'pause') {
+      return [
+        { id: 'resume', enabled: true },
+        { id: 'language', enabled: true },
+      ];
+    }
+    const offer = nextCollectorOffer();
+    return [
+      ...(offer ? [{ id: 'buy', enabled: sharedCredits.balance >= offer.price }] : []),
+      { id: 'back', enabled: true },
+    ];
+  };
+  const openMenu = (kind: MenuKind): void => {
+    menu = { kind, focus: new MenuFocus(menuControls(kind)), message: null };
+    // The pause menu frees the mouse so its buttons can be clicked; the shop keeps the game captured.
+    if (kind === 'pause' && isLocked()) document.exitPointerLock();
+  };
+  const closeMenu = (): void => {
+    const closing = menu;
+    menu = null;
+    // Recapture the mouse for keyboard/mouse players (needs a recent click or key press; a click on the view also works).
+    if (closing?.kind === 'pause' && device === 'keyboard-mouse' && !isLocked()) {
+      canvas.requestPointerLock().catch(() => undefined);
+    }
+  };
+  const buyNextCollector = (): void => {
+    if (!menu) return;
+    const offer = nextCollectorOffer();
+    if (!offer) return;
+    const list = tierMaterials(collector.selector.tier + 1);
+    purchaseCounter += 1;
+    const bought = shop.buy(LOCAL_PLAYER, offer.id, transactionId(`txn-buy${purchaseCounter.toString(36)}`));
+    if (bought.ok && bought.kind === 'purchased') {
+      tool.use();
+      lastGain = { credits: 0 - bought.cost, until: performance.now() + 2500 };
+      menu.message = {
+        notice: { key: 'selector.upgraded', params: { tier: collector.selector.tier + 1, list } },
+        tone: 'success',
+      };
+    } else if (!bought.ok && bought.reason === 'insufficient-credits') {
+      menu.message = {
+        notice: { key: 'shop.insufficient', params: { credits: offer.price, balance: sharedCredits.balance } },
+        tone: 'error',
+      };
+    }
+  };
+  const activateMenu = (id: string): void => {
+    if (!menu) return;
+    if (id === 'back' || id === 'resume') closeMenu();
+    else if (id === 'buy') buyNextCollector();
+    else if (id === 'language') {
+      if (hud.toggleLanguage) hud.toggleLanguage();
+      else i18n.toggle();
+    }
+  };
+  const menuView = new MenuView(document.body, (id) => {
+    if (menu?.focus.focus(id)) activateMenu(id);
+  });
+  const onPointerLockChange = (): void => {
+    const locked = isLocked();
+    // Esc releases the mouse in the browser before the game sees the key: treat that as opening the menu.
+    if (wasLocked && !locked && !menu) openMenu('pause');
+    wasLocked = locked;
+  };
+  document.addEventListener('pointerlockchange', onPointerLockChange);
+  const menuState = (): MenuViewState | null => {
+    if (!menu) return null;
+    const focused = menu.focus.focused;
+    const control = (id: string, label: string, enabled = true) => ({ id, label, enabled, focused: focused === id });
+    const footer = i18n.t(device === 'gamepad' ? 'hint.menuGamepad' : 'hint.menuKeyboard');
+    const message = menu.message
+      ? { text: i18n.t(menu.message.notice.key, menu.message.notice.params), tone: menu.message.tone }
+      : null;
+    if (menu.kind === 'pause') {
+      return {
+        title: i18n.t('menu.title'),
+        body: [
+          campaign.saver.writable
+            ? i18n.t('menu.saved', { revision: campaign.saver.revision })
+            : i18n.t('menu.notSaved'),
+          i18n.t('menu.worldRuns'),
+        ],
+        rows: [],
+        controls: [control('resume', i18n.t('menu.resume')), control('language', i18n.t('menu.language'))],
+        message,
+        footer,
+      };
+    }
+    const tier = collector.selector.tier;
+    const offer = nextCollectorOffer();
+    const balance = sharedCredits.balance;
+    const rows: MenuViewState['rows'][number][] = [
+      {
+        label: i18n.t('shop.rowNow'),
+        value: i18n.t('shop.level', { tier: tier + 1, list: materialsUpTo(tier) }),
+        highlight: false,
+      },
+    ];
+    if (offer) {
+      rows.push(
+        {
+          label: i18n.t('shop.rowNext'),
+          value: i18n.t('shop.level', { tier: tier + 2, list: materialsUpTo(tier + 1) }),
+          highlight: true,
+        },
+        { label: i18n.t('shop.rowPrice'), value: i18n.t('shop.credits', { credits: offer.price }), highlight: false },
+        {
+          label: i18n.t('shop.rowBalance'),
+          value:
+            balance >= offer.price
+              ? i18n.t('shop.balanceAfter', { balance, after: balance - offer.price })
+              : i18n.t('shop.balanceShort', { balance, missing: offer.price - balance }),
+          highlight: false,
+        },
+      );
+    }
+    return {
+      title: i18n.t('shop.title'),
+      body: [
+        i18n.t('shop.shared'),
+        ...(offer ? [] : [i18n.t('shop.top')]),
+        ...(offer && balance < offer.price ? [i18n.t('shop.sellHint')] : []),
+      ],
+      rows,
+      controls: [
+        ...(offer
+          ? [control('buy', i18n.t('shop.buy', { tier: tier + 2, credits: offer.price }), balance >= offer.price)]
+          : []),
+        control('back', i18n.t('menu.back')),
+      ],
+      message,
+      footer,
+    };
+  };
   let lastPerf = 0;
   /** Frames rendered since the last perf sample (FPS readout). */
   let perfFrames = 0;
@@ -828,10 +982,24 @@ export async function createTestYardScene(
     sampleFrame('interval', now - previous);
     const dt = Math.min((now - previous) / 1000, 0.1);
     previous = now;
-    const frame = mergeFrames(keyboard.poll(), gamepad.poll(dt));
-    if (frame.device !== 'none') device = frame.device;
-    if (hint) hint.textContent = i18n.t(HINT_KEYS[device]);
-    if (frame.pause && isLocked()) document.exitPointerLock();
+    const input = mergeFrames(keyboard.poll(), gamepad.poll(dt));
+    if (input.device !== 'none') device = input.device;
+    if (menu) {
+      menu.focus.setControls(menuControls(menu.kind));
+      // The pause button closes a menu as well as back; nothing else in the yard reacts while one is open.
+      const event = menu.focus.apply({ ...input, back: input.back || input.pause });
+      if (event.kind === 'back') closeMenu();
+      else if (event.kind === 'activate') activateMenu(event.id);
+    } else if (input.pause) {
+      openMenu('pause');
+    }
+    const frame = menu ? { ...EMPTY_FRAME, device: input.device } : input;
+    if (hint) {
+      hint.textContent = menu
+        ? i18n.t(device === 'gamepad' ? 'hint.menuGamepad' : 'hint.menuKeyboard')
+        : i18n.t(HINT_KEYS[device]);
+    }
+    menuView.render(menuState());
     player.applyLook(frame);
 
     const aimView = player.view();
@@ -1155,22 +1323,12 @@ export async function createTestYardScene(
       const offer = nextCollectorOffer();
       const tier = collector.selector.tier + 2;
       const list = tierMaterials(tier - 1);
-      if (!offer) prompt = i18n.t('sale.needBale');
+      if (!offer) prompt = i18n.t('shop.topPrompt');
       else if (sharedCredits.balance < offer.price) {
-        prompt = i18n.t('shop.short', { tier, list, credits: offer.price, balance: sharedCredits.balance });
+        prompt = i18n.t('shop.short', { tier, credits: offer.price, balance: sharedCredits.balance });
       } else prompt = i18n.t('shop.preview', { tier, list, credits: offer.price });
-      if (frame.interact && offer) {
-        purchaseCounter += 1;
-        const bought = shop.buy(LOCAL_PLAYER, offer.id, transactionId(`txn-buy${purchaseCounter.toString(36)}`));
-        if (bought.ok && bought.kind === 'purchased') {
-          tool.use();
-          lastGain = { credits: 0 - bought.cost, until: now + 2500 };
-          notice = { key: 'selector.upgraded', params: { tier: collector.selector.tier + 1, list } };
-        } else if (!bought.ok && bought.reason === 'insufficient-credits') {
-          notice = { key: 'shop.insufficient', params: { credits: offer.price, balance: sharedCredits.balance } };
-        }
-        noticeUntil = now + 3000;
-      }
+      // MSC-037: use opens the shop panel; buying needs a focused, confirmed choice there.
+      if (frame.interact) openMenu('shop');
     }
 
     // Wake clusters near the player and let distant ones sleep (MSC-012 activation). The mountain is different:
@@ -1354,6 +1512,7 @@ export async function createTestYardScene(
     canvas.dataset['credits'] = String(sharedCredits.balance);
     canvas.dataset['collectorTier'] = String(collector.selector.tier + 1);
     canvas.dataset['stationMarker'] = JSON.stringify(stationReveal.status());
+    canvas.dataset['menu'] = menu ? JSON.stringify({ kind: menu.kind, focused: menu.focus.focused }) : '';
     canvas.dataset['save'] = JSON.stringify({
       campaign: campaign.opened.kind,
       writable: campaign.saver.writable,
@@ -1564,6 +1723,8 @@ export async function createTestYardScene(
     canvas.removeEventListener('click', lockPointer);
     window.removeEventListener('resize', resize);
     window.removeEventListener('pagehide', requestSave);
+    document.removeEventListener('pointerlockchange', onPointerLockChange);
+    menuView.dispose();
     world.dispose();
     renderer.dispose();
   };

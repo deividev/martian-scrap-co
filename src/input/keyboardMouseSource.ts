@@ -19,6 +19,11 @@ export const KEYBOARD_BINDINGS = Object.freeze({
   upgrade: ['KeyU'],
   slot1: ['Digit1', 'Numpad1'],
   slot2: ['Digit2', 'Numpad2'],
+  // Menus (MSC-037): the movement keys step the focus; confirm and back have their own keys.
+  menuUp: ['KeyW', 'ArrowUp'],
+  menuDown: ['KeyS', 'ArrowDown'],
+  menuConfirm: ['Enter', 'NumpadEnter', 'KeyE', 'Space', 'Mouse0'],
+  menuBack: ['Escape', 'Backspace', 'Mouse2'],
 });
 
 const EDGE_ACTIONS = [
@@ -33,6 +38,10 @@ const EDGE_ACTIONS = [
   'upgrade',
   'slot1',
   'slot2',
+  'menuUp',
+  'menuDown',
+  'menuConfirm',
+  'menuBack',
 ] as const;
 type EdgeAction = (typeof EDGE_ACTIONS)[number];
 
@@ -106,6 +115,9 @@ export class KeyboardMouseSource {
       upgrade: this.#pressed.has('upgrade'),
       toolSlot: this.#pressed.has('slot1') ? 0 : this.#pressed.has('slot2') ? 1 : null,
       cycleTool: false,
+      navigate: this.#pressed.has('menuUp') ? -1 : this.#pressed.has('menuDown') ? 1 : 0,
+      confirm: this.#pressed.has('menuConfirm'),
+      back: this.#pressed.has('menuBack'),
       device: this.#touched ? 'keyboard-mouse' : 'none',
     };
     this.#pressed.clear();
@@ -118,7 +130,9 @@ export class KeyboardMouseSource {
   /** Wires DOM events; returns a detach function. */
   attach(target: Window, isPointerLocked: () => boolean): () => void {
     const keyDown = (event: KeyboardEvent): void => {
-      if (event.code === 'Space' || event.code.startsWith('Arrow')) event.preventDefault();
+      if (event.code === 'Space' || event.code === 'Backspace' || event.code.startsWith('Arrow')) {
+        event.preventDefault();
+      }
       this.handleKeyDown(event.code, event.repeat);
     };
     const keyUp = (event: KeyboardEvent): void => this.handleKeyUp(event.code);

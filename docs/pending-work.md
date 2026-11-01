@@ -6,7 +6,7 @@ Everything an implementation left to add, test or decide, so nothing is lost bet
 
 **Kinds:** *Play check* (seen in real play), *Co-op* (needs the real two-account transport), *Owner* (owner decision or hardware/account), *Feature* (still to build), *Release* (must happen before shipping).
 
-Last updated: 2026-11-01 (develop merge of phases 3 and 4, before MSC-037).
+Last updated: 2026-11-01 (MSC-037 menus and controller focus).
 
 ## Open
 
@@ -32,6 +32,11 @@ Last updated: 2026-11-01 (develop merge of phases 3 and 4, before MSC-037).
 | P-18 | MSC-036 | Feature | Closing the window saves only best effort; the main process could wait for a final save before quitting. | — |
 | P-19 | MSC-036 | Feature | Moved props (cart, parts) are saved only with the next durable change, not on their own. | — |
 | P-20 | MSC-026 | Release | Remove the dev-only two-account P2P test (`electron/steam/devP2pTest.ts`, `tools/dev-p2p/`, its `main.ts` block and tests). | MSC-118 |
+| P-22 | MSC-037 | Play check | Full slice with a real controller and no mouse: vacuum, unload, press, sell, open the shop, the insufficient-credit error, buy, pause and back. | — |
+| P-23 | MSC-037 | Owner | Menus and HUD read at handheld size (Steam Deck): text size, safe-area margins, focus contrast. | Deck access |
+| P-24 | MSC-037 | Feature | Comfort settings reachable from the pause menu (look sensitivity, invert, remapping, toggle/hold), stored locally per device. | Settings task |
+| P-25 | MSC-037 | Co-op | Host panel to approve or decline guest purchase requests and mark "Can spend"; a guest's Buy becomes a request. | P-04 |
+| P-26 | MSC-037 | Feature | After closing the pause menu with Esc the browser needs a click to capture the mouse again (Esc does not count as a user gesture); a controller needs nothing. Consider a "click to continue" cue. | — |
 | P-21 | Merge | Owner | Steam smoke on the merged packaged build with the Steam client running (2026-11-01 run had Steam closed: binding loaded, init failed as expected). | Steam running |
 
 ## Closed

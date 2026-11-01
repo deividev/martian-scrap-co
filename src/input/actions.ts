@@ -28,6 +28,12 @@ export interface ActionFrame {
   readonly toolSlot: number | null;
   /** Edge-triggered: switch to the next owned tool. */
   readonly cycleTool: boolean;
+  /** Menus (MSC-037): edge-triggered focus step, -1 up / previous, 1 down / next. */
+  readonly navigate: -1 | 0 | 1;
+  /** Menus: activate the focused control. */
+  readonly confirm: boolean;
+  /** Menus: go back / close, never a trap. */
+  readonly back: boolean;
   readonly device: InputDevice;
 }
 
@@ -44,6 +50,9 @@ export const EMPTY_FRAME: ActionFrame = Object.freeze({
   upgrade: false,
   toolSlot: null,
   cycleTool: false,
+  navigate: 0,
+  confirm: false,
+  back: false,
   device: 'none',
 });
 
@@ -84,7 +93,10 @@ export function mergeFrames(primary: ActionFrame, secondary: ActionFrame): Actio
       secondary.cycleMaterial !== 0 ||
       secondary.upgrade ||
       secondary.toolSlot !== null ||
-      secondary.cycleTool);
+      secondary.cycleTool ||
+      secondary.navigate !== 0 ||
+      secondary.confirm ||
+      secondary.back);
   return {
     move,
     look: { yaw: primary.look.yaw + secondary.look.yaw, pitch: primary.look.pitch + secondary.look.pitch },
@@ -98,6 +110,9 @@ export function mergeFrames(primary: ActionFrame, secondary: ActionFrame): Actio
     upgrade: primary.upgrade || secondary.upgrade,
     toolSlot: primary.toolSlot ?? secondary.toolSlot,
     cycleTool: primary.cycleTool || secondary.cycleTool,
+    navigate: primary.navigate !== 0 ? primary.navigate : secondary.navigate,
+    confirm: primary.confirm || secondary.confirm,
+    back: primary.back || secondary.back,
     device: secondaryActive ? secondary.device : primary.device,
   };
 }

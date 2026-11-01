@@ -117,6 +117,7 @@ pnpm run electron:dev    # Electron against a running `pnpm run dev` server
 pnpm run package         # build + electron-builder Windows folder in release/win-unpacked/
 pnpm run bake:mountain   # re-settle the scrap mountain with the game physics; rewrites src/simulation/yard/scrapMountain.baked.json
 pnpm run bake:mountain --resettle  # only re-run the joint settling passes on the committed mountain data
+# In game: Esc or the controller Menu button opens the menu; the sale machine opens the upgrade shop (keyboard/mouse and controller, explicit focus and back)
 # In game: F3 toggles the performance overlay (FPS, draw calls, triangles, per-section frame ms); same data in the canvas data-perf / data-frame-ms attributes
 # Steam (optional): no App ID is built in (A1). A Steam launch supplies it; locally set MSC_STEAM_APP_ID. MSC_NO_STEAM=1 disables Steam.
 # Steam check without a window: electron . --steam-smoke (or the packaged exe with --steam-smoke) prints one JSON line.
