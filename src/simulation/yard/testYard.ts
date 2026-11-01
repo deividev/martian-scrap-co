@@ -3,7 +3,6 @@ import { contentId, type EntityIdAllocator } from '../../domain/ids';
 import type { BoxBodySpec, Quat, Vec3 } from '../physics/physicsPort';
 import type { RecoveryZone } from '../player/playerController';
 import type { AssemblyLayout } from '../handling/assemblyBody';
-import { mulberry32 } from '../benchmark/denseYardFixture';
 import type { BreakableSpec } from '../handling/breakables';
 import type { MediumPropSpec } from '../handling/mediumProps';
 import type { ScrapClusterSpec } from '../scrap/scrapField';
@@ -182,48 +181,10 @@ export const TEST_YARD_ROVER_LAYOUT: AssemblyLayout = {
   },
 };
 
-const FOOT_MATERIALS = [
-  'ferrous',
-  'ferrous',
-  'ferrous',
-  'ferrous',
-  'aluminum',
-  'copper',
-  'polymer',
-  'heliofoil',
-  'regolith-ceramic',
-];
-
 /** Ground position just outside the scrap mountain's edge at a given x (plus an offset toward the yard). */
 export function mountainFootZ(x: number, offset: number): number {
   const ratio = Math.min(1, Math.abs(x - SCRAP_MOUNTAIN.center.x) / SCRAP_MOUNTAIN.radiusX);
   return SCRAP_MOUNTAIN.center.z + SCRAP_MOUNTAIN.radiusZ * Math.sqrt(1 - ratio * ratio) + offset;
-}
-
-/**
- * Many small pieces spilled at the foot of the scrap mountain for the start of the game (owner feedback
- * 2026-10-30). Clusters start dormant and are activated when the player comes near.
- */
-export function createMountainFootScrap(allocator: EntityIdAllocator): ScrapClusterSpec[] {
-  const random = mulberry32(7);
-  return [-15, -9, -3, 3, 9, 15].map((cx, clusterIndex) => {
-    const cz = mountainFootZ(cx, 2.2);
-    return {
-      id: `mountain-foot-${clusterIndex}`,
-      decorativeInstances: 0,
-      pieces: Array.from({ length: 36 }, (_, index) => ({
-        id: allocator.allocate(),
-        materialId: contentId(FOOT_MATERIALS[Math.floor(random() * FOOT_MATERIALS.length)] ?? 'ferrous'),
-        position: {
-          x: cx + (random() - 0.5) * 4.5,
-          y: 0.12 + Math.floor(index / 18) * 0.25 + random() * 0.1,
-          z: cz + (random() - 0.5) * 2.5,
-        },
-        halfExtents: { x: 0.08 + random() * 0.06, y: 0.05 + random() * 0.05, z: 0.08 + random() * 0.06 },
-        massKg: 0.8 + random() * 1.4,
-      })),
-    };
-  });
 }
 
 /** Medium junk that breaks into small pieces of several materials (for the early-mid game). */
@@ -271,6 +232,46 @@ export function createTestYardBreakables(allocator: EntityIdAllocator): Breakabl
     ]),
   ];
 }
+
+/** Compactor next to the intake (MSC-032): body collider and the output pad bales drop onto. */
+export const TEST_YARD_COMPACTOR = Object.freeze({
+  position: { x: -4.0, y: 0, z: 9.4 },
+  halfExtents: { x: 0.95, y: 1.2, z: 0.75 },
+  pad: { x: -4.0, y: 0, z: 7.85 },
+  /** A prop closer than this to the pad center (horizontally) blocks the exit. */
+  padRadius: 0.75,
+});
+
+/**
+ * Base line, in the order material flows (owner follow-up R1, gameplay concept sorting bay): compactor,
+ * sorting bay (one bay per material), intake hopper, sale machine. All face the yard (-z).
+ */
+export const TEST_YARD_SORTING_BAY = Object.freeze({
+  position: { x: -0.2, y: 0, z: 9.5 },
+  halfExtents: { x: 2.7, y: 0.9, z: 0.5 },
+});
+
+/** Sale machine (MSC-033): kiosk collider and how close a player with a bale must stand to sell. */
+export const TEST_YARD_SALE_TERMINAL = Object.freeze({
+  position: { x: 7.7, y: 0, z: 9.2 },
+  halfExtents: { x: 0.75, y: 1.1, z: 0.5 },
+  reach: 2.6,
+});
+
+/**
+ * First station marker (MSC-035): buried at the mountain foot within sight of the base. About three-quarters of
+ * its cover is iron plus aluminum and copper, so clearing it calls for the level 2 collector (and the cart for its
+ * medium parts). Placeholder layout and threshold until the slice playtest (MSC-039).
+ */
+export const TEST_YARD_STATION_MARKER = Object.freeze({
+  // z = mountainFootZ(6, -1.5), written out: backdrop and this module import each other.
+  position: { x: 6, y: -0.4, z: -16.5 },
+  radius: 2.5,
+  revealWhenRemaining: 0.35,
+});
+
+/** Half extents of a bale prop (MSC-032); placeholder size readable in first person. */
+export const BALE_HALF_EXTENTS = Object.freeze({ x: 0.32, y: 0.3, z: 0.3 });
 
 /** Base intake hopper where the portable container is unloaded (early prototype ahead of MSC-031). */
 export const TEST_YARD_INTAKE = Object.freeze({

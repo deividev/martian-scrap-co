@@ -109,7 +109,8 @@ export class MagneticCollector {
     if (!pick) return { state: 'none' };
     const piece = this.#field.piece(pick.candidate.id);
     const material = piece ? this.#pack.materials.get(piece.materialId) : undefined;
-    if (!piece || piece.state !== 'active' || !material) return { state: 'none' };
+    // Dormant pieces of the mountain are valid targets too; they wake when the pull starts.
+    if (!piece || piece.state === 'removed' || !material) return { state: 'none' };
     const reason = this.#refusal(material);
     if (reason === null) {
       return this.#sink.canAccept(piece.id)
@@ -122,6 +123,7 @@ export class MagneticCollector {
   /** Starts pulling a compatible target. Returns false (and changes nothing) otherwise. */
   tryStartPull(feedback: TargetFeedback): boolean {
     if (feedback.state !== 'compatible' || this.#pulling.has(feedback.id) || this.#freeSlots() <= 0) return false;
+    this.#field.disturb(feedback.id);
     this.#pulling.add(feedback.id);
     return true;
   }
@@ -134,7 +136,7 @@ export class MagneticCollector {
   suck(aim: AimRay, self?: CharacterHandle): number {
     const cosLimit = Math.cos((VACUUM_TUNING.coneDegrees * Math.PI) / 180);
     const candidates: { id: EntityId; body: PhysicsBodyHandle; angle: number }[] = [];
-    for (const target of this.#field.activeTargets()) {
+    for (const target of this.#field.targetsNear(aim.origin, VACUUM_TUNING.reachMeters)) {
       if (this.#pulling.has(target.id)) continue;
       const piece = this.#field.piece(target.id);
       const material = piece ? this.#pack.materials.get(piece.materialId) : undefined;
@@ -154,10 +156,14 @@ export class MagneticCollector {
     let added = 0;
     for (const candidate of candidates) {
       if (this.#freeSlots() <= 0) break;
-      const position = this.#physics.bodyPosition(candidate.body);
+      // An earlier pull may have woken this piece (it rested on the pulled one): use its live body then.
+      if (this.#field.piece(candidate.id)?.state === 'removed') continue;
+      const body = this.#field.bodyOf(candidate.id) ?? candidate.body;
+      const position = this.#physics.bodyPosition(body);
       const d = { x: position.x - aim.origin.x, y: position.y - aim.origin.y, z: position.z - aim.origin.z };
       const hit = this.#physics.castRay(aim.origin, d, Math.hypot(d.x, d.y, d.z) + 0.5, self);
-      if (hit?.body !== candidate.body) continue;
+      if (hit?.body !== body) continue;
+      this.#field.disturb(candidate.id);
       this.#pulling.add(candidate.id);
       added += 1;
     }

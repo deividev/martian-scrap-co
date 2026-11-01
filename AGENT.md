@@ -1,6 +1,6 @@
 # Martian Scrap Co. — Project Guide
 
-**Canonical project context for agents and the human owner.** Version 1.2, updated 2026-10-29: marketing-measurement context added, not product reapproval. This package started as **planning-only** and is not yet an implemented game. On 2026-10-29 the owner authorized sequential execution of the 120-task plan, one task at a time with per-task commits, a branch per phase and integration into `develop`; each task's current state is its **Status** field in the [task plan](docs/04-phased-agent-task-plan.md). Owner-decision and validation gates still apply; the roadmap is never executed past an unapproved or failed gate.
+**Canonical project context for agents and the human owner.** Version 1.2, updated 2026-10-29: marketing-measurement context added, not product reapproval; status refreshed 2026-10-31. This package started as **planning-only**; it now holds a playable solo test yard (phase 2 foundation and the MSC-020 handling gate done, MSC-031–033 brought forward in progress), not a complete game. On 2026-10-29 the owner authorized sequential execution of the 120-task plan, one task at a time with per-task commits, a branch per phase and integration into `develop`; each task's current state is its **Status** field in the [task plan](docs/04-phased-agent-task-plan.md). Owner-decision and validation gates still apply; the roadmap is never executed past an unapproved or failed gate.
 
 ## Start here
 
@@ -85,8 +85,8 @@ Martian Scrap Co/                 Project root
 |-- index.html, vite.config.ts   Vite entry and config (MSC-005)
 |-- electron-builder.yml         Packaging allowlist, asarUnpack and fuses (MSC-007)
 |-- package.json, pnpm-lock.yaml, pnpm-workspace.yaml, tsconfig.json
-|-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006); steam/ lifecycle over steamworks.js (MSC-026)
-|-- src/                         Renderer TypeScript: domain, content, simulation, net (co-op protocol, transport ports), input, i18n (EN/ES), models (styled procedural), platform adapter, test-yard scene
+|-- electron/                    Secure Electron main, sandboxed preload, IPC policy (MSC-006); steam/ lifecycle over steamworks.js (MSC-026); save files (MSC-036)
+|-- src/                         Renderer TypeScript: domain, content, simulation, net (co-op protocol, transport ports), input, i18n (EN/ES), models (styled procedural), platform adapter, persistence (campaign saves), test-yard scene
 |-- tests/                       Vitest unit tests
 `-- tools/                       validate-docs.ps1, check.mjs runner, run-electron-dev.mjs
 
@@ -113,6 +113,9 @@ pnpm run check           # all local checks with bounded logs in .check-logs/ (-
 pnpm run electron:start  # build, then open the desktop app
 pnpm run electron:dev    # Electron against a running `pnpm run dev` server
 pnpm run package         # build + electron-builder Windows folder in release/win-unpacked/
+pnpm run bake:mountain   # re-settle the scrap mountain with the game physics; rewrites src/simulation/yard/scrapMountain.baked.json
+pnpm run bake:mountain --resettle  # only re-run the joint settling passes on the committed mountain data
+# In game: F3 toggles the performance overlay (FPS, draw calls, triangles, per-section frame ms); same data in the canvas data-perf / data-frame-ms attributes
 # Steam (optional): no App ID is built in (A1). A Steam launch supplies it; locally set MSC_STEAM_APP_ID. MSC_NO_STEAM=1 disables Steam.
 # Steam check without a window: electron . --steam-smoke (or the packaged exe with --steam-smoke) prints one JSON line.
 # DEV-ONLY two-account P2P test (remove before release, MSC-118): copy tools/dev-p2p/host.bat and join.bat next to the packaged exe.

@@ -27,6 +27,8 @@ export interface ToolDefinition {
   readonly freeBaseline: boolean;
   /** Materials each upgrade tier unlocks, cumulatively; tier 0 is the base tool (collector selector). */
   readonly upgradeTiers?: readonly (readonly ContentId[])[];
+  /** Shared-credit price of each tier above the base (`upgradePrices[i]` buys tier `i + 1`). */
+  readonly upgradePrices?: readonly Credits[];
 }
 
 export type CompatibilityResult =

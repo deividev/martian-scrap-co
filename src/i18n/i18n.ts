@@ -11,12 +11,12 @@ export const STRINGS = {
     es: 'Haz clic para jugar · WASD o stick izquierdo para moverte',
   },
   'hint.keyboard': {
-    en: 'WASD move · 1 collector / 2 cutter · Hold left click / E vacuum, cut or use · Right click / F unload · Mouse wheel material (collector in hand) · U upgrade tool in hand (test) · Q/R rotate · Space jump · Esc release mouse',
-    es: 'WASD moverse · 1 colector / 2 cortador · Mantén clic izq. / E aspirar, cortar o usar · Clic der. / F descargar · Rueda del ratón material (con el colector) · U mejorar herramienta en mano (prueba) · Q/R rotar · Espacio saltar · Esc soltar ratón',
+    en: 'WASD move · 1 collector / 2 cutter · Hold left click / E vacuum, cut or use · Right click / F unload · Mouse wheel material (collector in hand) · U upgrade cutter (test) · Q/R rotate · Space jump · Esc release mouse',
+    es: 'WASD moverse · 1 colector / 2 cortador · Mantén clic izq. / E aspirar, cortar o usar · Clic der. / F descargar · Rueda del ratón material (con el colector) · U mejorar cortador (prueba) · Q/R rotar · Espacio saltar · Esc soltar ratón',
   },
   'hint.gamepad': {
-    en: 'Left stick move · Right stick look · D-pad down switch tool · Hold RT / X vacuum, cut or use · Y unload · D-pad left/right material · D-pad up upgrade tool in hand (test) · LB/RB rotate · A jump · Menu pause',
-    es: 'Stick izq. moverse · Stick der. mirar · Cruceta abajo cambiar herramienta · Mantén RT / X aspirar, cortar o usar · Y descargar · Cruceta izq./der. material · Cruceta arriba mejorar herramienta en mano (prueba) · LB/RB rotar · A saltar · Menú pausa',
+    en: 'Left stick move · Right stick look · D-pad down switch tool · Hold RT / X vacuum, cut or use · Y unload · D-pad left/right material · D-pad up upgrade cutter (test) · LB/RB rotate · A jump · Menu pause',
+    es: 'Stick izq. moverse · Stick der. mirar · Cruceta abajo cambiar herramienta · Mantén RT / X aspirar, cortar o usar · Y descargar · Cruceta izq./der. material · Cruceta arriba mejorar cortador (prueba) · LB/RB rotar · A saltar · Menú pausa',
   },
 
   'tip.collect': {
@@ -104,6 +104,133 @@ export const STRINGS = {
     es: 'Tolva de la base: clic derecho / F / Y para descargar el contenedor',
   },
   'intake.contents': { en: 'Intake: {list}', es: 'Tolva: {list}' },
+  'intake.preview': {
+    en: 'Base intake: right click / F / Y to unload {list}',
+    es: 'Tolva de la base: clic derecho / F / Y para descargar {list}',
+  },
+  'intake.previewKept': {
+    en: 'Base intake: right click to unload {list} · {kept} stay in the container (bin full)',
+    es: 'Tolva de la base: clic derecho para descargar {list} · {kept} se quedan en el contenedor (compartimento lleno)',
+  },
+  'intake.binsFull': {
+    en: 'Base intake: that material bin is full. Wait for the compactor to free space.',
+    es: 'Tolva de la base: el compartimento de ese material está lleno. Espera a que la compactadora haga sitio.',
+  },
+  'unload.partial': {
+    en: 'Unloaded {count} pieces; {kept} stay in the container because the bin is full.',
+    es: 'Descargadas {count} piezas; {kept} se quedan en el contenedor porque el compartimento está lleno.',
+  },
+  'hud.base': { en: 'Base intake', es: 'Tolva de la base' },
+  'compactor.idle': {
+    en: 'Compactor: waiting for {size} pieces of one material',
+    es: 'Compactadora: esperando {size} piezas de un material',
+  },
+  'compactor.loading': { en: 'Compactor: loading {symbol}', es: 'Compactadora: cargando {symbol}' },
+  'compactor.processing': {
+    en: 'Compactor: pressing a {symbol} bale',
+    es: 'Compactadora: prensando una paca de {symbol}',
+  },
+  'compactor.blocked': {
+    en: 'Compactor: exit occupied, move the bale off the pad',
+    es: 'Compactadora: salida ocupada, retira la paca de la plataforma',
+  },
+  'compactor.baleReady': {
+    en: 'A {material} bale is ready on the compactor pad.',
+    es: 'Hay una paca de {material} lista en la plataforma de la compactadora.',
+  },
+  'sale.preview': {
+    en: 'Sale machine: use to sell {bale} for {credits} C',
+    es: 'Máquina de venta: usar para vender {bale} por {credits} C',
+  },
+  'sale.needBale': {
+    en: 'Sale machine: bring a bale from the compactor to sell it',
+    es: 'Máquina de venta: trae una paca de la compactadora para venderla',
+  },
+  'shop.preview': {
+    en: 'Sale machine: use to buy collector level {tier} (+{list}) for {credits} C',
+    es: 'Máquina de venta: usar para comprar el colector nivel {tier} (+{list}) por {credits} C',
+  },
+  'shop.short': {
+    en: 'Collector level {tier} (+{list}) costs {credits} C · the crew has {balance} C',
+    es: 'El colector nivel {tier} (+{list}) cuesta {credits} C · el equipo tiene {balance} C',
+  },
+  'shop.insufficient': {
+    en: 'Not enough credits: {credits} C needed, the crew has {balance} C.',
+    es: 'Faltan créditos: hacen falta {credits} C y el equipo tiene {balance} C.',
+  },
+  'shop.useMachine': {
+    en: 'Buy collector levels with team credits at the sale machine.',
+    es: 'Compra niveles del colector con los créditos del equipo en la máquina de venta.',
+  },
+  'job.clearMarker': {
+    en: 'Clear the scrap covering the station beacon at the mountain foot (orange arrow) · {percent}%',
+    es: 'Despeja la chatarra que cubre la baliza de la estación al pie de la montaña (flecha naranja) · {percent} %',
+  },
+  'job.stationFound': {
+    en: 'A piece of the old station is showing: keep clearing the mountain to uncover more',
+    es: 'Asoma una parte de la antigua estación: sigue despejando la montaña para descubrir más',
+  },
+  'station.revealed': {
+    en: 'Station beacon uncovered! The buried station starts to show under the mountain.',
+    es: '¡Baliza de la estación al descubierto! La estación enterrada empieza a asomar bajo la montaña.',
+  },
+  'save.resumed': { en: 'Campaign restored (save {revision}).', es: 'Partida restaurada (guardado {revision}).' },
+  'save.fromBackup': {
+    en: 'The latest save was damaged: the previous valid save was restored (save {revision}).',
+    es: 'El último guardado estaba dañado: se ha restaurado el anterior válido (guardado {revision}).',
+  },
+  'save.locked': {
+    en: 'This campaign was saved by a newer version of the game. It was not loaded and will not be overwritten; this session is not saved.',
+    es: 'Esta partida se guardó con una versión más nueva del juego. No se ha cargado ni se sobrescribirá; esta sesión no se guarda.',
+  },
+  'save.unreadable': {
+    en: 'The campaign save could not be read. It was left untouched; this session is not saved.',
+    es: 'No se ha podido leer el guardado de la partida. Se ha dejado intacto; esta sesión no se guarda.',
+  },
+  'save.incompatible': {
+    en: 'The campaign save does not match this test yard. It was left untouched; this session is not saved.',
+    es: 'El guardado de la partida no corresponde a este patio de pruebas. Se ha dejado intacto; esta sesión no se guarda.',
+  },
+  'save.failed': {
+    en: 'The campaign could not be saved; progress since the last save may be lost.',
+    es: 'No se ha podido guardar la partida; el progreso desde el último guardado puede perderse.',
+  },
+  'job.buyUpgrade': {
+    en: 'The crew can afford collector level {tier}: buy it at the sale machine ({credits} C)',
+    es: 'El equipo puede comprar el colector nivel {tier}: cómpralo en la máquina de venta ({credits} C)',
+  },
+  'sale.done': { en: 'Sold {bale}: +{credits} C for the crew.', es: 'Vendida {bale}: +{credits} C para el equipo.' },
+  'sale.failed': { en: 'That bale can no longer be sold.', es: 'Esa paca ya no se puede vender.' },
+  'hud.credits': { en: 'Team credits', es: 'Créditos del equipo' },
+  'hud.job': { en: 'Current job', es: 'Trabajo actual' },
+  'job.vacuum': {
+    en: 'Vacuum small {material} pieces with the collector (hold left click)',
+    es: 'Aspira piezas pequeñas de {material} con el colector (mantén clic izquierdo)',
+  },
+  'job.unload': {
+    en: 'Unload the container at the base intake (right click)',
+    es: 'Descarga el contenedor en la tolva de la base (clic derecho)',
+  },
+  'job.fillBin': {
+    en: 'Bring {missing} more {material} pieces to complete a bale',
+    es: 'Trae {missing} piezas más de {material} para completar una paca',
+  },
+  'job.pressing': { en: 'The compactor is pressing a bale…', es: 'La compactadora está prensando una paca…' },
+  'job.takeBale': {
+    en: 'Pick up the bale from the compactor pad (left click)',
+    es: 'Recoge la paca de la plataforma de la compactadora (clic izquierdo)',
+  },
+  'job.sellBale': {
+    en: 'Carry the bale to the sale machine and press use',
+    es: 'Lleva la paca a la máquina de venta y pulsa usar',
+  },
+  'mountain.medium': { en: 'Medium {material} part', es: 'Pieza mediana de {material}' },
+  'mountain.large': { en: 'Large {material} part', es: 'Pieza grande de {material}' },
+  'mountain.buried': {
+    en: '{name}: other parts rest on it, clear them first',
+    es: '{name}: tiene piezas encima, retíralas primero',
+  },
+  'bale.name': { en: '{material} bale ({count})', es: 'Paca de {material} ({count})' },
   'intake.empty': { en: 'empty', es: 'vacía' },
   'unload.done': {
     en: 'Unloaded {count} pieces into the intake, ready to compact.',

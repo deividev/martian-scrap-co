@@ -18,5 +18,5 @@
     "rootDir": ".",
     "outDir": "dist-electron"
   },
-  "include": ["electron/**/*.ts", "electron/**/*.cts"]
+  "include": ["electron/**/*.ts", "electron/**/*.cts", "src/persistence/saveSlots.ts"]
 }

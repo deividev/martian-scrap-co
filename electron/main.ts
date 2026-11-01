@@ -1,12 +1,14 @@
 import { BrowserWindow, app, ipcMain, session, type IpcMainInvokeEvent, type WebContents } from 'electron';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { commitSave, recoverSave, type CommitResult, type RecoverResult } from '../src/persistence/saveSlots.js';
 import type { AppInfo } from '../src/platform/types.js';
 import { IPC_CHANNELS, isTrustedSenderUrl, resolveDevServerUrl, validateInvoke, type IpcChannel } from './ipcPolicy.js';
 import { resolveAppPaths } from './paths.js';
 import { startSteam } from './steam/steamService.js';
 import { connectLobbyFromArgv, isSteamId, resolveSteamConfig } from './steam/steamPolicy.js';
 import { resolveDevP2pTest, runDevP2pTest } from './steam/devP2pTest.js'; // DEV-ONLY: remove before release
+import { createFileSlots } from './saveFiles.js';
 
 const appPaths = resolveAppPaths({
   appPath: app.getAppPath(),
@@ -115,6 +117,27 @@ function registerIpc(): void {
     return steam.send(to, channel, raw);
   });
   handle(IPC_CHANNELS.steamPoll, () => steam.poll());
+
+  // MSC-036: host campaign saves live in one fixed folder under userData; the renderer passes text, never paths.
+  const slots = createFileSlots(path.join(app.getPath('userData'), 'saves'));
+  // One save operation at a time, in order.
+  let queue: Promise<unknown> = Promise.resolve();
+  const serialized = <T>(run: () => Promise<T>): Promise<T> => {
+    const next = queue.then(run, run);
+    queue = next.catch(() => undefined);
+    return next;
+  };
+  handle(IPC_CHANNELS.loadSave, (): Promise<RecoverResult> => serialized(() => recoverSave(slots)));
+  handle(IPC_CHANNELS.writeSave, (text): Promise<CommitResult | { ok: false; reason: 'failed' }> =>
+    serialized(async () => {
+      try {
+        return await commitSave(slots, String(text));
+      } catch (error) {
+        console.error('Save failed', error);
+        return { ok: false, reason: 'failed' };
+      }
+    }),
+  );
 }
 
 function createMainWindow(): BrowserWindow {

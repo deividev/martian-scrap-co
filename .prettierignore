@@ -8,3 +8,5 @@ references/
 *.md
 # img2threejs pipeline artifacts keep their generated layout.
 art/sculpt/**/*.json
+# Baked scrap mountain: one piece per line, written by tools/bake-mountain.mjs.
+src/simulation/yard/scrapMountain.baked.json

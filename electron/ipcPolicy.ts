@@ -11,11 +11,15 @@ export const IPC_CHANNELS = Object.freeze({
   steamInvite: 'steam:invite',
   steamSend: 'steam:send',
   steamPoll: 'steam:poll',
+  loadSave: 'save:load',
+  writeSave: 'save:write',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
 export const MAX_IPC_PAYLOAD_BYTES = 16 * 1024;
+/** A campaign save is the one large payload (MSC-036); it matches `MAX_SAVE_TEXT_LENGTH` plus JSON quoting. */
+export const MAX_SAVE_PAYLOAD_BYTES = 9 * 1024 * 1024;
 
 /** `steam:send` carries one protocol message (up to 16 KiB of UTF-8) plus JSON escaping and the target id. */
 const STEAM_SEND_PAYLOAD_BYTES = 6 * 16 * 1024 + 256;
@@ -33,6 +37,13 @@ const CHANNEL_ARITY: Readonly<Record<IpcChannel, number>> = {
   'steam:invite': 0,
   'steam:send': 3,
   'steam:poll': 0,
+  'save:load': 0,
+  'save:write': 1,
+};
+
+const CHANNEL_MAX_BYTES: Readonly<Partial<Record<IpcChannel, number>>> = {
+  'steam:send': STEAM_SEND_PAYLOAD_BYTES,
+  'save:write': MAX_SAVE_PAYLOAD_BYTES,
 };
 
 export type IpcValidation =
@@ -54,9 +65,12 @@ export function validateInvoke(channel: string, args: readonly unknown[]): IpcVa
   } catch {
     return { ok: false, reason: `${channel} payload is not serializable` };
   }
-  const limit = channel === IPC_CHANNELS.steamSend ? STEAM_SEND_PAYLOAD_BYTES : MAX_IPC_PAYLOAD_BYTES;
+  const limit = CHANNEL_MAX_BYTES[channel] ?? MAX_IPC_PAYLOAD_BYTES;
   if (encoded === undefined || encoded.length > limit) {
     return { ok: false, reason: `${channel} payload exceeds ${limit} bytes` };
+  }
+  if (channel === 'save:write' && typeof args[0] !== 'string') {
+    return { ok: false, reason: 'save:write expects the save text' };
   }
   return { ok: true, channel };
 }

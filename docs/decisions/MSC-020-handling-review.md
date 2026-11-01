@@ -104,3 +104,76 @@ Raised by the owner with the approval (2026-10-30). They must be done before MSC
 | R2 | Improve the cart model. | Same style reference; keep the collider and handling unchanged unless a change is reviewed. |
 | R3 | Improve the scenery around the yard and base. | Ground, rocks, mesas, station and base area. |
 | R4 | Build the giant scrap mountain from real material pieces, mixed small, medium and large, each with real collision. | Replaces the decorative instances plus heightfield. Must respect the MSC-019 budgets (≤ 300 awake bodies, draw calls ≤ 150): pieces stay asleep or static until disturbed, are activated by area, and the dense benchmark is re-run as evidence. Small pieces stay collectable, medium ones breakable, large ones cuttable. |
+
+### Follow-up results (2026-10-30)
+
+| # | Result |
+|---|---|
+| R1 | New machine models anchored on the gameplay concept and the stylized press: sorting bay (one bay per material, cream sign with the material icon, pile that follows the bin count), intake hopper with conveyor, yellow/blue compactor press with control box and beacon, grated output deck, pressed-piece bales on yellow pallets, navy/yellow sale machine. The base is laid out in flow order facing the yard: compactor, sorting bay, hopper, sale machine. [Review](../../art/sculpt/base/review.md). |
+| R2 | Cart rebuilt like the concept (yellow tub, dark rim and bumpers, hub wheels, push handle); collider and handling unchanged. |
+| R3 | Layered rocks, stepped mesas, ribbed shipping containers and floodlights (all with colliders), ground tone patches, grated base floor, sun moved so machine fronts are lit. |
+| R4 | The mountain is now real pieces: about 1,200 large and medium parts plus about 1,000 small pieces in solid clusters, every one with a collider, stacked on a visible core; the slope follows the mountain shape (stacking is capped) so the rim can be worked from the ground. Small pieces wake near the player and are vacuumed as usual; medium parts are grabbed or broken/cut; large parts are cut into small pieces of their material. A part is blocked only while a large part rests on it; medium parts resting on a part that leaves become falling props, so nothing floats. The layout is deterministic from a seed (a save only needs changed ids). |
+
+**In-app evidence (Electron, reference PC):** a medium aluminum part was grabbed and placed; a large iron part with medium parts on top was cut in a held 4 s cut into 12 iron pieces and the parts on top fell as props; a buried part shows "tiene piezas encima, retíralas primero". Simulation stayed at p95 0.8–1.2 ms, p99 ≤ 1.8 ms, 0 awake bodies at rest (19 briefly after a cut), active pieces 236–293 at the mountain foot (≤ 300).
+
+**Draw-call budget:** the first R1–R4 pass reached 186–233 draw calls (from about 1,100), above the accepted ≤ 150. The owner chose to keep reducing rather than raise the budget (2026-10-30). Second pass:
+
+- Static batching now bakes each plain material's color, roughness/metalness and emissive light into vertex attributes (flat-shaded parts get face normals), so a batched subtree is one mesh per face side instead of one per finish. Crew robots went from 12 to 4 meshes each, the compactor from 10 to 4, the held tools and rover fragments to one each.
+- Every scrap silhouette of a material (small/medium shapes and large parts) shares one multi-draw `BatchedMesh` with per-piece culling: one batch per material for the mountain and one for active scrap, instead of one instanced mesh per material and shape.
+
+Measured in Electron on the test yard: **99 draw calls at spawn, 82 at the mountain** after cutting a large part (293 active pieces), triangles about 0.62–0.79 M, simulation p95 1.2–1.3 ms, p99 ≤ 2.2 ms. The look is unchanged in side-by-side captures, and the economy loop (bale grab, sale +40 C, no double payment), the mountain cut and the spawn view were re-run. Within the ≤ 150 budget; no shadow-distance change was needed.
+
+## Mountain physics follow-up (owner check 2026-10-30)
+
+**Owner report:** mountain pieces behaved strangely: some fell when the player approached, some floated, some passed through each other. The mountain must be pieces burying each other, never passing through the player or each other, with real physics and collisions at every size, and medium and large parts buried under heaps of small pieces.
+
+**Cause:** the first layout stacked pieces on a height grid instead of simulating them. Parts were embedded 25% into each other on purpose, small pieces sat over gaps, and whole areas switched to dynamic bodies when the player came within 12 m. Overlapping pieces were pushed apart violently ("flying") and unsupported ones dropped ("falling when approached").
+
+**Changes:**
+
+- **Settled offline with the game's physics** (`npm run bake:mountain`, `src/simulation/yard/mountainBake.ts`, data in `scrapMountain.baked.json`). Large parts drop first, then medium parts, then heaps of small pieces poured mostly over the parts (70% on the part's footprint), then the starter spill at the foot. Each wave is simulated without engine sleep until every piece stays under 3 cm/s, then frozen as fixed colliders exactly as the game holds a dormant pile. Pieces that never rested or left the mound are discarded. Three joint passes then re-settle all small pieces together as dynamic bodies, because the game can wake any of them. The mountain core collider has friction 1.0 (packed scrap), so pieces hold on its steepest slopes (about 33°).
+- **Pieces only move when disturbed.** Small mountain pieces stay fixed until the collector pulls them, the player walks into them (touch reach 0.65 m, while fewer than 260 pieces are active), or what they rest on moves away. Waking cascades to everything resting on a moving, collected, cut or released piece, so nothing is left floating. Pieces that come to rest farther than 7 m from the player become fixed again where they lie. The collector can aim at and pull dormant pieces directly.
+- **Physics streaming.** Each fixed collider costs simulation time even at rest (measured with Rapier: 7,000 idle fixed bodies cost 2.3 ms per step). Small-piece clusters therefore hold colliders only within 16 m of a player (dropped beyond 22 m); nothing can touch a dormant piece farther away.
+- **Aim.** What the crosshair touches now wins over the aim cone, so a nearby small piece never steals the target from the part in front of the player.
+
+**Evidence:**
+
+- The current bake has 10,082 pieces: 100 large, 494 medium and 9,488 small. More than 70% of the medium and large parts have small pieces resting on them.
+- Unit test: four mountain areas and the foot spill were simulated as dynamic bodies, with medium and large parts fixed as in the game. No piece moved 5 cm in 1.5 s. With all 9,488 small pieces woken at once, 1 piece moved more than 5 cm (5.4 cm).
+- Measured in Electron:
+  - Approaching the foot woke nothing (18 active pieces, the starter pile).
+  - The collector pulled dormant iron pieces from the heap.
+  - Walking into a heap woke 36 pieces, which settled (2 awake after 3 s).
+  - Cutting an exposed large aluminum part produced 12 pieces, and the small pieces and medium parts on it fell.
+  - The economy loop still sells a bale for +40 C.
+  - Simulation p95 was 1.1–2.1 ms and p99 ≤ 2.4 ms. Draw calls were 73–105 and triangles about 1.0–1.1 M (small pieces beyond 45 m are not drawn and cast no shadows).
+
+**Open:** at this scale, small pieces (about 0.2–0.3 m) cover medium parts but only partly bury large ones (2–3.6 m), and much of the dark core still shows between heaps. Fuller burial needs either several times more small pieces (simulation, triangle and load-size budgets) or a different size mix. This is an owner decision.
+
+## Mountain refinement and frame-time pass (owner check 2026-10-31)
+
+**Changes:**
+
+- **Fuller burial.** The bake now holds 28,958 pieces: 110 large, 1,605 medium and 27,243 small (data file about 3.6 MB). The joint settling passes repeat until pieces come to rest (`npm run bake:mountain -- --resettle` re-runs only these passes on the committed data).
+- **No hovering pieces.** Scrap silhouettes fill their collider boxes (`tests/models/scrapSilhouettes.test.ts`), the visible mountain core is built from exactly the collider triangles (`mountainCoreTriangles`), and small pieces cast shadows.
+- **Distant detail.** Small pieces farther than 18 m use a few-triangle stand-in instead of being hidden. The switch is decided per 4 m ground cell, not per piece.
+- **Collider streaming.** Small-piece clusters hold colliders within 10 m of a player (4 m hysteresis), measured against the cluster's area bounds. Collider changes are queued and applied at most 120 per frame, additions first.
+- **Frame-time spikes removed.** The mountain view only updates pieces that woke, slept or were removed (the field reports each change) instead of scanning every small piece. The 500 ms streaming check no longer averages the positions of every mountain piece.
+- **Performance overlay.** F3 shows or hides FPS, draw calls, triangles and per-section frame times (p50/p99/max over the last 600 frames); the same numbers are in the canvas `data-perf` and `data-frame-ms` attributes.
+
+**Evidence (Electron, reference PC, 120 Hz monitor):**
+
+| Section | Worst frame before | Worst frame after |
+|---|---|---|
+| Mountain view update | 11.2 ms | about 1.0 ms |
+| Scene logic (streaming check) | 7.8 ms | about 1.4–3 ms |
+| Simulation (collider creation) | 5.2 ms | about 3.6–4 ms |
+| Whole frame CPU | — | max about 10.6–12 ms, p99 about 10 ms |
+
+- No frame interval exceeded 17.5 ms while idle, walking to the mountain, strafing along its foot, vacuuming, pushing into a heap or waiting for pieces to settle.
+- About 120 FPS at the mountain and about 105 FPS at spawn. Draw calls 82–88 at the mountain and 111 at spawn (within ≤ 150). Triangles about 1.2 M at spawn and 2.0 M facing the mountain.
+- Checks: typecheck, lint and unit tests pass, including two new streaming and change-report tests.
+
+**Owner decision (2026-10-31):** the owner played the result and accepted this part of R4.
+
+**Not measured:** cutting a large part under a heavy heap (mass wake), other hardware and Steam Deck, and GPU limits with about 2 M triangles plus shadows on weaker graphics cards.

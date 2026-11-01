@@ -76,6 +76,23 @@ export class PortableContainer {
     }));
   }
 
+  /** Items in the order they were collected (read-only view for an unload preview). */
+  items(): ContainerItem[] {
+    return [...this.#items.values()];
+  }
+
+  /** Removes exactly the listed items and returns them; unknown ids are skipped (MSC-031 partial unload). */
+  take(ids: readonly EntityId[]): ContainerItem[] {
+    const taken: ContainerItem[] = [];
+    for (const id of ids) {
+      const item = this.#items.get(id);
+      if (!item) continue;
+      this.#items.delete(id);
+      taken.push(item);
+    }
+    return taken;
+  }
+
   /** Empties the container and hands back every item exactly once (unloading at base, MSC-031). */
   unloadAll(): ContainerItem[] {
     const items = [...this.#items.values()];

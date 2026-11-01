@@ -18,6 +18,8 @@ export const FIRST_PASS_CONTENT = {
       // Owner decision 2026-10-30: magnet (Fe), then eddy-current (+Al, Cu), then suction (+Pl, Hf).
       // Regolith ceramic never goes through the collector.
       upgradeTiers: [['ferrous'], ['aluminum', 'copper'], ['polymer', 'heliofoil']],
+      // PLACEHOLDER prices (MSC-034): level 2 is two 10-piece iron bales; tuned by the economy audit (MSC-058).
+      upgradePrices: [80, 240],
     },
     { id: 'grabber', displayName: 'Grabber', handles: ['small', 'medium'], freeBaseline: false },
     { id: 'cutter', displayName: 'Cutter', handles: ['large'], freeBaseline: false },

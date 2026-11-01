@@ -1,18 +1,21 @@
-import { Mesh, type MeshStandardMaterial, type Scene } from 'three';
+import { Color, Matrix4, Quaternion, Vector3, type Scene } from 'three';
 import type { EntityId } from '../domain/ids';
-import { SCRAP_COLORS, scrapGeometry, scrapMaterial, setScrapHighlight } from '../models/styledModels';
+import { SCRAP_COLORS } from '../models/styledModels';
 import type { TargetFeedback } from '../simulation/collection/magneticCollector';
 import type { PhysicsWorldPort } from '../simulation/physics/physicsPort';
 import type { ScrapField } from '../simulation/scrap/scrapField';
+import { ScrapBatches, type ScrapInstance } from './scrapBatch';
 
 /** Readable base color per material (styled models own the palette; kept for instanced views). */
 export const MATERIAL_COLORS: Readonly<Record<string, string>> = SCRAP_COLORS;
 
-const HIGHLIGHT: Record<Exclude<TargetFeedback['state'], 'none'>, string> = {
-  compatible: '#1e8f84',
-  incompatible: '#7a3410',
-  blocked: '#7a3410',
+/** Instance tint for the aimed piece (multiplies the material color). */
+const HIGHLIGHT: Record<Exclude<TargetFeedback['state'], 'none'>, Color> = {
+  compatible: new Color('#9ffff0'),
+  incompatible: new Color('#ffb08a'),
+  blocked: new Color('#ffb08a'),
 };
+const WHITE = new Color('#ffffff');
 
 /** Stable small hash so each piece keeps the same silhouette variant across sessions. */
 export function variantOf(id: string): number {
@@ -21,62 +24,61 @@ export function variantOf(id: string): number {
   return Math.abs(hash);
 }
 
-/** Renders active scrap with material-specific shapes (nut, bracket, pipe, panel, coil…) and highlights the target. */
+/**
+ * Renders active scrap with material-specific shapes (nut, bracket, pipe, panel, coil…) and highlights the
+ * target. One multi-draw batch per material keeps draw calls flat however many pieces are awake (MSC-019
+ * budget).
+ */
 export class ScrapPileView {
-  readonly #scene: Scene;
   readonly #field: ScrapField;
   readonly #physics: PhysicsWorldPort;
-  readonly #meshes = new Map<EntityId, Mesh>();
+  readonly #batches: ScrapBatches;
+  readonly #slots = new Map<EntityId, ScrapInstance>();
+  readonly #matrix = new Matrix4();
   #highlighted: EntityId | null = null;
 
   constructor(scene: Scene, field: ScrapField, physics: PhysicsWorldPort) {
-    this.#scene = scene;
     this.#field = field;
     this.#physics = physics;
+    this.#batches = new ScrapBatches(scene, { glow: true, castShadow: true });
   }
 
   sync(): void {
     const active = new Set<EntityId>();
     for (const target of this.#field.activeTargets()) {
-      active.add(target.id);
-      let mesh = this.#meshes.get(target.id);
       const piece = this.#field.piece(target.id);
-      if (!mesh && piece) {
-        // Own material instance so highlighting one piece never tints the others.
-        mesh = new Mesh(
-          scrapGeometry(piece.materialId, variantOf(piece.id)),
-          scrapMaterial(piece.materialId, true).clone(),
-        );
-        mesh.scale.set(piece.halfExtents.x * 2, piece.halfExtents.y * 2, piece.halfExtents.z * 2);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        this.#meshes.set(target.id, mesh);
-        this.#scene.add(mesh);
+      if (!piece) continue;
+      active.add(target.id);
+      let slot = this.#slots.get(target.id);
+      if (!slot) {
+        slot = this.#batches.add(piece.materialId, { large: false, variant: variantOf(target.id) });
+        this.#slots.set(target.id, slot);
       }
-      if (!mesh) continue;
       const rotation = this.#physics.bodyRotation(target.body);
-      mesh.position.set(target.position.x, target.position.y, target.position.z);
-      mesh.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
+      this.#matrix.compose(
+        new Vector3(target.position.x, target.position.y, target.position.z),
+        new Quaternion(rotation.x, rotation.y, rotation.z, rotation.w),
+        new Vector3(piece.halfExtents.x * 2, piece.halfExtents.y * 2, piece.halfExtents.z * 2),
+      );
+      slot.mesh.setMatrixAt(slot.id, this.#matrix);
     }
-    for (const [id, mesh] of this.#meshes) {
+    for (const [id, slot] of this.#slots) {
       if (active.has(id)) continue;
-      this.#scene.remove(mesh);
-      (mesh.material as MeshStandardMaterial).dispose();
-      this.#meshes.delete(id);
+      slot.mesh.deleteInstance(slot.id);
+      this.#slots.delete(id);
       if (this.#highlighted === id) this.#highlighted = null;
     }
   }
 
   highlight(feedback: TargetFeedback): void {
     const id = feedback.state === 'none' ? null : feedback.id;
-    if (this.#highlighted !== null && this.#highlighted !== id) this.#paint(this.#highlighted, null);
+    if (this.#highlighted !== null && this.#highlighted !== id) this.#tint(this.#highlighted, WHITE);
     this.#highlighted = id;
-    if (id !== null && feedback.state !== 'none') this.#paint(id, HIGHLIGHT[feedback.state]);
+    if (id !== null && feedback.state !== 'none') this.#tint(id, HIGHLIGHT[feedback.state]);
   }
 
-  #paint(id: EntityId, highlight: string | null): void {
-    const mesh = this.#meshes.get(id);
-    const piece = this.#field.piece(id);
-    if (mesh && piece) setScrapHighlight(mesh.material as MeshStandardMaterial, highlight, piece.materialId);
+  #tint(id: EntityId, color: Color): void {
+    const slot = this.#slots.get(id);
+    if (slot) slot.mesh.setColorAt(slot.id, color);
   }
 }

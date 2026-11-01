@@ -23,6 +23,48 @@ export function mountainHeight(x: number, z: number): number {
   return r >= 1 ? 0 : SCRAP_MOUNTAIN.peak * (1 - r) ** 1.4;
 }
 
+/**
+ * The mountain core collider: a heightfield sampled on this grid (columns along X, rows along Z). The visible core is
+ * built from the same samples and triangles (`mountainCoreTriangles`), so pieces resting on the collider touch what
+ * the player sees (owner check 2026-10-30: a finer, lowered render mesh left them hovering about 5 cm).
+ */
+export const MOUNTAIN_CORE_GRID = Object.freeze({ rows: 48, cols: 48 });
+
+/** Core collider height at a sample position. */
+export function mountainCoreSample(x: number, z: number): number {
+  return mountainHeight(x, z) * SCRAP_MOUNTAIN.colliderScale;
+}
+
+/**
+ * Triangles of the core collider surface (x, y, z per vertex, three vertices per triangle, facing up), split like the
+ * physics heightfield: each cell along its (max X, min Z)–(min X, max Z) diagonal. Cells flat on the ground are left
+ * out, so the core never fights the ground plane.
+ */
+export function mountainCoreTriangles(): Float32Array {
+  const { rows, cols } = MOUNTAIN_CORE_GRID;
+  const x0 = SCRAP_MOUNTAIN.center.x - SCRAP_MOUNTAIN.radiusX;
+  const z0 = SCRAP_MOUNTAIN.center.z - SCRAP_MOUNTAIN.radiusZ;
+  const dx = (SCRAP_MOUNTAIN.radiusX * 2) / cols;
+  const dz = (SCRAP_MOUNTAIN.radiusZ * 2) / rows;
+  const out: number[] = [];
+  const vertex = (col: number, row: number): [number, number, number] => {
+    const x = x0 + col * dx;
+    const z = z0 + row * dz;
+    return [x, mountainCoreSample(x, z), z];
+  };
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const p00 = vertex(col, row);
+      const p10 = vertex(col + 1, row);
+      const p01 = vertex(col, row + 1);
+      const p11 = vertex(col + 1, row + 1);
+      if (p00[1] <= 0 && p10[1] <= 0 && p01[1] <= 0 && p11[1] <= 0) continue;
+      out.push(...p00, ...p01, ...p10, ...p10, ...p01, ...p11);
+    }
+  }
+  return new Float32Array(out);
+}
+
 /** Half-size of the walkable world; invisible walls keep the player on solid ground. */
 export const WORLD_HALF_SIZE = 200;
 
@@ -45,6 +87,9 @@ export interface BackdropLayout {
     readonly height: number;
   }[];
   readonly station: { readonly position: Vec3; readonly radius: number };
+  /** Shipping containers around the base (owner follow-up R3); stacked ones sit at y = 2.4. */
+  readonly containers: readonly { readonly position: Vec3; readonly yaw: number; readonly color: string }[];
+  readonly floodlights: readonly Vec3[];
   readonly colonies: readonly { readonly position: Vec3; readonly radius: number }[];
 }
 
@@ -75,7 +120,29 @@ export function createBackdropLayout(seed = 42): BackdropLayout {
     position: { x: 70 + index * 9, y: 0, z: -120 + random() * 10 },
     radius: 4 + random() * 4,
   }));
-  return { rocks, mesas, station: { position: { x: -6, y: -2.5, z: -46 }, radius: 9 }, colonies };
+  const containers = (
+    [
+      [-5, 0, 13, 0, '#d9493a'],
+      [-5, 2.4, 13, 0.08, '#3d6fc4'],
+      [3, 0, 14, 0, '#f2b21c'],
+      [10, 0, 13, -0.2, '#e7e1d6'],
+      [14.5, 0, 7, Math.PI / 2, '#3d6fc4'],
+      [14.5, 2.4, 7, Math.PI / 2, '#d9493a'],
+      [-12, 0, 0.5, Math.PI / 2 + 0.2, '#f2b21c'],
+    ] as const
+  ).map(([x, y, z, yaw, color]) => ({ position: { x, y, z }, yaw, color }));
+  const floodlights = [
+    { x: -6, y: 0, z: 8.6 },
+    { x: 9.6, y: 0, z: 8.6 },
+  ];
+  return {
+    rocks,
+    mesas,
+    station: { position: { x: -6, y: -2.5, z: -46 }, radius: 9 },
+    colonies,
+    containers,
+    floodlights,
+  };
 }
 
 /** Adds every backdrop collider: ground, mountain heightfield, rocks, mesas, station, domes, boundary. */
@@ -89,15 +156,33 @@ export function addBackdropColliders(physics: PhysicsWorldPort, layout: Backdrop
     center: { x: SCRAP_MOUNTAIN.center.x, y: 0, z: SCRAP_MOUNTAIN.center.z },
     sizeX: SCRAP_MOUNTAIN.radiusX * 2,
     sizeZ: SCRAP_MOUNTAIN.radiusZ * 2,
-    rows: 48,
-    cols: 48,
-    height: (x, z) => mountainHeight(x, z) * SCRAP_MOUNTAIN.colliderScale,
+    rows: MOUNTAIN_CORE_GRID.rows,
+    cols: MOUNTAIN_CORE_GRID.cols,
+    height: mountainCoreSample,
+    // Packed scrap is rough: pieces settle on the core's steepest slopes (about 33 degrees) without sliding.
+    friction: 1,
   });
   for (const rock of layout.rocks) {
     physics.addBox({
       kind: 'fixed',
-      position: { x: rock.position.x, y: rock.scale * 0.35, z: rock.position.z },
-      halfExtents: { x: rock.scale * 0.8, y: rock.scale * 0.6, z: rock.scale * 0.8 },
+      position: { x: rock.position.x, y: rock.scale * 0.7, z: rock.position.z },
+      halfExtents: { x: rock.scale * 0.75, y: rock.scale * 0.75, z: rock.scale * 0.75 },
+    });
+  }
+  for (const container of layout.containers) {
+    const half = container.yaw / 2;
+    physics.addBox({
+      kind: 'fixed',
+      position: { x: container.position.x, y: container.position.y + 1.2, z: container.position.z },
+      halfExtents: { x: 3, y: 1.2, z: 1.2 },
+      rotation: { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) },
+    });
+  }
+  for (const light of layout.floodlights) {
+    physics.addBox({
+      kind: 'fixed',
+      position: { x: light.x, y: 2.6, z: light.z },
+      halfExtents: { x: 0.25, y: 2.6, z: 0.25 },
     });
   }
   for (const mesa of layout.mesas) {

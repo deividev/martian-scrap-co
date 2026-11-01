@@ -12,6 +12,8 @@ directories:
 files:
   - dist/**/*
   - dist-electron/electron/**/*
+  # Import-free save protocol shared with the renderer (MSC-036).
+  - dist-electron/src/persistence/saveSlots.js
   - package.json
   - '!**/*.map'
   # steamworks.js (MSC-026) is the only runtime dependency; ship only its loader and the win64 binary + DLL.

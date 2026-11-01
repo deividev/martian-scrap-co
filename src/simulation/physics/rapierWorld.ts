@@ -71,6 +71,7 @@ export async function createRapierWorld(options: RapierWorldOptions = {}): Promi
         if (![x, y, z, w].every(Number.isFinite)) throw new RangeError('rotation must be finite');
         bodyDesc.setRotation({ x, y, z, w });
       }
+      if (spec.canSleep === false) bodyDesc.setCanSleep(false);
       const body = world.createRigidBody(bodyDesc);
       const colliderDesc = RAPIER.ColliderDesc.cuboid(hx, hy, hz)
         .setFriction(spec.friction ?? 0.7)
@@ -101,10 +102,13 @@ export async function createRapierWorld(options: RapierWorldOptions = {}): Promi
       const body = world.createRigidBody(
         RAPIER.RigidBodyDesc.fixed().setTranslation(spec.center.x, spec.center.y, spec.center.z),
       );
-      world.createCollider(
-        RAPIER.ColliderDesc.heightfield(spec.rows, spec.cols, heights, { x: spec.sizeX, y: 1, z: spec.sizeZ }),
-        body,
-      );
+      const colliderDesc = RAPIER.ColliderDesc.heightfield(spec.rows, spec.cols, heights, {
+        x: spec.sizeX,
+        y: 1,
+        z: spec.sizeZ,
+      });
+      if (spec.friction !== undefined) colliderDesc.setFriction(spec.friction);
+      world.createCollider(colliderDesc, body);
       return body.handle as PhysicsBodyHandle;
     },
 

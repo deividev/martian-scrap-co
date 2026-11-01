@@ -1,5 +1,6 @@
 import {
   BoxGeometry,
+  ConeGeometry,
   Euler,
   Mesh,
   MeshStandardMaterial,
@@ -11,21 +12,41 @@ import {
   TextureLoader,
   TorusGeometry,
   WebGLRenderer,
+  type Object3D,
 } from 'three';
 import hazardUrl from '../assets/textures/hazard-stripes.png';
 import { createRobotModel } from '../models/generated/createRobotModel';
 import {
-  SCRAP_COLORS,
-  STYLE,
+  createBaleModel,
   createCartModel,
+  createCompactorModel,
   createIntakeHopperModel,
-  createRoverFragmentModel,
-  paint,
-} from '../models/styledModels';
+  createOutputPadModel,
+  createSaleTerminalModel,
+  createGratePlateModel,
+  createSortingBayModel,
+} from '../models/machineModels';
+import { SCRAP_COLORS, STYLE, createRoverFragmentModel, createStationMarkerModel, paint } from '../models/styledModels';
+import type { PhysicsBodyHandle, Vec3 } from '../simulation/physics/physicsPort';
+import { StationReveal } from '../simulation/yard/stationReveal';
+import { CampaignSaver, type SaveOutcome } from '../persistence/campaignSaver';
+import type { CampaignStore } from '../persistence/campaignStore';
+import {
+  applyScrapDelta,
+  parseYardSave,
+  poseOf,
+  poseParts,
+  scrapDelta,
+  type ItemRecord,
+  type YardSave,
+} from '../simulation/yard/yardSave';
 import { FIRST_PASS_CONTENT } from '../content/firstPass';
 import { parseContentPack } from '../content/schema';
 import { PortableContainer } from '../domain/container';
 import { BaseIntake } from '../domain/intake';
+import { COMPACTOR_TUNING, Compactor, type Bale } from '../domain/compactor';
+import { SaleTerminal, SharedCredits } from '../domain/economy';
+import { collectorUpgradeOffers, UpgradeShop, type UpgradeOffer } from '../domain/upgradeShop';
 import { AssemblyState } from '../domain/assembly';
 import { EntityIdAllocator, contentId, transactionId, type ContentId, type EntityId } from '../domain/ids';
 import { ToolLoadout } from '../domain/toolLoadout';
@@ -35,7 +56,7 @@ import { GamepadSource } from '../input/gamepadSource';
 import { DEFAULT_INPUT_SETTINGS } from '../input/inputSettings';
 import { KeyboardMouseSource } from '../input/keyboardMouseSource';
 import { MagneticCollector, type TargetFeedback } from '../simulation/collection/magneticCollector';
-import { pickTarget, type TargetPick } from '../simulation/collection/targeting';
+import { TARGETING, pickTarget, type TargetCandidate, type TargetPick } from '../simulation/collection/targeting';
 import { AssemblyBody } from '../simulation/handling/assemblyBody';
 import { Breakables, cutYields } from '../simulation/handling/breakables';
 import { CART_TUNING, Cart, type LoadResult } from '../simulation/handling/cart';
@@ -49,6 +70,7 @@ import { createRapierWorld } from '../simulation/physics/rapierWorld';
 import { PlayerController } from '../simulation/player/playerController';
 import { ScrapField } from '../simulation/scrap/scrapField';
 import { addBackdropColliders, createBackdropLayout } from '../simulation/yard/backdrop';
+import { ScrapMountain, createScrapMountainLayout, type MountainPieceSpec } from '../simulation/yard/scrapMountain';
 import {
   TEST_YARD_BLOCKS,
   TEST_YARD_RECOVERY_ZONES,
@@ -56,13 +78,19 @@ import {
   TEST_YARD_ROVER_LAYOUT,
   TEST_YARD_SPAWN,
   TEST_YARD_INTAKE,
-  createMountainFootScrap,
+  TEST_YARD_COMPACTOR,
+  TEST_YARD_SALE_TERMINAL,
+  TEST_YARD_SORTING_BAY,
+  TEST_YARD_STATION_MARKER,
+  BALE_HALF_EXTENTS,
   createTestYardBreakables,
   createTestYardProps,
   createTestYardScrap,
   yardBodySpec,
 } from '../simulation/yard/testYard';
 import { createMarsEnvironment } from './environment';
+import { MountainView } from './mountainView';
+import { mergeStatic, mergeStaticGroup } from '../models/mergeStatic';
 import { FirstPersonTool } from './firstPersonTool';
 import { GameHud, type HudMaterialChip } from './hud';
 import { PropView } from './propView';
@@ -114,13 +142,48 @@ function blockColor(name: string): string {
  * cuttable rover, dressed in the approved stylized Mars look with crew robots. Debug data is exposed on the
  * canvas dataset.
  */
-export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYardHud): Promise<() => void> {
+export async function createTestYardScene(
+  canvas: HTMLCanvasElement,
+  hud: TestYardHud,
+  saves: CampaignStore | null = null,
+): Promise<() => void> {
   const { hint, feedback: feedbackLabel, i18n } = hud;
   const nameOf = (keys: readonly string[] | undefined, fallback: string): string =>
     keys && keys.length > 0 ? keys.map((key) => i18n.tKey(key, fallback)).join(' + ') : fallback;
   const materialName = (id: string, fallback: string): string => i18n.tKey(`material.${id}`, fallback);
   const content = parseContentPack(FIRST_PASS_CONTENT);
   if (!content.ok) throw new Error(`Invalid content: ${content.errors.join('; ')}`);
+  // MSC-036: the host's campaign save is opened first, so the yard is built already restored. A save the game
+  // cannot use (newer version, unreadable, another layout) is left untouched and this session is not saved.
+  const campaign = await CampaignSaver.open(saves, 'host');
+  let startNotice: Notice | null = null;
+  let loadedSave: YardSave | null = null;
+  switch (campaign.opened.kind) {
+    case 'resumed': {
+      const parsed = parseYardSave(campaign.opened.payload);
+      if (parsed.ok) {
+        loadedSave = parsed.save;
+        startNotice = {
+          key: campaign.opened.source === 'backup' ? 'save.fromBackup' : 'save.resumed',
+          params: { revision: campaign.opened.revision },
+        };
+      } else {
+        console.warn('Campaign save not applied:', parsed.error);
+        campaign.saver.refuse();
+        startNotice = { key: 'save.incompatible' };
+      }
+      break;
+    }
+    case 'locked':
+      startNotice = { key: 'save.locked' };
+      break;
+    case 'unreadable':
+      startNotice = { key: 'save.unreadable' };
+      break;
+    case 'new':
+    case 'unsaved':
+      break;
+  }
   const renderer = new WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -189,7 +252,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     robot.traverse((child) => {
       child.castShadow = true;
     });
-    scene.add(robot);
+    // Only the pivots the idle loop animates stay separate; the rest of the body is batched.
+    const { pivots: rig } = robot.userData.sculptRuntime;
+    const pivots = new Set<Object3D>([rig.hips, rig.head, rig.shoulderL]);
+    scene.add(mergeStatic(robot, (object) => pivots.has(object)));
     return { robot, phase: index * 1.7 };
   });
 
@@ -200,16 +266,57 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     TEST_YARD_RECOVERY_ZONES,
   );
   const allocator = new EntityIdAllocator();
-  const scrap = new ScrapField(world, [createTestYardScrap(allocator), ...createMountainFootScrap(allocator)]);
+  // Owner follow-up R4: the giant mountain is real pieces (large, medium and small) with real colliders, settled
+  // offline with the game's physics (it includes the starter spill at its foot).
+  const mountainLayout = createScrapMountainLayout(allocator);
+  // Every authored id is allocated up front, in a fixed order, so a rebuilt yard has the same ids as the saved one.
+  const authoredScrap = [createTestYardScrap(allocator), ...mountainLayout.smallClusters];
+  const propSpecs = createTestYardProps(allocator);
+  const breakableSpecs = createTestYardBreakables(allocator);
+  const cartId = allocator.allocate();
+  const layout: YardSave['layout'] = {
+    startSequence: allocator.nextSequence,
+    mountainPieces: mountainLayout.pieces.length,
+    smallPieces: mountainLayout.smallClusters.reduce((sum, cluster) => sum + cluster.pieces.length, 0),
+  };
+  const sameLayout =
+    loadedSave?.layout.startSequence === layout.startSequence &&
+    loadedSave.layout.mountainPieces === layout.mountainPieces &&
+    loadedSave.layout.smallPieces === layout.smallPieces;
+  if (loadedSave && !sameLayout) {
+    console.warn('Campaign save made for another yard layout; not applied', loadedSave.layout, layout);
+    campaign.saver.refuse();
+    startNotice = { key: 'save.incompatible' };
+  }
+  const restore = sameLayout ? loadedSave : null;
+  /** Small mountain pieces hold colliders within this radius of the player, meters (dense mountain, sim budget). */
+  const MOUNTAIN_SOLIDS = { radius: 10, hysteresis: 4, perFrame: 120 } as const;
+  const scrap = new ScrapField(
+    world,
+    restore ? { clusters: applyScrapDelta(authoredScrap, restore.scrap) } : authoredScrap,
+  );
+  scrap.streamSolids([TEST_YARD_SPAWN], MOUNTAIN_SOLIDS.radius, MOUNTAIN_SOLIDS.hysteresis);
+  const mountain = new ScrapMountain(world, mountainLayout.pieces);
+  if (restore) mountain.restore(restore.mountain);
+  const mountainView = new MountainView(
+    scene,
+    mountain,
+    scrap,
+    mountainLayout.smallClusters.flatMap((cluster) => cluster.pieces.map((piece) => piece.id)),
+  );
   scrap.activateCluster('test-yard-pile');
   const scrapView = new ScrapPileView(scene, scrap, world);
   const container = new PortableContainer();
+  for (const item of restore?.container ?? []) container.add(item);
   const collector = new MagneticCollector(content.pack, scrap, world, {
     remaining: () => container.capacity - container.count,
     isEmpty: () => container.count === 0,
     canAccept: (id) => container.canAccept(id),
     accept: (item) => void container.add(item),
   });
+  while (collector.selector.tier < Math.min(restore?.upgrades.collectorTier ?? 0, collector.selector.maxTier)) {
+    collector.selector.upgrade();
+  }
   let feedback: TargetFeedback = { state: 'none' };
   const loadout = new ToolLoadout(
     [COLLECTOR, CUTTER],
@@ -217,7 +324,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   );
   // Test-yard stand-in: the cutter is granted up front until the shared-credit store sells it.
   loadout.grant(CUTTER);
-  let cutterTier = 0;
+  let cutterTier = Math.min(restore?.upgrades.cutterTier ?? 0, CUTTER_SPEED_TIERS.length - 1);
   const cutting = new CutProgress();
   const toolName = (id: string): string => i18n.tKey(`tool.${id}`, id);
   const gameHud = hud.container ? new GameHud(hud.container) : null;
@@ -235,31 +342,172 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     };
   };
 
-  const props = new MediumPropSet(world, createTestYardProps(allocator));
+  const props = new MediumPropSet(world, propSpecs);
   const claims = new ClaimRegistry();
   const grip = new GripController(world, props, claims, 'player-0');
-  const breakables = new Breakables(
-    props,
-    scrap,
-    world,
-    claims,
-    () => allocator.allocate(),
-    createTestYardBreakables(allocator),
-  );
+  const breakables = new Breakables(props, scrap, world, claims, () => allocator.allocate(), breakableSpecs);
+  // Every material has its own bin; ceramic never arrives by container but would be routed the same way.
   const intake = new BaseIntake();
+  // Static base models are batched into a few meshes (draw-call budget).
+  const baseStatics: Object3D[] = [];
   const hopper = createIntakeHopperModel();
   hopper.position.set(TEST_YARD_INTAKE.position.x, 0, TEST_YARD_INTAKE.position.z);
-  scene.add(hopper);
+  hopper.rotation.y = Math.PI;
+  // Sorting bay next to the hopper: one bay per material, its pile follows the bin count (MSC-031 visuals).
+  const bayMaterials = [...content.pack.materials.keys()];
+  const sortingBay = createSortingBayModel(bayMaterials);
+  sortingBay.position.set(TEST_YARD_SORTING_BAY.position.x, 0, TEST_YARD_SORTING_BAY.position.z);
+  sortingBay.rotation.y = Math.PI;
+  baseStatics.push(sortingBay);
+  // Grated work floor with yellow edges in front of the base line (concept sorting bay floor).
+  for (let x = -6.2; x <= 9.4; x += 1.4) {
+    if (Math.abs(x - TEST_YARD_COMPACTOR.pad.x) < 1.3) continue;
+    const plate = createGratePlateModel(1.36, 1.2);
+    plate.position.set(x, 0, 7.85);
+    baseStatics.push(plate);
+  }
+  world.addBox({
+    kind: 'fixed',
+    position: { ...TEST_YARD_SORTING_BAY.position, y: TEST_YARD_SORTING_BAY.halfExtents.y },
+    halfExtents: TEST_YARD_SORTING_BAY.halfExtents,
+  });
+  baseStatics.push(hopper);
   world.addBox({
     kind: 'fixed',
     position: { x: TEST_YARD_INTAKE.position.x, y: TEST_YARD_INTAKE.halfExtents.y, z: TEST_YARD_INTAKE.position.z },
     halfExtents: TEST_YARD_INTAKE.halfExtents,
   });
+  // MSC-032: the compactor presses full bins into one-material bales on its output pad.
+  const bales = new Map<EntityId, Bale>();
+  const compactor = new Compactor(intake, [...content.pack.materials.keys()], () => allocator.allocate());
+  if (restore) {
+    const kept = intake.receive(restore.bins).kept;
+    if (kept.length > 0) console.warn(`Restored bins could not hold ${kept.length} pieces`);
+    if (restore.compactorBale) compactor.resumeBlocked(restore.compactorBale);
+  }
+  const compactorModel = createCompactorModel();
+  compactorModel.position.set(TEST_YARD_COMPACTOR.position.x, 0, TEST_YARD_COMPACTOR.position.z);
+  compactorModel.rotation.y = Math.PI;
+  scene.add(mergeStatic(compactorModel, (object) => object.name === 'press-head' || object.name === 'status-lamp'));
+  const padModel = createOutputPadModel();
+  padModel.position.set(TEST_YARD_COMPACTOR.pad.x, 0, TEST_YARD_COMPACTOR.pad.z);
+  baseStatics.push(padModel);
+  const pressHead = compactorModel.getObjectByName('press-head');
+  const statusLamp = compactorModel.getObjectByName('status-lamp') as Mesh | undefined;
+  const lampMaterial = statusLamp ? (statusLamp.material as MeshStandardMaterial).clone() : null;
+  if (statusLamp && lampMaterial) statusLamp.material = lampMaterial;
+  world.addBox({
+    kind: 'fixed',
+    position: {
+      x: TEST_YARD_COMPACTOR.position.x,
+      y: TEST_YARD_COMPACTOR.halfExtents.y,
+      z: TEST_YARD_COMPACTOR.position.z,
+    },
+    halfExtents: TEST_YARD_COMPACTOR.halfExtents,
+  });
+  const padClear = (): boolean =>
+    !props.all().some((prop) => {
+      const p = world.bodyPosition(prop.body);
+      return (
+        Math.hypot(p.x - TEST_YARD_COMPACTOR.pad.x, p.z - TEST_YARD_COMPACTOR.pad.z) < TEST_YARD_COMPACTOR.padRadius &&
+        p.y < 1.5
+      );
+    });
+  // MSC-033: the sale machine turns a bale into shared credits almost at once (host-owned ledger).
+  const sharedCredits = new SharedCredits(restore?.credits ?? 0);
+  const saleTerminal = new SaleTerminal(
+    sharedCredits,
+    (material) => content.pack.materials.get(material)?.saleValuePerUnit,
+  );
+  // MSC-034: the same machine sells collector levels for shared credits. The local player is the host (solo);
+  // guest requests and "Can spend" follow the MSC-003 policy in UpgradeShop once co-op sessions exist.
+  const LOCAL_PLAYER = 'player-0';
+  const shop = new UpgradeShop(
+    sharedCredits,
+    LOCAL_PLAYER,
+    collectorUpgradeOffers(collector.selector, content.pack.tools.get(COLLECTOR)?.upgradePrices ?? []),
+  );
+  const nextCollectorOffer = (): UpgradeOffer | undefined => shop.offer(`collector-${collector.selector.tier + 2}`);
+  const tierMaterials = (tier: number): string =>
+    (collectorTiers[tier] ?? [])
+      .map((id) => materialName(id, content.pack.materials.get(id)?.displayName ?? id))
+      .join(i18n.t('list.and'));
+  let purchaseCounter = restore?.transactions.buy ?? 0;
+  const terminalModel = createSaleTerminalModel();
+  terminalModel.position.set(TEST_YARD_SALE_TERMINAL.position.x, 0, TEST_YARD_SALE_TERMINAL.position.z);
+  terminalModel.rotation.y = Math.PI;
+  baseStatics.push(terminalModel);
+  scene.add(mergeStaticGroup(baseStatics));
+  world.addBox({
+    kind: 'fixed',
+    position: {
+      x: TEST_YARD_SALE_TERMINAL.position.x,
+      y: TEST_YARD_SALE_TERMINAL.halfExtents.y,
+      z: TEST_YARD_SALE_TERMINAL.position.z,
+    },
+    halfExtents: TEST_YARD_SALE_TERMINAL.halfExtents,
+  });
+  let saleCounter = restore?.transactions.sale ?? 0;
+  /** Last credit change shown beside the balance: positive for a sale, negative for a purchase. */
+  let lastGain: { credits: number; until: number } | null = null;
   let wasSucking = false;
   let lastActivation = 0;
-  const cart = new Cart(world, props, claims, allocator.allocate(), { x: 2, y: 0.4, z: 5 });
+  let lastRevealCheck = 0;
+  let lastTouch = 0;
+  /** Mountain wake tuning (owner check 2026-10-30; placeholders within the MSC-019 budgets). */
+  const MOUNTAIN_WAKE = { settleDistance: 7, activeBudget: 260, touchReach: 0.65 } as const;
+  const cart = new Cart(world, props, claims, cartId, { x: 2, y: 0.4, z: 5 });
+  // MSC-035: the first station marker, buried at the mountain foot, shows once its cover is mostly cleared.
+  const stationReveal = new StationReveal(
+    TEST_YARD_STATION_MARKER,
+    StationReveal.coverOf(TEST_YARD_STATION_MARKER, [
+      ...mountainLayout.pieces,
+      ...mountainLayout.smallClusters.flatMap((cluster) => cluster.pieces),
+    ]),
+  );
+  const markerModel = createStationMarkerModel();
+  markerModel.position.set(
+    TEST_YARD_STATION_MARKER.position.x,
+    TEST_YARD_STATION_MARKER.position.y,
+    TEST_YARD_STATION_MARKER.position.z,
+  );
+  markerModel.rotation.y = 0.6;
+  scene.add(markerModel);
+  const beaconLamp = markerModel.getObjectByName('beacon-lamp') as Mesh | undefined;
+  const beaconMaterial = beaconLamp?.material as MeshStandardMaterial | undefined;
+  // Floating orange chevron over the marker once the collector can clear its cover (the next work area).
+  const waypoint = new Mesh(
+    new ConeGeometry(0.45, 0.9, 4),
+    new MeshStandardMaterial({ color: STYLE.paintOrange, emissive: '#ff6a00', emissiveIntensity: 0.9 }),
+  );
+  waypoint.rotation.x = Math.PI;
+  waypoint.position.set(TEST_YARD_STATION_MARKER.position.x, 5.2, TEST_YARD_STATION_MARKER.position.z);
+  waypoint.visible = false;
+  scene.add(waypoint);
+  let revealedAt: number | null = null;
+  // The exposed module becomes solid only once revealed, so it never pushes against the settled pile around it.
+  const solidifyMarker = (): void =>
+    void world.addBox({
+      kind: 'fixed',
+      position: { x: TEST_YARD_STATION_MARKER.position.x, y: 0.9, z: TEST_YARD_STATION_MARKER.position.z },
+      halfExtents: { x: 1.2, y: 0.9, z: 0.9 },
+    });
+  /** Where a covering piece is now: null once collected, sold or cut apart. */
+  const locateCover = (id: EntityId): Vec3 | null => {
+    const state = mountain.state(id);
+    if (state === 'embedded') return mountain.piece(id)?.position ?? null;
+    if (state === 'released') {
+      const prop = props.get(id);
+      return prop ? world.bodyPosition(prop.body) : null;
+    }
+    if (state === 'removed') return null;
+    const piece = scrap.piece(id);
+    if (!piece || piece.state === 'removed') return null;
+    const body = scrap.bodyOf(id);
+    return body === undefined ? piece.position : world.bodyPosition(body);
+  };
   const cartGroup = createCartModel(CART_TUNING.halfExtents);
-  scene.add(cartGroup);
+  scene.add(mergeStatic(cartGroup));
   const LOAD_NOTICES: Record<Exclude<LoadResult, { ok: true }>['reason'], Notice | null> = {
     full: { key: 'cart.full', params: { max: CART_TUNING.maxLoadCount } },
     'too-heavy': { key: 'cart.tooHeavy' },
@@ -267,11 +515,13 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     claimed: { key: 'cart.claimed' },
     unknown: null,
   };
-  const propView = new PropView(scene, props, world);
+  const propView = new PropView(scene, props, world, (prop) =>
+    bales.has(prop.id) ? mergeStatic(createBaleModel(prop.materialId, prop.halfExtents)) : null,
+  );
   const rover = new AssemblyBody(
     world,
     props,
-    new AssemblyState(TEST_YARD_ROVER, () => allocator.allocate()),
+    new AssemblyState(TEST_YARD_ROVER, () => allocator.allocate(), restore?.rover.snapshot),
     TEST_YARD_ROVER_LAYOUT,
   );
   const fragmentMeshes = new Map(
@@ -279,7 +529,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       const placement = TEST_YARD_ROVER_LAYOUT.fragments[fragmentId];
       const model = createRoverFragmentModel(fragmentId, placement?.halfExtents ?? { x: 0.1, y: 0.1, z: 0.1 });
       if (placement) model.position.set(placement.position.x, placement.position.y, placement.position.z);
-      scene.add(model);
+      scene.add(mergeStatic(model));
       return [fragmentId, model] as const;
     }),
   );
@@ -294,7 +544,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       return [joint.id, marker] as const;
     }),
   );
-  let cutCounter = 0;
+  let cutCounter = restore?.transactions.cut ?? 0;
   const cutAnchors = new Set<string>();
   const fragmentParts = (ids: readonly string[]) =>
     TEST_YARD_ROVER.fragments.filter((fragment) => ids.includes(fragment.id));
@@ -304,13 +554,231 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     return `${material?.symbol ?? '?'} ${materialName(id, material?.displayName ?? id)}`;
   };
   const jointLabel = (id: string): string => i18n.tKey(`joint.${id}`, id);
+  const mountainName = (piece: MountainPieceSpec): string =>
+    i18n.t(piece.size === 'large' ? 'mountain.large' : 'mountain.medium', {
+      material: materialName(piece.materialId, piece.materialId),
+    });
+  /** Metals are cut, everything else is broken open (same rule as the yard junk). */
+  const METALS = new Set(['ferrous', 'aluminum', 'copper']);
+  const releasedParts = new Map<EntityId, MountainPieceSpec>();
+  /** A medium part that left the pile becomes an ordinary breakable prop (and falls if it was on top). */
+  const partToProp = (piece: MountainPieceSpec) => {
+    releasedParts.set(piece.id, piece);
+    scrap.wakeAbove(piece);
+    const prop = props.add(
+      {
+        id: piece.id,
+        materialId: piece.materialId,
+        displayName: 'Mountain part',
+        position: piece.position,
+        halfExtents: piece.halfExtents,
+        massKg: piece.massKg,
+      },
+      piece.rotation,
+    );
+    breakables.registerExisting(piece.id, cutYields([piece]), METALS.has(piece.materialId) ? 'cut' : 'break');
+    return prop;
+  };
+  /** Takes an exposed medium part out of the pile; parts resting on it are freed to fall. */
+  const releaseToProp = (id: EntityId) => {
+    const left = mountain.release(id);
+    if (!left) return null;
+    for (const freed of left.freed) partToProp(freed);
+    return partToProp(left.piece);
+  };
+  // MSC-036: put back what the save recorded on top of the freshly built yard.
+  if (restore) {
+    for (const fragmentId of restore.rover.cutAnchors) {
+      const removed = rover.removeIsolatedAnchor();
+      if (removed?.fragmentId === fragmentId) cutAnchors.add(fragmentId);
+    }
+    for (const chunk of rover.state.chunks()) {
+      if (props.get(chunk.entityId)) {
+        breakables.registerExisting(chunk.entityId, cutYields(fragmentParts(chunk.fragments)));
+      }
+    }
+    const kept = new Map(restore.props.map((entry) => [entry.id, poseParts(entry.pose)]));
+    for (const id of restore.mountain.released) {
+      const piece = mountain.piece(id);
+      if (piece && kept.has(id)) partToProp(piece);
+    }
+    for (const bale of restore.bales) {
+      const pose = kept.get(bale.id);
+      if (!pose) continue;
+      bales.set(bale.id, bale);
+      props.add(
+        {
+          id: bale.id,
+          materialId: bale.materialId,
+          displayName: 'Bale',
+          position: pose.position,
+          halfExtents: BALE_HALF_EXTENTS,
+          massKg: Math.max(bale.massKg, 1),
+        },
+        pose.rotation,
+      );
+    }
+    // Authored props, rover chunks and parts not listed were consumed (broken, cut, compacted or sold).
+    for (const prop of props.all()) {
+      const pose = kept.get(prop.id);
+      if (pose) world.setBodyPose(prop.body, pose.position, pose.rotation);
+      else {
+        props.remove(prop.id);
+        breakables.forget(prop.id);
+      }
+    }
+    const cartPose = poseParts(restore.cart.pose);
+    world.setBodyPose(cart.body, cartPose.position, cartPose.rotation);
+    for (const id of restore.cart.loads) cart.load(id);
+    if (restore.campaign.stationMarkerRevealed) {
+      stationReveal.markRevealed();
+      solidifyMarker();
+    }
+    allocator.advanceTo(restore.nextEntitySequence);
+  }
+  const itemRecord = (item: ItemRecord): ItemRecord => ({
+    id: item.id,
+    materialId: item.materialId,
+    massKg: item.massKg,
+  });
+  const poseOfBody = (body: PhysicsBodyHandle) => poseOf(world.bodyPosition(body), world.bodyRotation(body));
+  /** Durable outcomes only (architecture §7); runs when a save starts, so it sees the latest state. */
+  const captureSave = (): YardSave => ({
+    layout,
+    nextEntitySequence: allocator.nextSequence,
+    transactions: { sale: saleCounter, buy: purchaseCounter, cut: cutCounter },
+    credits: sharedCredits.balance,
+    upgrades: { collectorTier: collector.selector.tier, cutterTier },
+    campaign: { stationMarkerRevealed: stationReveal.revealed },
+    container: container.items().map(itemRecord),
+    bins: [...compactor.reserved(), ...intake.items()].map(itemRecord),
+    compactorBale: compactor.state.kind === 'blocked' ? compactor.state.bale : null,
+    bales: [...bales.values()],
+    props: props.all().map((prop) => ({ id: prop.id, pose: poseOfBody(prop.body) })),
+    cart: { pose: poseOfBody(cart.body), loads: [...cart.loads] },
+    mountain: mountain.changed(),
+    scrap: scrapDelta(authoredScrap, scrap.snapshot()),
+    rover: { snapshot: rover.state.snapshot(), cutAnchors: [...cutAnchors] },
+  });
+  /** Cheap summary of durable progress; when it changes a save follows within a few seconds. */
+  const progressSignature = (): string => {
+    const field = scrap.metrics();
+    return [
+      sharedCredits.balance,
+      collector.selector.tier,
+      cutterTier,
+      container.count,
+      intake.count,
+      compactor.state.kind,
+      bales.size,
+      props.all().length,
+      mountain.version,
+      field.removed,
+      field.dormant + field.active + field.removed,
+      rover.state.chunks().length,
+      cutAnchors.size,
+      stationReveal.revealed,
+    ].join(':');
+  };
+  let saveState: { revision: number; last: string; captureMs: number } = {
+    revision: campaign.saver.revision,
+    last: 'none',
+    captureMs: 0,
+  };
+  let savedSignature = '';
+  let lastSaveAt = -Infinity;
+  let lastSaveCheck = 0;
+  let saveFailureShown = false;
+  const reportSave = (outcome: SaveOutcome): void => {
+    saveState = { ...saveState, revision: campaign.saver.revision, last: outcome.ok ? 'ok' : outcome.reason };
+    if (!outcome.ok && outcome.reason !== 'read-only' && !saveFailureShown) {
+      saveFailureShown = true;
+      notice = { key: 'save.failed' };
+      noticeUntil = performance.now() + 5000;
+    }
+  };
+  const requestSave = (): void => {
+    if (!campaign.saver.writable) return;
+    const timedCapture = (): YardSave => {
+      const started = performance.now();
+      const save = captureSave();
+      saveState = { ...saveState, captureMs: Math.round(performance.now() - started) };
+      return save;
+    };
+    void campaign.saver.save(timedCapture).then(reportSave);
+  };
+  // Best effort when the page closes; regular saves keep the loss to a few seconds of progress after a crash.
+  window.addEventListener('pagehide', requestSave);
+  const propLabel = (id: EntityId): string => {
+    const part = releasedParts.get(id);
+    if (part) return mountainName(part);
+    const bale = bales.get(id);
+    if (bale) {
+      return i18n.t('bale.name', {
+        material: materialName(bale.materialId, bale.materialId),
+        count: bale.pieceIds.length,
+      });
+    }
+    const prop = props.get(id);
+    return nameOf(prop?.nameKeys, prop?.displayName ?? '');
+  };
+  const nearTerminal = (view: { position: { x: number; z: number }; yaw: number }): boolean => {
+    const dx = TEST_YARD_SALE_TERMINAL.position.x - view.position.x;
+    const dz = TEST_YARD_SALE_TERMINAL.position.z - view.position.z;
+    if (Math.hypot(dx, dz) > TEST_YARD_SALE_TERMINAL.reach) return false;
+    // Roughly facing the machine (within 50°).
+    const facing = -Math.sin(view.yaw) * dx + -Math.cos(view.yaw) * dz;
+    return facing / Math.max(Math.hypot(dx, dz), 0.001) > Math.cos((50 * Math.PI) / 180);
+  };
+  const jobText = (): string => {
+    const heldBale = grip.held !== null && bales.has(grip.held);
+    if (heldBale) return i18n.t('job.sellBale');
+    if (bales.size > 0) return i18n.t('job.takeBale');
+    if (compactor.state.kind !== 'idle') return i18n.t('job.pressing');
+    const offer = nextCollectorOffer();
+    if (offer?.available() && sharedCredits.balance >= offer.price && container.count === 0) {
+      return i18n.t('job.buyUpgrade', { tier: collector.selector.tier + 2, credits: offer.price });
+    }
+    if (container.count > 0) return i18n.t('job.unload');
+    if (revealedAt !== null && performance.now() - revealedAt < 30_000) return i18n.t('job.stationFound');
+    if (collector.selector.tier >= 1 && !stationReveal.revealed) {
+      return i18n.t('job.clearMarker', { percent: Math.round(stationReveal.status().progress * 100) });
+    }
+    const fullest = intake.batches().sort((a, b) => b.count - a.count)[0];
+    if (fullest) {
+      return i18n.t('job.fillBin', {
+        missing: Math.max(1, COMPACTOR_TUNING.balePieces - fullest.count),
+        material: materialName(fullest.materialId, fullest.materialId),
+      });
+    }
+    return i18n.t('job.vacuum', { material: selectedName() });
+  };
+  const symbolOf = (id: ContentId): string => content.pack.materials.get(id)?.symbol ?? '?';
+  const compactorLine = (): { label: string; progress: number | null } => {
+    const state = compactor.state;
+    switch (state.kind) {
+      case 'idle':
+        return { label: i18n.t('compactor.idle', { size: COMPACTOR_TUNING.balePieces }), progress: null };
+      case 'loading':
+        return { label: i18n.t('compactor.loading', { symbol: symbolOf(state.materialId) }), progress: state.progress };
+      case 'processing':
+        return {
+          label: i18n.t('compactor.processing', { symbol: symbolOf(state.materialId) }),
+          progress: state.progress,
+        };
+      case 'blocked':
+        return { label: i18n.t('compactor.blocked'), progress: 1 };
+    }
+  };
+  const batchList = (batches: readonly { materialId: ContentId; count: number }[]): string =>
+    batches.map((batch) => `${batch.count} ${content.pack.materials.get(batch.materialId)?.symbol ?? '?'}`).join(' · ');
   const PLACE_NOTICES: Record<Exclude<PlaceResult, { ok: true }>['reason'], Notice | null> = {
     'not-holding': null,
     blocked: { key: 'place.blocked' },
     'overlaps-player': { key: 'place.overlapsPlayer' },
   };
-  let notice: Notice | null = null;
-  let noticeUntil = 0;
+  let notice: Notice | null = startNotice;
+  let noticeUntil = startNotice ? performance.now() + 6000 : 0;
   const closer = (a: TargetPick | null, b: TargetPick | null): TargetPick | null =>
     !a ? b : !b ? a : a.angle <= b.angle ? a : b;
   const forwardOf = (yaw: number, pitch: number) => ({
@@ -336,6 +804,19 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   window.addEventListener('resize', resize);
   resize();
 
+  const simSamples: number[] = [];
+  /** CPU milliseconds per frame section and the frame interval, last 600 frames (spike hunting). */
+  const FRAME_SECTIONS = ['interval', 'logic', 'sim', 'views', 'render', 'cpu'] as const;
+  const frameSamples = new Map<(typeof FRAME_SECTIONS)[number], number[]>(FRAME_SECTIONS.map((s) => [s, []]));
+  const sampleFrame = (section: (typeof FRAME_SECTIONS)[number], ms: number): void => {
+    const samples = frameSamples.get(section);
+    if (!samples) return;
+    samples.push(ms);
+    if (samples.length > 600) samples.shift();
+  };
+  let lastPerf = 0;
+  /** Frames rendered since the last perf sample (FPS readout). */
+  let perfFrames = 0;
   let device: InputDevice = 'none';
   let accumulator = 0;
   let previous = performance.now();
@@ -343,6 +824,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
   const euler = new Euler(0, 0, 0, 'YXZ');
 
   renderer.setAnimationLoop((now) => {
+    const frameStart = performance.now();
+    sampleFrame('interval', now - previous);
     const dt = Math.min((now - previous) / 1000, 0.1);
     previous = now;
     const frame = mergeFrames(keyboard.poll(), gamepad.poll(dt));
@@ -388,19 +871,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
         : { key: 'cutter.upgraded', params: { tier: cutterTier + 1, speed: CUTTER_SPEED_TIERS[cutterTier] ?? 1 } };
       noticeUntil = now + 3000;
     } else if (frame.upgrade) {
-      const unlocked = collector.selector.upgrade();
-      notice =
-        unlocked.length === 0
-          ? { key: 'selector.maxTier' }
-          : {
-              key: 'selector.upgraded',
-              params: {
-                tier: collector.selector.tier + 1,
-                list: unlocked
-                  .map((id) => materialName(id, content.pack.materials.get(id)?.displayName ?? id))
-                  .join(i18n.t('list.and')),
-              },
-            };
+      // Collector levels are bought with shared credits at the sale machine (MSC-034); no free test upgrade.
+      notice = { key: nextCollectorOffer() ? 'shop.useMachine' : 'selector.maxTier' };
       noticeUntil = now + 3000;
     }
     const pushing = cart.pusher() === 'player-0';
@@ -417,9 +889,31 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       const heldId = grip.held;
       const heldProp = props.get(heldId);
       const overBed = heldProp ? cart.isOverBed(world.bodyPosition(heldProp.body)) : false;
-      const heldName = nameOf(heldProp?.nameKeys, heldProp?.displayName ?? '');
+      const heldName = propLabel(heldId);
       prompt = i18n.t(overBed ? 'grip.holdingOverCart' : 'grip.holding', { name: heldName });
-      if (frame.interact && overBed) {
+      const heldBale = bales.get(heldId);
+      const saleQuote = heldBale && nearTerminal(aimView) ? saleTerminal.quote(heldBale) : null;
+      if (heldBale && saleQuote) {
+        prompt = i18n.t('sale.preview', { bale: heldName, credits: saleQuote.credits });
+      }
+      if (frame.interact && heldBale && saleQuote) {
+        saleCounter += 1;
+        const sale = saleTerminal.sell(heldBale, transactionId(`txn-sale${saleCounter.toString(36)}`), () => {
+          if (grip.held !== heldId || !props.get(heldId)) return false;
+          grip.forceRelease();
+          props.remove(heldId);
+          bales.delete(heldId);
+          return true;
+        });
+        if (sale.ok) {
+          tool.use();
+          lastGain = { credits: sale.quote.credits, until: now + 2500 };
+          notice = { key: 'sale.done', params: { bale: heldName, credits: sale.quote.credits } };
+        } else {
+          notice = { key: 'sale.failed' };
+        }
+        noticeUntil = now + 2500;
+      } else if (frame.interact && overBed) {
         grip.forceRelease();
         const loaded = cart.load(heldId);
         if (!loaded.ok && LOAD_NOTICES[loaded.reason]) {
@@ -489,15 +983,25 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       }
     } else {
       const loose = props.targets().filter((target) => !cart.loads.includes(target.id));
-      const propPick = pickTarget(aim, loose, world, player.characterHandle);
-      const scrapPick = pickTarget(aim, scrap.activeTargets(), world, player.characterHandle);
+      // What the crosshair touches wins; the aim cone only helps when it touches nothing interactable (the
+      // mountain is full of pieces, so a near piece must never steal the aim from the part in front of you).
+      const aimHit = world.castRay(aim.origin, aim.direction, TARGETING.reachMeters, player.characterHandle);
+      const direct = (candidates: readonly TargetCandidate[]): TargetPick | null => {
+        const candidate = aimHit && candidates.find((target) => target.body === aimHit.body);
+        return candidate && aimHit ? { candidate, distance: aimHit.distance, angle: 0 } : null;
+      };
+      const propPick = direct(loose) ?? pickTarget(aim, loose, world, player.characterHandle);
+      const scrapTargets = scrap.targetsNear(aim.origin, TARGETING.reachMeters);
+      const scrapPick = direct(scrapTargets) ?? pickTarget(aim, scrapTargets, world, player.characterHandle);
       const cartPick = pickTarget(
         aim,
         [{ id: cart.id, body: cart.body, position: world.bodyPosition(cart.body) }],
         world,
         player.characterHandle,
       );
-      const best = closer(cartPick, closer(propPick, scrapPick));
+      const mountainTargets = mountain.targetsNear(aim.origin, 4);
+      const mountainPick = direct(mountainTargets) ?? pickTarget(aim, mountainTargets, world, player.characterHandle);
+      const best = closer(cartPick, closer(mountainPick, closer(propPick, scrapPick)));
       if (best && best === cartPick) {
         feedback = { state: 'none' };
         prompt = i18n.t('cart.idle', { loads: cart.loads.length, max: CART_TUNING.maxLoadCount });
@@ -506,10 +1010,61 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
           cart.unloadAll();
           secondaryUsed = true;
         }
+      } else if (best && best === mountainPick) {
+        feedback = { state: 'none' };
+        const partId = best.candidate.id;
+        const piece = mountain.piece(partId);
+        if (piece) {
+          const name = mountainName(piece);
+          const metal = METALS.has(piece.materialId);
+          if (!mountain.exposed(partId)) {
+            prompt = i18n.t('mountain.buried', { name });
+          } else if (piece.size === 'large') {
+            // Large parts are cut where they lie into small pieces of their material.
+            cutTarget = {
+              key: `mountain:${partId}`,
+              prompt: i18n.t('cut.intoPieces', { name }),
+              name,
+              seconds: partCutSeconds(piece.massKg),
+              run: () => {
+                const left = mountain.remove(partId);
+                if (!left) return;
+                scrap.wakeAbove(left.piece);
+                for (const freed of left.freed) partToProp(freed);
+                breakables.shatter(left.piece.position, cutYields([left.piece]), `cut-${partId}`);
+              },
+            };
+          } else if (cutterInHand) {
+            cutTarget = {
+              key: `mountain:${partId}`,
+              prompt: i18n.t(metal ? 'cut.intoPieces' : 'cut.breakOpen', { name }),
+              name,
+              seconds: partCutSeconds(piece.massKg),
+              run: () => {
+                if (releaseToProp(partId)) breakables.break(partId);
+              },
+            };
+          } else {
+            prompt = i18n.t(metal ? 'grip.grabOrCut' : 'grip.grabOrBreak', { name });
+            if (frame.interact) {
+              const prop = releaseToProp(partId);
+              if (prop) {
+                grip.tryGrab(
+                  {
+                    candidate: { id: partId, body: prop.body, position: piece.position },
+                    distance: best.distance,
+                    angle: best.angle,
+                  },
+                  aimView.yaw,
+                );
+              }
+            }
+          }
+        }
       } else if (best && best === propPick) {
         feedback = { state: 'none' };
         const target = props.get(best.candidate.id);
-        const targetName = nameOf(target?.nameKeys, target?.displayName ?? '');
+        const targetName = propLabel(best.candidate.id);
         const propId = best.candidate.id;
         const breakable = breakables.isBreakable(propId);
         const method = breakables.method(propId);
@@ -570,21 +1125,59 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     const nearIntake =
       Math.hypot(aimView.position.x - TEST_YARD_INTAKE.position.x, aimView.position.z - TEST_YARD_INTAKE.position.z) <
       TEST_YARD_INTAKE.reach;
+    // MSC-031: one action unloads the whole batch; the intake classifies it and anything that does not fit stays.
+    const unloadPlan = nearIntake && container.count > 0 ? intake.preview(container.items()) : null;
     if (frame.secondary && !secondaryUsed && grip.held === null) {
-      if (nearIntake && container.count > 0) {
-        const result = intake.receive(container.unloadAll());
-        notice = { key: 'unload.done', params: { count: result.accepted } };
+      if (unloadPlan && unloadPlan.acceptedIds.length > 0) {
+        const result = intake.receive(container.take(unloadPlan.acceptedIds));
+        const kept = container.count;
+        notice =
+          kept > 0
+            ? { key: 'unload.partial', params: { count: result.accepted, kept } }
+            : { key: 'unload.done', params: { count: result.accepted } };
+      } else if (unloadPlan) {
+        notice = { key: 'intake.binsFull' };
       } else {
         notice = { key: container.count === 0 ? 'unload.empty' : 'unload.needIntake' };
       }
-      noticeUntil = now + 2000;
+      noticeUntil = now + 2500;
     }
-    if (nearIntake && !prompt && feedback.state === 'none') prompt = i18n.t('intake.prompt');
+    if (nearIntake && !prompt && feedback.state === 'none') {
+      if (!unloadPlan) prompt = i18n.t('intake.prompt');
+      else if (unloadPlan.acceptedIds.length === 0) prompt = i18n.t('intake.binsFull');
+      else {
+        const list = batchList(unloadPlan.accepted);
+        const kept = unloadPlan.kept.reduce((sum, batch) => sum + batch.count, 0);
+        prompt = kept > 0 ? i18n.t('intake.previewKept', { list, kept }) : i18n.t('intake.preview', { list });
+      }
+    }
+    if (!prompt && grip.held === null && feedback.state === 'none' && nearTerminal(aimView)) {
+      const offer = nextCollectorOffer();
+      const tier = collector.selector.tier + 2;
+      const list = tierMaterials(tier - 1);
+      if (!offer) prompt = i18n.t('sale.needBale');
+      else if (sharedCredits.balance < offer.price) {
+        prompt = i18n.t('shop.short', { tier, list, credits: offer.price, balance: sharedCredits.balance });
+      } else prompt = i18n.t('shop.preview', { tier, list, credits: offer.price });
+      if (frame.interact && offer) {
+        purchaseCounter += 1;
+        const bought = shop.buy(LOCAL_PLAYER, offer.id, transactionId(`txn-buy${purchaseCounter.toString(36)}`));
+        if (bought.ok && bought.kind === 'purchased') {
+          tool.use();
+          lastGain = { credits: 0 - bought.cost, until: now + 2500 };
+          notice = { key: 'selector.upgraded', params: { tier: collector.selector.tier + 1, list } };
+        } else if (!bought.ok && bought.reason === 'insufficient-credits') {
+          notice = { key: 'shop.insufficient', params: { credits: offer.price, balance: sharedCredits.balance } };
+        }
+        noticeUntil = now + 3000;
+      }
+    }
 
-    // Wake clusters near the player and let distant ones sleep (MSC-012 activation).
+    // Wake clusters near the player and let distant ones sleep (MSC-012 activation). The mountain is different:
+    // its settled pieces stay fixed until disturbed (collector, player, lost support), so nothing moves on its own.
     if (now - lastActivation > 500) {
       lastActivation = now;
-      for (const cluster of scrap.clusterCenters()) {
+      for (const cluster of scrap.clusterCenters({ solid: false })) {
         if (cluster.remaining === 0) continue;
         const distance = Math.hypot(aimView.position.x - cluster.x, aimView.position.z - cluster.z);
         if (distance < 16) scrap.activateCluster(cluster.id);
@@ -592,10 +1185,80 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
           scrap.deactivateCluster(cluster.id);
         }
       }
+      // Disturbed mountain pieces that came to rest away from the player become fixed again where they lie.
+      scrap.settleFar(aimView.position, MOUNTAIN_WAKE.settleDistance, new Set(collector.pulling));
+      // Only the mountain around the player holds colliders (each costs simulation time even at rest).
+      scrap.streamSolids([aimView.position], MOUNTAIN_SOLIDS.radius, MOUNTAIN_SOLIDS.hysteresis, 0);
     }
+    // Queued colliders arrive a few per frame (a whole cluster at once is a frame-time spike).
+    scrap.pumpSolids(MOUNTAIN_SOLIDS.perFrame);
+    // Pieces the player walks into are pushed for real (while the active-piece budget allows).
+    if (now - lastTouch > 100 && scrap.activeCount < MOUNTAIN_WAKE.activeBudget) {
+      lastTouch = now;
+      const { x, y, z } = aimView.position;
+      const reach = MOUNTAIN_WAKE.touchReach;
+      scrap.disturbWithin({
+        min: { x: x - reach, y: y - 1.05, z: z - reach },
+        max: { x: x + reach, y: y + 0.9, z: z + reach },
+      });
+    }
+
+    // MSC-032: the compactor runs on its own; a finished bale waits inside while the pad is occupied.
+    const ejected = compactor.update(dt, padClear());
+    if (ejected) {
+      bales.set(ejected.id, ejected);
+      props.add({
+        id: ejected.id,
+        materialId: ejected.materialId,
+        displayName: 'Bale',
+        position: { x: TEST_YARD_COMPACTOR.pad.x, y: BALE_HALF_EXTENTS.y + 0.1, z: TEST_YARD_COMPACTOR.pad.z },
+        halfExtents: BALE_HALF_EXTENTS,
+        massKg: Math.max(ejected.massKg, 1),
+      });
+      notice = {
+        key: 'compactor.baleReady',
+        params: { material: materialName(ejected.materialId, ejected.materialId) },
+      };
+      noticeUntil = now + 3000;
+    }
+    const press = compactor.state;
+    if (pressHead) {
+      pressHead.position.y = press.kind === 'processing' ? 1.62 - Math.sin(press.progress * Math.PI) * 0.4 : 1.62;
+    }
+    for (const material of bayMaterials) {
+      sortingBay.userData.bay.setFill(material, intake.binCount(material) / intake.binCapacity);
+    }
+    // MSC-036: a durable change (sale, purchase, unload, bale, cut, reveal…) is saved within a few seconds.
+    if (now - lastSaveCheck > 1000) {
+      lastSaveCheck = now;
+      const signature = progressSignature();
+      if (signature !== savedSignature && now - lastSaveAt > 4000) {
+        savedSignature = signature;
+        lastSaveAt = now;
+        requestSave();
+      }
+    }
+    if (now - lastRevealCheck > 500) {
+      lastRevealCheck = now;
+      const reveal = stationReveal.update(locateCover);
+      if (reveal.justRevealed) {
+        revealedAt = now;
+        notice = { key: 'station.revealed' };
+        noticeUntil = now + 5000;
+        solidifyMarker();
+      }
+    }
+    waypoint.visible = collector.selector.tier >= 1 && !stationReveal.revealed;
+    if (waypoint.visible) waypoint.position.y = 5.2 + Math.sin(now / 400) * 0.25;
+    if (beaconMaterial) beaconMaterial.emissiveIntensity = stationReveal.revealed ? 1.4 + Math.sin(now / 300) * 0.6 : 0;
+    lampMaterial?.emissive.set(
+      press.kind === 'idle' ? STYLE.heliofoil : press.kind === 'blocked' ? '#ff3b2f' : STYLE.paintOrange,
+    );
 
     // Fixed-step simulation with bounded catch-up.
     accumulator = Math.min(accumulator + dt, step * 5);
+    const simStart = performance.now();
+    sampleFrame('logic', simStart - frameStart);
     while (accumulator >= step) {
       player.fixedUpdate(frame.move, step);
       const eye = player.view().eye;
@@ -607,6 +1270,10 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       props.recoverFallen();
       accumulator -= step;
     }
+    const viewsStart = performance.now();
+    simSamples.push(viewsStart - simStart);
+    if (simSamples.length > 600) simSamples.shift();
+    sampleFrame('sim', viewsStart - simStart);
 
     const view = player.view();
     camera.position.set(view.eye.x, view.eye.y, view.eye.z);
@@ -654,6 +1321,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     for (const [jointId, marker] of jointMarkers) marker.visible = rover.jointPosition(jointId) !== null;
     scrapView.sync();
     scrapView.highlight(feedback);
+    mountainView.sync(aimView.position);
     if (feedbackLabel) {
       let scrapText = '';
       if (feedback.state !== 'none') {
@@ -683,6 +1351,16 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     canvas.dataset['collected'] = String(container.count);
     canvas.dataset['held'] = grip.held ?? '';
     canvas.dataset['intake'] = String(intake.count);
+    canvas.dataset['credits'] = String(sharedCredits.balance);
+    canvas.dataset['collectorTier'] = String(collector.selector.tier + 1);
+    canvas.dataset['stationMarker'] = JSON.stringify(stationReveal.status());
+    canvas.dataset['save'] = JSON.stringify({
+      campaign: campaign.opened.kind,
+      writable: campaign.saver.writable,
+      ...saveState,
+    });
+    canvas.dataset['compactor'] = JSON.stringify({ state: compactor.state.kind, bales: [...bales.keys()] });
+    canvas.dataset['bins'] = JSON.stringify(Object.fromEntries(intake.batches().map((b) => [b.materialId, b.count])));
     canvas.dataset['selector'] = JSON.stringify({
       tier: collector.selector.tier,
       selected: collector.selector.selected,
@@ -700,6 +1378,8 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       chunks: rover.state.chunks().length,
     });
     canvas.dataset['cart'] = JSON.stringify({ loads: cart.loads.length, pushing, recoveries: cart.recoveries });
+    const nearBase =
+      Math.hypot(view.position.x - TEST_YARD_INTAKE.position.x, view.position.z - TEST_YARD_INTAKE.position.z) < 9;
     if (gameHud) {
       const contents = container.batches()[0]?.materialId;
       gameHud.update({
@@ -713,6 +1393,24 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
           level: i18n.t('hud.level'),
         },
         crew: { present: 1, max: 4 },
+        credits: {
+          label: i18n.t('hud.credits'),
+          balance: sharedCredits.balance,
+          gain: lastGain && now < lastGain.until ? lastGain.credits : null,
+        },
+        job: { label: i18n.t('hud.job'), text: jobText() },
+        base: nearBase
+          ? {
+              title: i18n.t('hud.base'),
+              capacity: intake.binCapacity,
+              emptyText: i18n.t('intake.empty'),
+              bins: intake.batches().map((batch) => {
+                const chip = materialChip(batch.materialId);
+                return { symbol: chip.symbol, name: chip.name, color: chip.color, count: batch.count };
+              }),
+              machines: [compactorLine()],
+            }
+          : null,
         container: {
           count: container.count,
           capacity: container.capacity,
@@ -767,7 +1465,97 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
       device,
     });
     canvas.dataset['awakeBodies'] = String(world.awakeBodyCount());
+    const renderStart = performance.now();
+    sampleFrame('views', renderStart - viewsStart);
     renderer.render(scene, camera);
+    const frameEnd = performance.now();
+    sampleFrame('render', frameEnd - renderStart);
+    sampleFrame('cpu', frameEnd - frameStart);
+    perfFrames += 1;
+    if (now - lastPerf > 1000) {
+      const fps = Number(((perfFrames * 1000) / (now - lastPerf)).toFixed(1));
+      lastPerf = now;
+      perfFrames = 0;
+      const sorted = [...simSamples].sort((a, b) => a - b);
+      const at = (q: number): number => Number((sorted[Math.floor((sorted.length - 1) * q)] ?? 0).toFixed(2));
+      const frameMs: Record<string, { p50: number; p99: number; max: number }> = {};
+      for (const [section, samples] of frameSamples) {
+        const s = [...samples].sort((a, b) => a - b);
+        const q = (p: number): number => Number((s[Math.floor((s.length - 1) * p)] ?? 0).toFixed(2));
+        frameMs[section] = { p50: q(0.5), p99: q(0.99), max: q(1) };
+      }
+      canvas.dataset['frameMs'] = JSON.stringify(frameMs);
+      const overlay = document.querySelector<HTMLElement>('#fps-overlay');
+      if (overlay && !overlay.hidden) {
+        const rows = Object.entries(frameMs).map(
+          ([section, t]) =>
+            `${section.padEnd(8)} ${t.p50.toFixed(1).padStart(5)} ${t.p99.toFixed(1).padStart(5)} ${t.max.toFixed(1).padStart(5)}`,
+        );
+        overlay.textContent = [
+          `FPS ${fps.toFixed(0)}`,
+          `draw ${renderer.info.render.calls} · tris ${(renderer.info.render.triangles / 1e6).toFixed(2)} M`,
+          'ms         p50   p99   max',
+          ...rows,
+        ].join('\n');
+      }
+      canvas.dataset['perf'] = JSON.stringify({
+        fps,
+        simP50: at(0.5),
+        simP95: at(0.95),
+        simP99: at(0.99),
+        drawCalls: renderer.info.render.calls,
+        triangles: renderer.info.render.triangles,
+        awake: world.awakeBodyCount(),
+        activePieces: scrap.metrics().active,
+        solidDormant: scrap.metrics().solidDormant,
+        mountainParts: mountain.pieces().length,
+      });
+      // Debug aid for scripted checks: nearest exposed mountain parts around the player.
+      const near = mountain
+        .targetsNear(view.eye, 8)
+        .map((candidate) => mountain.piece(candidate.id))
+        .filter((piece): piece is MountainPieceSpec => piece !== undefined && mountain.exposed(piece.id));
+      const nearest = (size: MountainPieceSpec['size']) =>
+        near
+          .filter((piece) => piece.size === size)
+          .sort(
+            (a, b) =>
+              Math.hypot(a.position.x - view.eye.x, a.position.z - view.eye.z) -
+              Math.hypot(b.position.x - view.eye.x, b.position.z - view.eye.z),
+          )[0]?.position ?? null;
+      if (!canvas.dataset['meshBreakdown']) {
+        // Debug aid: visible draw items per top-level object, to keep the draw-call budget honest.
+        const counts = new Map<string, number>();
+        for (const top of scene.children) {
+          let n = 0;
+          top.traverseVisible((object) => {
+            if ((object as Mesh).isMesh) n += 1;
+          });
+          const key = top.name || top.type;
+          if (n > 0) counts.set(key, (counts.get(key) ?? 0) + n);
+        }
+        canvas.dataset['meshBreakdown'] = JSON.stringify(Object.fromEntries(counts));
+      }
+      const closestLarge = mountain
+        .targetsNear(view.eye, 10)
+        .map((candidate) => mountain.piece(candidate.id))
+        .filter((piece): piece is MountainPieceSpec => piece?.size === 'large')
+        .sort(
+          (a, b) =>
+            Math.hypot(a.position.x - view.eye.x, a.position.z - view.eye.z) -
+            Math.hypot(b.position.x - view.eye.x, b.position.z - view.eye.z),
+        )[0];
+      canvas.dataset['mountainNear'] = JSON.stringify({
+        large: nearest('large'),
+        medium: nearest('medium'),
+        closestLarge: closestLarge
+          ? {
+              position: closestLarge.position,
+              blockers: mountain.blockers(closestLarge.id).map((id) => mountain.piece(id)?.position),
+            }
+          : null,
+      });
+    }
   });
 
   return () => {
@@ -775,6 +1563,7 @@ export async function createTestYardScene(canvas: HTMLCanvasElement, hud: TestYa
     detachKeyboard();
     canvas.removeEventListener('click', lockPointer);
     window.removeEventListener('resize', resize);
+    window.removeEventListener('pagehide', requestSave);
     world.dispose();
     renderer.dispose();
   };
