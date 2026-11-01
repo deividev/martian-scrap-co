@@ -6,7 +6,7 @@ Everything an implementation left to add, test or decide, so nothing is lost bet
 
 **Kinds:** *Play check* (seen in real play), *Co-op* (needs the real two-account transport), *Owner* (owner decision or hardware/account), *Feature* (still to build), *Release* (must happen before shipping).
 
-Last updated: 2026-11-01 (dev-only playtest log and data folder fix; MSC-039 playtest script ready: P-08, P-10, P-11, P-13, P-22 and P-27 are gathered with [it](playtests/MSC-039-slice-playtest-script.md)).
+Last updated: 2026-11-01 (Spanish playtest guide for MSC-039; P-37–P-39 found while writing it).
 
 ## Open
 
@@ -48,6 +48,9 @@ Last updated: 2026-11-01 (dev-only playtest log and data folder fix; MSC-039 pla
 | P-34 | MSC-039 | Owner | First launch of the new build by the owner: the save is copied from the old `Martian Scrap Co.` folder to `Martian Scrap Co` and resumes, and `playtest.bat` writes a log file to `Documents\Martian Scrap Co playtest logs`. Both were checked only with tests: launching the packaged game from the agent's shell crashed Windows twice (2026-11-01). | — | MSC-039 |
 | P-35 | MSC-039 | Feature | The playtest log's last lines (and the `session-end` line) can be lost when the window closes, because the renderer's final send is not awaited; main could flush on quit. Same root as P-18. | — | MSC-092 |
 | P-36 | MSC-039 | Release | The old `%APPDATA%\Martian Scrap Co.` folder (trailing dot) stays on dev machines after the save copy; delete it with a tool that supports it, or leave it. Shipped builds never create it. | — | MSC-114 |
+| P-37 | MSC-039 | Feature | Several "Current job" lines and tips name mouse buttons even when a controller is in use (for example "hold left click"); they should follow the active device like the bottom hint line does. Found while writing the Spanish playtest guide; also watch for it in P-22. | — | MSC-085 |
+| P-38 | MSC-039 | Feature | The same tool has two names on screen: the HUD panel says "Magnetic collector / Imán colector" while jobs, the shop and notices say "collector / colector". Pick one name per language. | — | MSC-083, MSC-087 |
+| P-39 | MSC-039 | Owner | Keep the Spanish session guide (`docs/playtests/MSC-039-guia-prueba.md`) aligned with the English script whenever either changes, and record the results from both. | — | MSC-039 |
 
 ## Closed
 

@@ -1,5 +1,7 @@
 # MSC-039 — Slice Playtest Script
 
+**Session copy in Spanish:** [MSC-039-guia-prueba.md](MSC-039-guia-prueba.md) (plain language, in-game Spanish names). It is the version used at the table; keep both aligned (P-39).
+
 Script for observing the vertical slice with the owner's brother and friends. It covers [MSC-039](../04-phased-agent-task-plan.md) and the play checks that the [pending work register](../pending-work.md) schedules into it: P-08, P-10, P-11, P-13, P-22 and P-27. Results are observations, not approvals. Record them honestly, including confusion, boredom and bugs.
 
 ## 1. What this session can and cannot test
