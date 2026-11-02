@@ -6,7 +6,7 @@ Everything an implementation left to add, test or decide, so nothing is lost bet
 
 **Kinds:** *Play check* (seen in real play), *Co-op* (needs the real two-account transport), *Owner* (owner decision or hardware/account), *Feature* (still to build), *Release* (must happen before shipping).
 
-Last updated: 2026-11-01 (Spanish playtest guide for MSC-039; P-37–P-39 found while writing it).
+Last updated: 2026-11-02 (full project review in [estado-del-proyecto.md](estado-del-proyecto.md); P-40 and P-41 added).
 
 ## Open
 
@@ -51,6 +51,8 @@ Last updated: 2026-11-01 (Spanish playtest guide for MSC-039; P-37–P-39 found 
 | P-37 | MSC-039 | Feature | Several "Current job" lines and tips name mouse buttons even when a controller is in use (for example "hold left click"); they should follow the active device like the bottom hint line does. Found while writing the Spanish playtest guide; also watch for it in P-22. | — | MSC-085 |
 | P-38 | MSC-039 | Feature | The same tool has two names on screen: the HUD panel says "Magnetic collector / Imán colector" while jobs, the shop and notices say "collector / colector". Pick one name per language. | — | MSC-083, MSC-087 |
 | P-39 | MSC-039 | Owner | Keep the Spanish session guide (`docs/playtests/MSC-039-guia-prueba.md`) aligned with the English script whenever either changes, and record the results from both. | — | MSC-039 |
+| P-40 | Review | Owner | Back up the work to GitHub: on 2026-11-02 `develop` was 33 commits ahead of `origin/develop`, `phase/04-vertical-slice` 22 ahead, and `phase/03-coop-authority` was never pushed (its commits are in `develop`). With the recurring Windows crashes, local-only history is at risk. Pushing needs the owner's go-ahead. | Owner go-ahead | Now |
+| P-41 | Review | Owner | Find the cause of the recurring 0x50 Windows crashes (memory dump analysis or a memory test). They happen under heavy load, crashed the PC twice while the agent launched the packaged game (2026-11-01), and once truncated `electron.exe`. Binaries were intact on 2026-11-02. | — | Before long play sessions |
 
 ## Closed
 
