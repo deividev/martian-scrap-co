@@ -9,7 +9,7 @@
 - También hay menús con mando, guardado automático, sonidos provisionales y un registro automático para las pruebas.
 - **Jugar en línea con otros todavía no se puede.** La parte técnica de Steam está hecha, pero falta probarla entre dos cuentas reales (tú y tu hermano), y para publicar falta un App ID propio.
 - **Lo siguiente es tuyo:** hacer la prueba de juego con tu hermano y amigos (tarea MSC-039), con la [guía en español](playtests/MSC-039-guia-prueba.md).
-- **Ojo: nada está subido a GitHub desde el 30 de octubre.** Hay 33 cambios guardados solo en tu PC (más abajo, sección 8).
+- Todo el trabajo está subido a GitHub (2026-11-02).
 
 ## 2. Qué se puede jugar hoy
 
@@ -72,7 +72,6 @@ La lista completa está en [pending-work.md](pending-work.md), con la columna **
 
 | # | Qué | Cuándo |
 |---|---|---|
-| P-40 | **Subir el trabajo a GitHub** como copia de seguridad (sección 8) | Cuanto antes |
 | P-34 | Abrir el juego nuevo con `playtest.bat` y ver **"Partida restaurada"** y el archivo en `Documentos\Martian Scrap Co playtest logs` | Antes de la prueba |
 | P-32 | Hacer la **prueba con jugadores** con la guía | Cuando quedes |
 | P-01, P-03 | Prueba de Steam con tu hermano (dos cuentas, dos redes) | Cuando podáis |
@@ -128,24 +127,21 @@ Todos esperan a la prueba con tu hermano. Son:
 
 ## 7. Antes de hacer las pruebas: lista rápida
 
-1. **Sube el trabajo a GitHub** (P-40), o al menos dime que lo haga.
-2. En la carpeta del proyecto, ejecuta `pnpm run package`.
-3. Copia `tools\dev-playtest\playtest.bat` y `new-tester.bat` a `release\win-unpacked`.
-4. Abre con `playtest.bat`. Comprueba que sale **"Partida restaurada"** y que aparece el archivo de registro en Documentos (P-34).
-5. Imprime o copia la **hoja de notas** de la [guía](playtests/MSC-039-guia-prueba.md) (sección 9), una por jugador.
-6. Entre jugador y jugador: cierra el juego y ejecuta `new-tester.bat J1`, `J2`…
-7. Al final, pásame las hojas (vale una foto) y los archivos de registro.
+1. En la carpeta del proyecto, ejecuta `pnpm run package`.
+2. Copia `tools\dev-playtest\playtest.bat` y `new-tester.bat` a `release\win-unpacked`.
+3. Abre con `playtest.bat`. Comprueba que sale **"Partida restaurada"** y que aparece el archivo de registro en Documentos (P-34).
+4. Imprime o copia la **hoja de notas** de la [guía](playtests/MSC-039-guia-prueba.md) (sección 9), una por jugador.
+5. Entre jugador y jugador: cierra el juego y ejecuta `new-tester.bat J1`, `J2`…
+6. Al final, pásame las hojas (vale una foto) y los archivos de registro.
 
 ## 8. Copias de seguridad y Git
 
-Nada se sube a GitHub sin que tú lo pidas. Ahora mismo, comparado con GitHub:
+**Subido a GitHub el 2026-11-02** con tu permiso (P-40 cerrado):
+- `develop` y `phase/04-vertical-slice` están al día;
+- `phase/03-coop-authority` se subió por primera vez;
+- `main` y las fases 1 y 2 ya estaban al día.
 
-- `develop` tiene **33 commits sin subir**: todo desde las fases 3 y 4 hasta la guía de pruebas.
-- `phase/04-vertical-slice` tiene **22 commits sin subir**.
-- `phase/03-coop-authority` **nunca se ha subido**. Su contenido ya está dentro de `develop`.
-- `main` y las fases 1 y 2 están al día.
-
-Con los pantallazos azules, un fallo del disco podría hacer perder ese trabajo. Por eso está como **P-40**. Cuando me lo pidas, lo subo.
+Nada se sube sin que tú lo pidas. Cuando se acumule trabajo nuevo, pídemelo otra vez, sobre todo antes de sesiones largas o si el PC se ha colgado.
 
 ## 9. Si Windows se vuelve a colgar
 
@@ -158,7 +154,7 @@ Con los pantallazos azules, un fallo del disco podría hacer perder ese trabajo.
 
 ## 10. Qué viene después
 
-1. Tú: subir a GitHub (P-40), la primera apertura (P-34) y la **prueba con jugadores** (MSC-039).
+1. Tú: la primera apertura (P-34) y la **prueba con jugadores** (MSC-039).
 2. Yo: escribir los resultados, cerrar los pendientes que queden probados y arreglar lo que salga, por ejemplo P-37 y P-38.
 3. Tú: **aprobar la rebanada** (MSC-040), o pedir cambios.
 4. En paralelo, cuando podáis: la **prueba de Steam con tu hermano**. Eso desbloquea las fases 3 y el cooperativo de la 4.
